@@ -1,0 +1,441 @@
+import type { MessagesService } from "../src/messages/messages.service";
+import { z, ZodError } from "zod";
+import {
+  HttpException,
+  BadRequestException,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { Country, State } from "country-state-city";
+import type { Actor } from "../src/common/auth.guard";
+import type { WorkspaceService } from "../src/workspace/workspace.service";
+import type { BookingService } from "../src/bookings/booking.service";
+import type { AccountsService } from "../src/accounts/accounts.service";
+import type { TurfService } from "../src/turf/turf.service";
+import type { CourtService } from "../src/court/court.service";
+import type { PoolService } from "../src/pool/pool.service";
+import type { HallService } from "../src/hall/hall.service";
+import { acceptanceSchema } from "../src/workspace/validation";
+import { renderReport } from "../src/accounts/accounts.report";
+
+import type { ExpensesService } from "../src/expenses/expenses.service";
+import { renderExpenseReport } from "../src/expenses/expenses.report";
+type Services = {
+  messages: MessagesService;
+  expenses: ExpensesService;
+  workspace: WorkspaceService;
+  bookings: BookingService;
+  accounts: AccountsService;
+  turf: TurfService;
+  court: CourtService;
+  pool: PoolService;
+  hall: HallService;
+};
+type Input = {
+  actor: Actor;
+  body: unknown;
+  query: Record<string, string>;
+  params: Record<string, string>;
+};
+type Route = { method: string; path: string; run: (i: Input) => unknown };
+const MAX_BODY = 3 * 1024 * 1024;
+async function body(req: Request) {
+  if (!["POST", "PATCH", "PUT"].includes(req.method)) return undefined;
+  if (!req.body) return undefined;
+  if (Number(req.headers.get("content-length")) > MAX_BODY)
+    throw new HttpException("Request body is too large.", 413);
+  if (
+    !req.headers
+      .get("content-type")
+      ?.toLowerCase()
+      .startsWith("application/json")
+  )
+    throw new HttpException("JSON content type is required.", 415);
+  const reader = req.body?.getReader();
+  if (!reader) throw new BadRequestException("JSON body is required.");
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > MAX_BODY) {
+        await reader.cancel();
+        throw new HttpException("Request body is too large.", 413);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const part of chunks) {
+    bytes.set(part, offset);
+    offset += part.length;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    throw new BadRequestException("Invalid JSON body.");
+  }
+}
+export function createHandler(
+  services: Services,
+  authenticate: (token: string) => Promise<Actor>,
+  health: () => Promise<unknown>,
+) {
+  const { workspace: w, bookings: b, accounts: a } = services;
+  const routes: Route[] = [];
+  const add = (method: string, path: string, run: Route["run"]) =>
+    routes.push({ method, path, run });
+  add("GET", "/v1/message-templates", (i) =>
+    services.messages.catalog(i.actor),
+  );
+  add("POST", "/v1/message-templates", (i) =>
+    services.messages.create(i.actor, i.body),
+  );
+  add("PUT", "/v1/message-templates/primary", (i) =>
+    services.messages.primary(i.actor, i.body),
+  );
+  add("DELETE", "/v1/message-templates/:id", (i) =>
+    services.messages.remove(i.actor, i.params.id),
+  );
+  add("GET", "/v1/workspace", (i) => w.workspace(i.actor));
+  add("GET", "/v1/organization/details", (i) => w.organizationDetails(i.actor));
+  add("PATCH", "/v1/organization/details", (i) =>
+    w.updateOrganization(i.actor, i.body),
+  );
+  add("POST", "/v1/organizations", (i) =>
+    w.createOrganization(i.actor, i.body),
+  );
+  add("POST", "/v1/businesses", (i) => w.createBusiness(i.actor, i.body));
+  add("PUT", "/v1/businesses/order", (i) =>
+    w.reorderBusinesses(i.actor, i.body),
+  );
+  add("PATCH", "/v1/businesses/:id", (i) =>
+    w.renameBusiness(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/businesses/:id/resources", (i) =>
+    w.addResource(i.actor, i.params.id, i.body),
+  );
+  add("DELETE", "/v1/businesses/:id/resources/:resourceId", (i) =>
+    w.deleteResource(i.actor, i.params.id, i.params.resourceId),
+  );
+  add("PATCH", "/v1/businesses/:id/configuration", (i) =>
+    w.configure(i.actor, i.params.id, i.body),
+  );
+  for (const kind of ["turf", "court", "pool", "hall"] as const)
+    add("PATCH", `/v1/businesses/:id/${kind}-configuration`, (i) =>
+      services[kind].configure(i.actor, i.params.id, i.body),
+    );
+  add("POST", "/v1/businesses/:id/activate", (i) =>
+    w.activate(i.actor, i.params.id),
+  );
+  add("GET", "/v1/team", (i) => w.team(i.actor));
+  add("POST", "/v1/invitations", (i) => w.invite(i.actor, i.body));
+  add("POST", "/v1/invitations/accept", (i) =>
+    w.accept(i.actor, acceptanceSchema.parse(i.body).token),
+  );
+  add("DELETE", "/v1/invitations/:id", (i) =>
+    w.revoke(i.actor, i.params.id, true),
+  );
+  add("DELETE", "/v1/team/:id", (i) => w.revoke(i.actor, i.params.id, false));
+  add("PATCH", "/v1/team/:id", (i) =>
+    w.updateMember(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/organization/logo", (i) =>
+    w.uploadLogo(
+      i.actor,
+      i.body as Parameters<WorkspaceService["uploadLogo"]>[1],
+    ),
+  );
+  add("GET", "/v1/organization/logo", async (i) => {
+    const logo = await w.logo(i.actor);
+    return new Response(new Uint8Array(logo.data), {
+      headers: { "Content-Type": logo.content_type },
+    });
+  });
+  add("GET", "/v1/bookings/catalog", (i) => b.catalog(i.actor));
+  add("GET", "/v1/bookings/date-counts", (i) => b.dateCounts(i.actor, i.query));
+  add("GET", "/v1/bookings/customers", (i) =>
+    b.customers(i.actor, i.query.q ?? ""),
+  );
+  add("GET", "/v1/bookings/customer-directory", (i) =>
+    b.customerDirectory(i.actor, i.query),
+  );
+  add("GET", "/v1/bookings/customer-directory/:id", (i) =>
+    b.customerHistory(i.actor, i.params.id, i.query),
+  );
+  add("GET", "/v1/bookings/dashboard", (i) =>
+    b.dashboard(i.actor, i.query.business_id),
+  );
+  add("GET", "/v1/bookings/outstanding", (i) =>
+    b.outstanding(i.actor, i.query),
+  );
+  add("GET", "/v1/bookings/collections", (i) =>
+    b.paymentList(i.actor, i.query),
+  );
+  add("GET", "/v1/bookings/commands/:key", (i) =>
+    b.commandResult(i.actor, i.params.key),
+  );
+  add("POST", "/v1/bookings/quote", (i) => b.quote(i.actor, i.body));
+  add("POST", "/v1/bookings/availability", (i) =>
+    b.availability(i.actor, i.body),
+  );
+  add("POST", "/v1/bookings", (i) => b.create(i.actor, i.body));
+  add("GET", "/v1/bookings", (i) => b.list(i.actor, i.query));
+  add("GET", "/v1/bookings/:id", (i) => b.detail(i.actor, i.params.id));
+  add("POST", "/v1/bookings/:id/reschedule", (i) =>
+    b.reschedule(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/bookings/:id/payments", (i) =>
+    b.payments(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/bookings/:id/status", (i) =>
+    b.status(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/bookings/:id/customer", (i) =>
+    b.editCustomer(i.actor, i.params.id, i.body),
+  );
+  add("GET", "/v1/accounts/catalog", (i) => a.catalog(i.actor));
+  add("GET", "/v1/accounts/overview", (i) => a.overview(i.actor, i.query));
+  add("GET", "/v1/accounts/transactions", (i) =>
+    a.transactions(i.actor, i.query),
+  );
+  add("POST", "/v1/accounts/cash/opening", (i) =>
+    a.cashOpening(i.actor, i.body),
+  );
+  add("POST", "/v1/accounts/banks", (i) => a.createAccount(i.actor, i.body));
+  add("PATCH", "/v1/accounts/banks/:id", (i) =>
+    a.updateAccount(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/accounts/routes", (i) => a.route(i.actor, i.body));
+  add("POST", "/v1/accounts/entries", (i) => a.createEntry(i.actor, i.body));
+  add("POST", "/v1/accounts/entries/:id/reverse", (i) =>
+    a.reverse(i.actor, i.params.id, i.body),
+  );
+  add("GET", "/v1/accounts/reports/:format", async (i) => {
+    const format = z.enum(["pdf", "xlsx"]).parse(i.params.format),
+      type = z
+        .enum(["monthly", "yearly", "bookings", "cash_flow"])
+        .parse(i.query.type);
+    const { type: _, ...filter } = i.query,
+      data = await a.report(i.actor, filter),
+      bytes = await renderReport(data, format, type);
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type":
+          format === "pdf"
+            ? "application/pdf"
+            : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="booking-os-${type}-${data.from}-${data.until}.${format}"`,
+      },
+    });
+  });
+  const e = services.expenses;
+  add("GET", "/v1/expenses/catalog", (i) => e.catalog(i.actor));
+  add("POST", "/v1/expenses/categories", (i) => e.category(i.actor, i.body));
+  add("PATCH", "/v1/expenses/categories/:id", (i) =>
+    e.category(i.actor, i.body, i.params.id),
+  );
+  add("GET", "/v1/expenses/overview", (i) => e.overview(i.actor, i.query));
+  add("GET", "/v1/expenses", (i) => e.list(i.actor, i.query));
+  add("POST", "/v1/expenses", (i) => e.create(i.actor, i.body));
+  add("GET", "/v1/expenses/reports/:format", async (i) => {
+    const format = z.enum(["pdf", "xlsx"]).parse(i.params.format);
+    const data = await e.report(i.actor, i.query),
+      bytes = await renderExpenseReport(data, format);
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type":
+          format === "pdf"
+            ? "application/pdf"
+            : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="expenses-${data.from}-${data.until}.${format}"`,
+      },
+    });
+  });
+  add("GET", "/v1/expenses/:id", (i) => e.detail(i.actor, i.params.id));
+  add("POST", "/v1/expenses/:id/attachments", (i) =>
+    e.prepare(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/expenses/:id/attachments/:attachmentId/complete", (i) =>
+    e.complete(i.actor, i.params.id, i.params.attachmentId),
+  );
+  add("GET", "/v1/expenses/:id/attachments/:attachmentId", (i) =>
+    e.attachment(i.actor, i.params.id, i.params.attachmentId),
+  );
+  add("DELETE", "/v1/expenses/:id/attachments/:attachmentId", (i) =>
+    e.removePending(i.actor, i.params.id, i.params.attachmentId),
+  );
+  // Bounded, per-worker burst protection; authorization stays in shared services.
+  const bursts = new Map<string, { until: number; count: number }>();
+  return async (req: Request): Promise<Response> => {
+    const requestId = crypto.randomUUID();
+    const headers = new Headers({
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+      "X-Request-Id": requestId,
+    });
+    const origin = req.headers.get("origin");
+    const allowed = (process.env.BOOKING_CORS_ORIGINS ?? "")
+      .split(",")
+      .filter(Boolean);
+    if (origin && allowed.includes(origin)) {
+      headers.set("Access-Control-Allow-Origin", origin);
+      headers.set("Vary", "Origin");
+      headers.set(
+        "Access-Control-Allow-Headers",
+        "authorization, apikey, content-type, x-client-info",
+      );
+      headers.set(
+        "Access-Control-Allow-Methods",
+        "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      );
+      headers.set(
+        "Access-Control-Expose-Headers",
+        "Content-Disposition,X-Request-Id",
+      );
+    }
+    const respond = (data: unknown, status = 200) =>
+      Response.json(data, { status, headers });
+    try {
+      if (origin && !allowed.includes(origin))
+        throw new HttpException("Origin is not allowed.", 403);
+      if (req.method === "OPTIONS")
+        return new Response(null, { status: 204, headers });
+      const url = new URL(req.url),
+        path =
+          url.pathname
+            .replace(/^\/(?:functions\/v1\/)?booking-api(?=\/|$)/, "")
+            .replace(/\/$/, "") || "/";
+      if (req.method === "GET" && path === "/invite") {
+        const { token } = acceptanceSchema.parse(
+          Object.fromEntries(url.searchParams),
+        );
+        const target = new URL("com.bookingos.app://invite/invite");
+        target.searchParams.set("token", token);
+        headers.set("Location", target.toString());
+        headers.set("Referrer-Policy", "no-referrer");
+        return new Response(null, { status: 302, headers });
+      }
+      if (req.method === "GET" && path === "/health") {
+        await health();
+        return respond({
+          status: "ok",
+          runtime: "supabase-edge",
+          revision: "2026-10-20-customer-lookup-performance",
+        });
+      }
+      if (req.method === "GET" && path === "/v1/catalog")
+        return respond({
+          countries: Country.getAllCountries().map((c) => ({
+            code: c.isoCode,
+            name: c.name,
+          })),
+          timezones: [
+            ...new Set([
+              "Asia/Kolkata",
+              "UTC",
+              ...Intl.supportedValuesOf("timeZone"),
+            ]),
+          ].sort(),
+        });
+      if (
+        req.method === "GET" &&
+        /^\/v1\/catalog\/states\/[A-Z]{2}$/.test(path)
+      )
+        return respond(
+          State.getStatesOfCountry(path.split("/").at(-1)!).map((s) => ({
+            code: s.isoCode,
+            name: s.name,
+          })),
+        );
+      const segments = path.split("/");
+      let match: Route | undefined;
+      const params: Record<string, string> = {};
+      for (const route of routes) {
+        if (route.method !== req.method) continue;
+        const parts = route.path.split("/");
+        if (parts.length !== segments.length) continue;
+        const candidate: Record<string, string> = {};
+        if (
+          parts.every((part, n) =>
+            part.startsWith(":")
+              ? ((candidate[part.slice(1)] = decodeURIComponent(segments[n])),
+                true)
+              : part === segments[n],
+          )
+        ) {
+          match = route;
+          Object.assign(params, candidate);
+          break;
+        }
+      }
+      if (!match) throw new HttpException("Route not found.", 404);
+      const token = /^Bearer (\S+)$/.exec(
+        req.headers.get("authorization") ?? "",
+      )?.[1];
+      if (!token) throw new UnauthorizedException("Sign in to continue.");
+      const actor = await authenticate(token);
+      const now = Date.now();
+      for (const [key, v] of bursts) if (v.until <= now) bursts.delete(key);
+      if (bursts.size >= 1000 && !bursts.has(actor.uid))
+        throw new HttpException("Server busy. Please try again.", 429);
+      const burst = bursts.get(actor.uid) ?? { until: now + 60000, count: 0 };
+      if (++burst.count > 120)
+        throw new HttpException(
+          "Too many requests. Please try again shortly.",
+          429,
+        );
+      bursts.set(actor.uid, burst);
+      for (const [key, value] of Object.entries(params))
+        if (key !== "format") z.uuid().parse(value);
+      const result = await match.run({
+        actor,
+        params,
+        body: await body(req),
+        query: Object.fromEntries(url.searchParams),
+      });
+      if (result instanceof Response) {
+        for (const [key, value] of headers) result.headers.set(key, value);
+        return result;
+      }
+      return respond(result ?? {}, req.method === "POST" ? 201 : 200);
+    } catch (error) {
+      let status = 500,
+        message = "Something went wrong. Please try again.",
+        code = "INTERNAL_ERROR";
+      if (error instanceof ZodError) {
+        status = 422;
+        message = error.issues
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("; ");
+        code = "VALIDATION_ERROR";
+      } else if (error instanceof HttpException) {
+        status = error.getStatus();
+        message = error.message;
+        code =
+          status === 409
+            ? "CONFLICT"
+            : status === 403
+              ? "FORBIDDEN"
+              : status === 401
+                ? "UNAUTHENTICATED"
+                : "REQUEST_ERROR";
+      } else if ((error as { code?: string })?.code === "23505") {
+        status = 409;
+        message = "A record with these details already exists.";
+        code = "CONFLICT";
+      } else
+        console.error(
+          JSON.stringify({
+            request_id: requestId,
+            error: error instanceof Error ? error.name : "UnknownError",
+          }),
+        );
+      return respond({ code, message, request_id: requestId }, status);
+    }
+  };
+}

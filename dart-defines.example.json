@@ -1,0 +1,7 @@
+{
+  "AUTH_PROVIDER": "supabase",
+  "SUPABASE_URL": "https://scwwkaywewecspsrskft.supabase.co",
+  "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_d6iVFApYyh41BlF9GkTsgw_h0d-chZN",
+  "API_URL": "https://scwwkaywewecspsrskft.supabase.co/functions/v1/booking-api/v1",
+  "USE_AUTH_EMULATOR": false
+}

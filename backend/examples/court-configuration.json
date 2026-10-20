@@ -1,0 +1,246 @@
+{
+  "version": 1,
+  "configuration": {
+    "kind": "court_v1",
+    "schema_version": 1,
+    "courts": [
+      {
+        "id": "efc69b7c-b0e5-4935-a04f-9aa1b4ec6024",
+        "name": "Court 1",
+        "enabled": true,
+        "environment": "indoor",
+        "surface": "Synthetic",
+        "operating": {
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "opens_at": "06:00",
+          "closes_at": "00:00",
+          "date_from": null,
+          "date_until": null
+        },
+        "durations": [
+          60
+        ],
+        "default_duration_minutes": 60,
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "pricing_basis": "start_time",
+        "tariffs": [
+          {
+            "id": "5379c473-f5f1-48fe-b8b5-08c590a9c57b",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "06:00",
+              "closes_at": "18:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 40000
+              }
+            ]
+          },
+          {
+            "id": "bfbdd6e6-87d9-4871-8cff-edb2dfadccad",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "18:00",
+              "closes_at": "00:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "4f0e3e2a-dc49-4435-8b07-891cee56d703",
+        "name": "Court 2",
+        "enabled": true,
+        "environment": "indoor",
+        "surface": "Synthetic",
+        "operating": {
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "opens_at": "06:00",
+          "closes_at": "00:00",
+          "date_from": null,
+          "date_until": null
+        },
+        "durations": [
+          60
+        ],
+        "default_duration_minutes": 60,
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "pricing_basis": "start_time",
+        "tariffs": [
+          {
+            "id": "9e2f0e12-770b-4406-914a-172ff83d98c5",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "06:00",
+              "closes_at": "18:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 40000
+              }
+            ]
+          },
+          {
+            "id": "256037db-9d67-42bf-ae7b-944c10959074",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "18:00",
+              "closes_at": "00:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "55f84716-9a53-4eec-b0f2-723b37b16760",
+        "name": "Court 3",
+        "enabled": true,
+        "environment": "indoor",
+        "surface": "Synthetic",
+        "operating": {
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "opens_at": "06:00",
+          "closes_at": "00:00",
+          "date_from": null,
+          "date_until": null
+        },
+        "durations": [
+          60
+        ],
+        "default_duration_minutes": 60,
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "pricing_basis": "start_time",
+        "tariffs": [
+          {
+            "id": "7613abd8-3950-4436-9b7b-6fb95577068e",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "06:00",
+              "closes_at": "18:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 40000
+              }
+            ]
+          },
+          {
+            "id": "6f255c90-a1b2-421c-9b3c-5ba4517b5b81",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "18:00",
+              "closes_at": "00:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

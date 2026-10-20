@@ -1,0 +1,7 @@
+project_id = "booking"
+
+[functions.booking-api]
+# The function verifies current Supabase access tokens with Auth and enforces
+# organization/staff permissions. Legacy HS256-only verification is incompatible.
+verify_jwt = false
+entrypoint = "./functions/booking-api/index.ts"

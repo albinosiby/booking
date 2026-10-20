@@ -1,0 +1,361 @@
+{
+  "version": 1,
+  "configuration": {
+    "kind": "hall_v1",
+    "schema_version": 1,
+    "halls": [
+      {
+        "id": "64b19d96-75c4-4f55-b16b-48e0ae7db540",
+        "name": "Hall 1",
+        "enabled": true,
+        "environment": "indoor",
+        "amenities": "AC, parking",
+        "capacity": 200,
+        "seated_capacity": 150,
+        "hourly_enabled": true,
+        "operating": {
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "opens_at": "06:00",
+          "closes_at": "00:00",
+          "date_from": null,
+          "date_until": null
+        },
+        "durations": [
+          60,
+          120
+        ],
+        "default_duration_minutes": 60,
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "pricing_basis": "start_time",
+        "tariffs": [
+          {
+            "id": "56566ccd-ab87-4e45-9d19-b46178ba9522",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "06:00",
+              "closes_at": "00:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 100000
+              },
+              {
+                "duration_minutes": 120,
+                "price_minor": 180000
+              }
+            ]
+          }
+        ],
+        "sessions": [
+          {
+            "id": "f9735063-47c2-4303-8265-dc3723e78bea",
+            "name": "Morning",
+            "enabled": true,
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "09:00",
+              "closes_at": "13:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "prices": [
+              {
+                "id": "6d6b7eda-d9bf-42fa-b12a-44242debd14e",
+                "days": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "date_from": null,
+                "date_until": null,
+                "price_minor": 500000
+              }
+            ]
+          },
+          {
+            "id": "96276abd-fd1b-4aac-8176-d817660bc02f",
+            "name": "Evening",
+            "enabled": true,
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "17:00",
+              "closes_at": "22:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "prices": [
+              {
+                "id": "73e3f889-a6c0-4cb3-90f8-2a7aea5354b4",
+                "days": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "date_from": null,
+                "date_until": null,
+                "price_minor": 700000
+              }
+            ]
+          }
+        ],
+        "full_day": {
+          "id": "4402ac08-dd0b-4a42-87b1-e9c417b4732b",
+          "name": "Full day",
+          "enabled": true,
+          "hours": {
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "opens_at": "09:00",
+            "closes_at": "23:00",
+            "date_from": null,
+            "date_until": null
+          },
+          "prices": [
+            {
+              "id": "5e53bba5-e3f6-409f-8176-4c66bb1729b0",
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "date_from": null,
+              "date_until": null,
+              "price_minor": 1800000
+            }
+          ]
+        }
+      },
+      {
+        "id": "1d362177-9ded-4048-853e-ccda9f5fdd82",
+        "name": "Hall 2",
+        "enabled": true,
+        "environment": "indoor",
+        "amenities": "AC, parking",
+        "capacity": 400,
+        "seated_capacity": 300,
+        "hourly_enabled": true,
+        "operating": {
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "opens_at": "06:00",
+          "closes_at": "00:00",
+          "date_from": null,
+          "date_until": null
+        },
+        "durations": [
+          60,
+          120
+        ],
+        "default_duration_minutes": 60,
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "pricing_basis": "start_time",
+        "tariffs": [
+          {
+            "id": "f845850d-dfd8-4fce-ac4d-71354e5b50cd",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "06:00",
+              "closes_at": "00:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 100000
+              },
+              {
+                "duration_minutes": 120,
+                "price_minor": 180000
+              }
+            ]
+          }
+        ],
+        "sessions": [
+          {
+            "id": "0c1afe0c-7e6c-4d25-a2ec-d30049b004af",
+            "name": "Morning",
+            "enabled": true,
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "09:00",
+              "closes_at": "13:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "prices": [
+              {
+                "id": "dbc8ceb5-d81b-4cfb-8e9b-24745b45cad8",
+                "days": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "date_from": null,
+                "date_until": null,
+                "price_minor": 500000
+              }
+            ]
+          },
+          {
+            "id": "977fef46-34d2-4b03-aab9-78c857121665",
+            "name": "Evening",
+            "enabled": true,
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "17:00",
+              "closes_at": "22:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "prices": [
+              {
+                "id": "3af322a5-4c95-4824-b74e-66da8cc15979",
+                "days": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "date_from": null,
+                "date_until": null,
+                "price_minor": 700000
+              }
+            ]
+          }
+        ],
+        "full_day": {
+          "id": "910a0217-a7b2-471b-8c5f-26f0f5e9644f",
+          "name": "Full day",
+          "enabled": true,
+          "hours": {
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "opens_at": "09:00",
+            "closes_at": "23:00",
+            "date_from": null,
+            "date_until": null
+          },
+          "prices": [
+            {
+              "id": "dd2948dc-46a5-4b80-ae22-3dd3fc23480a",
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "date_from": null,
+              "date_until": null,
+              "price_minor": 1800000
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

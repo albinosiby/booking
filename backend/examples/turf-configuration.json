@@ -1,0 +1,592 @@
+{
+  "version": 1,
+  "configuration": {
+    "kind": "turf_v1",
+    "schema_version": 1,
+    "sports": [
+      "football",
+      "cricket"
+    ],
+    "grounds": [
+      {
+        "id": "68aeb72d-c600-4f77-ab62-298fb1d37944",
+        "name": "Main Ground",
+        "arrangement": "split",
+        "sections": [
+          {
+            "id": "f37277b7-f2d6-4c3b-b2fe-bfbeea0b090b",
+            "name": "Section A"
+          },
+          {
+            "id": "075fe028-4eb5-4b0b-9a10-b2aa73b763e9",
+            "name": "Section B"
+          }
+        ]
+      }
+    ],
+    "layouts": [
+      {
+        "id": "a2f27d93-a072-4663-a573-cab8833da560",
+        "ground_id": "68aeb72d-c600-4f77-ab62-298fb1d37944",
+        "name": "Main Ground \u00b7 Half A",
+        "section_ids": [
+          "f37277b7-f2d6-4c3b-b2fe-bfbeea0b090b"
+        ]
+      },
+      {
+        "id": "c5a0ae33-83e5-4583-b338-6af04c706378",
+        "ground_id": "68aeb72d-c600-4f77-ab62-298fb1d37944",
+        "name": "Main Ground \u00b7 Half B",
+        "section_ids": [
+          "075fe028-4eb5-4b0b-9a10-b2aa73b763e9"
+        ]
+      },
+      {
+        "id": "a9173b09-c869-4ced-a308-d1a48344be38",
+        "ground_id": "68aeb72d-c600-4f77-ab62-298fb1d37944",
+        "name": "Main Ground \u00b7 Full Ground",
+        "section_ids": [
+          "f37277b7-f2d6-4c3b-b2fe-bfbeea0b090b",
+          "075fe028-4eb5-4b0b-9a10-b2aa73b763e9"
+        ]
+      }
+    ],
+    "offerings": [
+      {
+        "id": "f51234e1-18ff-4ca4-836c-95418cf07fc7",
+        "layout_id": "a2f27d93-a072-4663-a573-cab8833da560",
+        "sport": "football",
+        "name": "Football \u00b7 Half A",
+        "format": "5s",
+        "enabled": true,
+        "rates": [
+          {
+            "duration_minutes": 60,
+            "price_minor": null
+          }
+        ],
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "hours_override": null,
+        "default_duration_minutes": 60,
+        "pricing_basis": "start_time",
+        "pricing_rules": [
+          {
+            "id": "164c82c8-ca63-42f9-86b3-4a7f48790825",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "09:00",
+            "ends_at": "18:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "0b97c76c-f4b0-498d-8a1f-08eed568dd3b",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "18:00",
+            "ends_at": "21:12",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 70000
+              }
+            ]
+          },
+          {
+            "id": "a3b9fa2c-0466-4871-89f3-d644e42361b6",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "06:00",
+            "ends_at": "09:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "8febe924-4bd4-4d98-9cf7-ba278ce4c7af",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "18:00",
+            "ends_at": "23:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 65000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "9020e422-4cea-444e-a9bf-f82b7b2fe03f",
+        "layout_id": "a2f27d93-a072-4663-a573-cab8833da560",
+        "sport": "cricket",
+        "name": "Cricket \u00b7 Half A",
+        "format": "Half ground",
+        "enabled": true,
+        "rates": [
+          {
+            "duration_minutes": 60,
+            "price_minor": null
+          }
+        ],
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "hours_override": null,
+        "default_duration_minutes": 60,
+        "pricing_basis": "start_time",
+        "pricing_rules": [
+          {
+            "id": "5bef1b01-9aa6-493d-bb7e-9aade289c09e",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "09:00",
+            "ends_at": "18:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "36d8abd8-4309-44b7-acd0-512afa609279",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "18:00",
+            "ends_at": "21:12",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 70000
+              }
+            ]
+          },
+          {
+            "id": "c2eed452-5271-47be-943d-c37be9bd1c45",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "06:00",
+            "ends_at": "09:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "3e40cc12-51f0-4a58-8461-7175b659e10d",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "18:00",
+            "ends_at": "23:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 65000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "b4fc62c8-963f-49dc-833e-cd43ed9e14b0",
+        "layout_id": "c5a0ae33-83e5-4583-b338-6af04c706378",
+        "sport": "football",
+        "name": "Football \u00b7 Half B",
+        "format": "5s",
+        "enabled": true,
+        "rates": [
+          {
+            "duration_minutes": 60,
+            "price_minor": null
+          }
+        ],
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "hours_override": null,
+        "default_duration_minutes": 60,
+        "pricing_basis": "start_time",
+        "pricing_rules": [
+          {
+            "id": "a2711529-c596-4e2b-91c9-6ca17719cf5b",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "09:00",
+            "ends_at": "18:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "412ade33-cabb-4a48-b626-8e2cd34efac3",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "18:00",
+            "ends_at": "21:12",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 70000
+              }
+            ]
+          },
+          {
+            "id": "32b604cc-67b8-4f82-b909-28874ef71045",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "06:00",
+            "ends_at": "09:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "0755f86a-405d-4b33-a0a2-0308fbe07b81",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "18:00",
+            "ends_at": "23:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 65000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "bd42be8a-7dab-4bb0-b78c-dbaf089ef41f",
+        "layout_id": "c5a0ae33-83e5-4583-b338-6af04c706378",
+        "sport": "cricket",
+        "name": "Cricket \u00b7 Half B",
+        "format": "Half ground",
+        "enabled": true,
+        "rates": [
+          {
+            "duration_minutes": 60,
+            "price_minor": null
+          }
+        ],
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "hours_override": null,
+        "default_duration_minutes": 60,
+        "pricing_basis": "start_time",
+        "pricing_rules": [
+          {
+            "id": "f5e707ac-7003-4a2b-81fc-d3031d9fa8ef",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "09:00",
+            "ends_at": "18:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "2d3eedfd-7587-40a3-a209-7338de88b3c5",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "18:00",
+            "ends_at": "21:12",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 70000
+              }
+            ]
+          },
+          {
+            "id": "01f5c9d7-78ad-48d1-ae70-3f0afa16c1ec",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "06:00",
+            "ends_at": "09:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "8ab621e5-2318-4596-b0d5-8bab771426d4",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "18:00",
+            "ends_at": "23:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 65000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "1bef6209-8ac3-4a9d-909c-4c70238448cb",
+        "layout_id": "a9173b09-c869-4ced-a308-d1a48344be38",
+        "sport": "football",
+        "name": "Football \u00b7 Full Ground",
+        "format": "7s",
+        "enabled": true,
+        "rates": [
+          {
+            "duration_minutes": 60,
+            "price_minor": null
+          }
+        ],
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "hours_override": null,
+        "default_duration_minutes": 60,
+        "pricing_basis": "start_time",
+        "pricing_rules": [
+          {
+            "id": "2280b79c-6921-44a5-81b7-811e715bc6f7",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "09:00",
+            "ends_at": "18:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "39fefa63-b554-4111-99d9-8394bf488e49",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "18:00",
+            "ends_at": "21:12",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 70000
+              }
+            ]
+          },
+          {
+            "id": "8addaf47-fee6-4243-b033-943c27d0b90c",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "06:00",
+            "ends_at": "09:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "69acda22-b3eb-4636-8187-f1272a76f404",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "18:00",
+            "ends_at": "23:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 65000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "088d801e-fd65-4ab8-955a-c7b30fc46eb3",
+        "layout_id": "a9173b09-c869-4ced-a308-d1a48344be38",
+        "sport": "cricket",
+        "name": "Cricket \u00b7 Full Ground",
+        "format": "Full ground",
+        "enabled": true,
+        "rates": [
+          {
+            "duration_minutes": 60,
+            "price_minor": null
+          }
+        ],
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "hours_override": null,
+        "default_duration_minutes": 60,
+        "pricing_basis": "start_time",
+        "pricing_rules": [
+          {
+            "id": "e78a06cf-e4a0-486f-a3ce-621a2cdbe0a0",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "09:00",
+            "ends_at": "18:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "3b1ee804-734a-4145-8a6b-662b2b9d8379",
+            "days": [
+              6,
+              7
+            ],
+            "starts_at": "18:00",
+            "ends_at": "21:12",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 70000
+              }
+            ]
+          },
+          {
+            "id": "0cdbcbca-f20d-4b3f-adfd-0a436c7b2d5a",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "06:00",
+            "ends_at": "09:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 60000
+              }
+            ]
+          },
+          {
+            "id": "88c9704c-4de9-4f33-ab8b-b74a25c5169f",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "starts_at": "18:00",
+            "ends_at": "23:00",
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 65000
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "operating": {
+      "days": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "opens_at": "06:00",
+      "closes_at": "23:00"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+class Routes {
+  static const register = '/register',
+      signIn = '/sign-in',
+      loading = '/loading',
+      organization = '/organization',
+      onboarding = '/onboarding/businesses',
+      home = '/home',
+      calendar = '/calendar',
+      bookings = '/bookings',
+      payments = '/payments',
+      profile = '/profile',
+      customers = '/customers',
+      expenses = '/expenses',
+      addExpense = '/expenses/new',
+      businesses = '/businesses',
+      addBusiness = '/businesses/add',
+      organizationDetails = '/organization/details',
+      organizationEdit = '/organization/details/edit',
+      team = '/team',
+      teamCoaches = '/team/coaches',
+      invite = '/invite';
+}

@@ -1,0 +1,270 @@
+{
+  "version": 1,
+  "configuration": {
+    "kind": "pool_v1",
+    "schema_version": 1,
+    "pools": [
+      {
+        "id": "5ff08718-3c53-448b-91f1-4f7ceb27fed2",
+        "name": "Pool 1",
+        "capacity": 20,
+        "depth_min_ft": 3,
+        "depth_max_ft": 5,
+        "enabled": true,
+        "regular_swimming": true,
+        "operating": {
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "opens_at": "06:00",
+          "closes_at": "00:00",
+          "date_from": null,
+          "date_until": null
+        },
+        "durations": [
+          60
+        ],
+        "default_duration_minutes": 60,
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "pricing_basis": "start_time",
+        "tariffs": [
+          {
+            "id": "383e7399-a8c5-4573-b306-ad718365f9eb",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "06:00",
+              "closes_at": "18:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 20000
+              }
+            ]
+          },
+          {
+            "id": "4b04e670-5856-49a0-9822-dc07e53cb46f",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "18:00",
+              "closes_at": "00:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 25000
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "731aaddf-9025-4db5-a7d2-34018e3183fa",
+        "name": "Pool 2",
+        "capacity": 50,
+        "depth_min_ft": 4,
+        "depth_max_ft": 6,
+        "enabled": true,
+        "regular_swimming": true,
+        "operating": {
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "opens_at": "06:00",
+          "closes_at": "00:00",
+          "date_from": null,
+          "date_until": null
+        },
+        "durations": [
+          60
+        ],
+        "default_duration_minutes": 60,
+        "buffer_before": 0,
+        "buffer_after": 0,
+        "pricing_basis": "start_time",
+        "tariffs": [
+          {
+            "id": "36dcb756-71b8-456e-a0bf-aaf890a7947a",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "06:00",
+              "closes_at": "18:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 20000
+              }
+            ]
+          },
+          {
+            "id": "784d5110-1da6-473a-9dd8-a569dacbb2ca",
+            "hours": {
+              "days": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "opens_at": "18:00",
+              "closes_at": "00:00",
+              "date_from": null,
+              "date_until": null
+            },
+            "rates": [
+              {
+                "duration_minutes": 60,
+                "price_minor": 25000
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "group_offers": [
+      {
+        "id": "7a75605d-613d-40e6-b743-3b70f3b1c516",
+        "name": "Family group",
+        "pool_ids": [
+          "5ff08718-3c53-448b-91f1-4f7ceb27fed2",
+          "731aaddf-9025-4db5-a7d2-34018e3183fa"
+        ],
+        "group_mode": "up_to",
+        "people": 15,
+        "duration_minutes": 90,
+        "price_minor": 250000,
+        "enabled": true,
+        "availability": {
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "opens_at": "06:00",
+          "closes_at": "00:00",
+          "date_from": null,
+          "date_until": null
+        }
+      }
+    ],
+    "plans": [
+      {
+        "id": "2a4789c2-808c-4fe9-9bc1-7e463bae18e8",
+        "name": "25 attendance-day plan",
+        "kind": "swimming",
+        "pool_ids": [
+          "5ff08718-3c53-448b-91f1-4f7ceb27fed2",
+          "731aaddf-9025-4db5-a7d2-34018e3183fa"
+        ],
+        "allowance": 25,
+        "expiry_mode": "after_start",
+        "expiry_days": 45,
+        "expiry_date": null,
+        "price_minor": 300000,
+        "enabled": true,
+        "availability": {
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "opens_at": "06:00",
+          "closes_at": "00:00",
+          "date_from": null,
+          "date_until": null
+        },
+        "class_duration_minutes": null,
+        "class_seats": null,
+        "coach_id": null,
+        "renewal": "none"
+      },
+      {
+        "id": "3ce107ba-1a8d-4e82-8b29-e7ddef51930a",
+        "name": "Beginner coaching",
+        "kind": "coaching",
+        "pool_ids": [
+          "5ff08718-3c53-448b-91f1-4f7ceb27fed2"
+        ],
+        "allowance": 25,
+        "expiry_mode": "fixed_date",
+        "expiry_days": null,
+        "expiry_date": "2030-12-31",
+        "price_minor": 500000,
+        "enabled": true,
+        "availability": {
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "opens_at": "06:00",
+          "closes_at": "00:00",
+          "date_from": null,
+          "date_until": null
+        },
+        "class_duration_minutes": 60,
+        "class_seats": 10,
+        "coach_id": null,
+        "renewal": "none"
+      }
+    ]
+  }
+}
