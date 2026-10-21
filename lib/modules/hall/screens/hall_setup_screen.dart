@@ -89,6 +89,108 @@ class _HallSetupScreenState extends State<HallSetupScreen> {
           s.selectedHall?.name ?? 'Booking options & pricing',
         HallSection.review => 'Review your halls',
       };
+      final desktop = isDesktopWidth(context);
+      final body = <Widget>[
+        if (s.business!.configuration != null &&
+            s.business!.configuration?['kind'] != 'hall_v1') ...[
+          const AppCard(
+            child: Text(
+              'Existing halls keep their resource IDs. Review the imported timing and prices before saving.',
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (s.section != HallSection.overview &&
+            s.section != HallSection.review)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.arrow_back),
+              label: Text(
+                s.selectedOption != null
+                    ? 'Booking options'
+                    : s.selectedId != null
+                    ? 'Back to list'
+                    : 'All Hall settings',
+              ),
+              onPressed: s.disabled ? null : cubit.back,
+            ),
+          ),
+        Form(key: form, child: page(s)),
+      ];
+      final footer = <Widget>[
+        if (!desktop) const SizedBox(height: 22),
+        if (s.message != null) ...[
+          AppErrorWidget(message: s.message!),
+          const SizedBox(height: 14),
+        ],
+        ConfigurationDraftNotice(
+          status: s.localDraftStatus,
+          dirty: s.dirty,
+          message: s.localDraftMessage,
+          onRetry: cubit.retryLocalDraft,
+        ),
+        const SizedBox(height: 12),
+        AppButton(
+          label: [HallSection.overview, HallSection.review].contains(s.section)
+              ? 'Save changes'
+              : 'Continue',
+          icon: Icons.save_outlined,
+          busy: s.saving,
+          secondary: s.section == HallSection.review && !s.business!.ready,
+          onPressed:
+              s.disabled ||
+                  ([
+                        HallSection.overview,
+                        HallSection.review,
+                      ].contains(s.section) &&
+                      !s.dirty &&
+                      s.business!.configuration?['kind'] == 'hall_v1' &&
+                      (!s.editingReady || s.business!.ready))
+              ? null
+              : () async {
+                  if (form.currentState?.validate() == true) {
+                    if ([
+                      HallSection.overview,
+                      HallSection.review,
+                    ].contains(s.section)) {
+                      await cubit.saveChanges();
+                    } else {
+                      cubit.continueSection();
+                    }
+                  }
+                },
+        ),
+        if (s.section == HallSection.review && !s.business!.ready) ...[
+          const SizedBox(height: 12),
+          AppButton(
+            label: 'Activate halls',
+            icon: Icons.check_circle_outline,
+            onPressed: s.disabled || s.draft.validate(complete: true) != null
+                ? null
+                : () async {
+                    if (await cubit.activate() && !cubit.isClosed) {
+                      cubit.open(HallSection.overview);
+                    }
+                  },
+          ),
+        ],
+        TextButton(
+          onPressed: s.disabled
+              ? null
+              : () async {
+                  if (!s.dirty ||
+                      await confirmAction(
+                        context,
+                        'Reload saved settings?',
+                        'Your unsaved changes will be replaced with the latest saved configuration.',
+                      )) {
+                    await cubit.reloadSaved();
+                  }
+                },
+          child: const Text('Reload saved settings'),
+        ),
+      ];
       return PopScope(
         canPop:
             s.section == HallSection.overview &&
@@ -128,105 +230,38 @@ class _HallSetupScreenState extends State<HallSetupScreen> {
           subtitle: s.section == HallSection.review
               ? null
               : 'Hourly, sessions and full-day packages. Edit any section directly.',
-          maxWidth: 760,
-          children: [
-            if (s.business!.configuration != null &&
-                s.business!.configuration?['kind'] != 'hall_v1') ...[
-              const AppCard(
-                child: Text(
-                  'Existing halls keep their resource IDs. Review the imported timing and prices before saving.',
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            if (s.section != HallSection.overview &&
-                s.section != HallSection.review)
-              TextButton.icon(
-                icon: const Icon(Icons.arrow_back),
-                label: Text(
-                  s.selectedOption != null
-                      ? 'Booking options'
-                      : s.selectedId != null
-                      ? 'Back to list'
-                      : 'All Hall settings',
-                ),
-                onPressed: s.disabled ? null : cubit.back,
-              ),
-            Form(key: form, child: page(s)),
-            const SizedBox(height: 22),
-            if (s.message != null) ...[
-              AppErrorWidget(message: s.message!),
-              const SizedBox(height: 14),
-            ],
-            ConfigurationDraftNotice(
-              status: s.localDraftStatus,
-              dirty: s.dirty,
-              message: s.localDraftMessage,
-              onRetry: cubit.retryLocalDraft,
-            ),
-            const SizedBox(height: 12),
-            AppButton(
-              label:
-                  [HallSection.overview, HallSection.review].contains(s.section)
-                  ? 'Save changes'
-                  : 'Continue',
-              icon: Icons.save_outlined,
-              busy: s.saving,
-              secondary: s.section == HallSection.review && !s.business!.ready,
-              onPressed:
-                  s.disabled ||
-                      ([
-                            HallSection.overview,
-                            HallSection.review,
-                          ].contains(s.section) &&
-                          !s.dirty &&
-                          s.business!.configuration?['kind'] == 'hall_v1' &&
-                          (!s.editingReady || s.business!.ready))
-                  ? null
-                  : () async {
-                      if (form.currentState?.validate() == true) {
-                        if ([
-                          HallSection.overview,
-                          HallSection.review,
-                        ].contains(s.section)) {
-                          await cubit.saveChanges();
-                        } else {
-                          cubit.continueSection();
-                        }
-                      }
-                    },
-            ),
-            if (s.section == HallSection.review && !s.business!.ready) ...[
-              const SizedBox(height: 12),
-              AppButton(
-                label: 'Activate halls',
-                icon: Icons.check_circle_outline,
-                onPressed:
-                    s.disabled || s.draft.validate(complete: true) != null
-                    ? null
-                    : () async {
-                        if (await cubit.activate() && !cubit.isClosed) {
-                          cubit.open(HallSection.overview);
-                        }
-                      },
-              ),
-            ],
-            TextButton(
-              onPressed: s.disabled
-                  ? null
-                  : () async {
-                      if (!s.dirty ||
-                          await confirmAction(
-                            context,
-                            'Reload saved settings?',
-                            'Your unsaved changes will be replaced with the latest saved configuration.',
-                          )) {
-                        await cubit.reloadSaved();
-                      }
-                    },
-              child: const Text('Reload saved settings'),
-            ),
-          ],
+          maxWidth: desktop ? 1200 : 760,
+          children: desktop
+              ? [
+                  ConfigurationWorkspace(
+                    businessName: s.business!.name,
+                    ready: s.business!.ready,
+                    sections: [
+                      ConfigurationNavItem(
+                        key: const ValueKey('hall-nav-overview'),
+                        label: 'Overview',
+                        icon: Icons.dashboard_outlined,
+                        selected: s.section == HallSection.overview,
+                        onTap: s.disabled
+                            ? null
+                            : () => cubit.open(HallSection.overview),
+                      ),
+                      for (final (section, label, subtitle, icon)
+                          in hallSections(s.overviewModel))
+                        ConfigurationNavItem(
+                          key: ValueKey('hall-nav-${section.name}'),
+                          label: label,
+                          subtitle: subtitle,
+                          icon: icon,
+                          selected: s.section == section,
+                          onTap: s.disabled ? null : () => cubit.open(section),
+                        ),
+                    ],
+                    content: body,
+                    actions: footer,
+                  ),
+                ]
+              : [...body, ...footer],
         ),
       );
     },

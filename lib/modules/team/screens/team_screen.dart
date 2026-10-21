@@ -5,6 +5,7 @@ import 'package:eden_booking/design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../cubit/team_cubit.dart';
 import '../../../config/routes/routes.dart';
+import '../widgets/team_desktop_widgets.dart';
 
 class TeamScreen extends StatefulWidget {
   const TeamScreen({super.key});
@@ -20,130 +21,338 @@ class _TeamScreenState extends State<TeamScreen> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) => BlocBuilder<TeamCubit, TeamState>(
-    bloc: cubit,
-    builder: (context, s) => AppPage(
+  Future<void> invite() async {
+    await context.push('/team/invite');
+    cubit.load();
+  }
+
+  Future<void> edit(Map<String, dynamic> m) async {
+    await context.push('/team/edit', extra: m);
+    cubit.load();
+  }
+
+  Future<void> remove(Map<String, dynamic> m) async {
+    if (await confirmAction(
+      context,
+      'Remove staff access?',
+      'This person will lose organization access immediately.',
+    )) {
+      await cubit.revoke(m['id']);
+    }
+  }
+
+  static String invitationStatus(Map<String, dynamic> i) {
+    final expired = DateTime.parse(i['expires_at']).isBefore(DateTime.now());
+    return i['revoked_at'] != null
+        ? 'Cancelled'
+        : expired
+        ? 'Expired'
+        : 'Pending';
+  }
+
+  // Wide windows: header actions, team figures and people as a card grid.
+  Widget desktop(BuildContext context, TeamState s) {
+    final colors = Theme.of(context).colorScheme;
+    final active = s.members.where((m) => m['active'] == true).toList();
+    final open = s.invitations.where((i) => i['accepted_at'] == null).toList();
+    final pending = open.where((i) => invitationStatus(i) == 'Pending');
+    final empty = s.members.isEmpty && s.invitations.isEmpty;
+    return AppPage(
       back: true,
       eyebrow: 'TEAM & ACCESS',
       title: 'Your people.',
       subtitle:
           'Assign businesses and resources. Keep each person’s access clear.',
-      children: [
-        AppButton(
-          label: 'Invite staff',
-          icon: Icons.person_add_alt,
-          onPressed: () async {
-            await context.push('/team/invite');
-            cubit.load();
-          },
-        ),
-        const SizedBox(height: 12),
+      maxWidth: 1200,
+      actions: [
         OutlinedButton.icon(
-          icon: const Icon(Icons.sports_outlined),
+          icon: const Icon(Icons.sports_outlined, size: 18),
           label: const Text('Coaches'),
           onPressed: () => context.push(Routes.teamCoaches),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(width: 10),
+        FilledButton.icon(
+          icon: const Icon(Icons.person_add_alt, size: 18),
+          label: const Text('Invite staff'),
+          onPressed: invite,
+        ),
+      ],
+      children: [
         if (s.loading)
           AppLoadingState(
-            initial: s.members.isEmpty && s.invitations.isEmpty,
-            label: s.members.isEmpty && s.invitations.isEmpty
-                ? 'Loading your team…'
-                : null,
+            initial: empty,
+            label: empty ? 'Loading your team…' : null,
           ),
         if (s.error != null)
           AppErrorWidget(message: s.error!, onRetry: cubit.load),
-        ...s.members.map(
-          (m) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    m['display_name'],
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(m['email']),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${m['role']} · ${m['active'] ? 'Active' : 'Access removed'}',
-                    style: const TextStyle(color: AppColors.lime, fontSize: 12),
-                  ),
-                  if (m['role'] != 'owner' && m['active'])
-                    Wrap(
-                      spacing: 10,
-                      children: [
-                        TextButton(
-                          onPressed: s.busy
-                              ? null
-                              : () async {
-                                  await context.push('/team/edit', extra: m);
-                                  cubit.load();
-                                },
-                          child: const Text('Edit assignments'),
+        if (!empty) ...[
+          AppStatRow(
+            children: [
+              AppStatTile(
+                icon: Icons.groups_outlined,
+                label: 'Active people',
+                value: '${active.length}',
+                highlight: true,
+              ),
+              AppStatTile(
+                icon: Icons.manage_accounts_outlined,
+                label: 'Managers',
+                value: '${active.where((m) => m['role'] == 'manager').length}',
+              ),
+              AppStatTile(
+                icon: Icons.badge_outlined,
+                label: 'Staff',
+                value: '${active.where((m) => m['role'] == 'staff').length}',
+              ),
+              AppStatTile(
+                icon: Icons.mark_email_unread_outlined,
+                label: 'Pending invitations',
+                value: '${pending.length}',
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+        ],
+        if (s.members.isNotEmpty)
+          AppPanel(
+            title: 'Members',
+            subtitle:
+                '${s.members.length} '
+                '${s.members.length == 1 ? 'person' : 'people'} · ${active.length} active',
+            child: AppGrid(
+              minTileWidth: 340,
+              maxColumns: 3,
+              children: [
+                for (final m in s.members)
+                  TeamPersonCard(
+                    name: m['display_name'],
+                    email: m['email'],
+                    muted: m['active'] != true,
+                    note: m['role'] == 'owner'
+                        ? 'Organization owner · full access'
+                        : 'No longer has organization access',
+                    chips: [
+                      TeamChip(
+                        roleLabel(m['role']),
+                        icon: m['role'] == 'owner'
+                            ? Icons.verified_outlined
+                            : null,
+                      ),
+                      TeamChip(
+                        m['active'] ? 'Active' : 'Access removed',
+                        color: m['active']
+                            ? colors.tertiary
+                            : colors.onSurfaceVariant,
+                      ),
+                    ],
+                    actions: [
+                      if (m['role'] != 'owner' && m['active']) ...[
+                        TextButton.icon(
+                          onPressed: s.busy ? null : () => edit(m),
+                          icon: const Icon(Icons.tune, size: 18),
+                          label: const Text('Edit assignments'),
                         ),
                         TextButton(
-                          onPressed: s.busy
-                              ? null
-                              : () async {
-                                  if (await confirmAction(
-                                    context,
-                                    'Remove staff access?',
-                                    'This person will lose organization access immediately.',
-                                  )) {
-                                    await cubit.revoke(m['id']);
-                                  }
-                                },
+                          style: TextButton.styleFrom(
+                            foregroundColor: colors.error,
+                          ),
+                          onPressed: s.busy ? null : () => remove(m),
                           child: const Text('Remove access'),
                         ),
                       ],
-                    ),
-                ],
-              ),
+                    ],
+                  ),
+              ],
             ),
           ),
-        ),
-        if (s.invitations.any((i) => i['accepted_at'] == null)) ...[
-          const SizedBox(height: 20),
-          Text('Invitations', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
-          ...s.invitations.where((i) => i['accepted_at'] == null).map((i) {
-            final expired = DateTime.parse(
-              i['expires_at'],
-            ).isBefore(DateTime.now());
-            final status = i['revoked_at'] != null
-                ? 'Cancelled'
-                : expired
-                ? 'Expired'
-                : 'Pending';
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      i['display_name'],
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    Text(i['email']),
-                    Text(status, style: const TextStyle(fontSize: 12)),
-                    if (status == 'Pending')
-                      TextButton(
-                        onPressed: s.busy
+        if (open.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          AppPanel(
+            title: 'Invitations',
+            subtitle: 'Invitations that have not been accepted yet',
+            child: AppGrid(
+              minTileWidth: 340,
+              maxColumns: 3,
+              children: [
+                for (final i in open)
+                  Builder(
+                    builder: (context) {
+                      final status = invitationStatus(i);
+                      return TeamPersonCard(
+                        name: i['display_name'],
+                        email: i['email'],
+                        muted: status != 'Pending',
+                        note: status == 'Pending'
                             ? null
-                            : () => cubit.revoke(i['id'], invitation: true),
-                        child: const Text('Cancel invitation'),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          }),
+                            : 'Send a new invitation to give access',
+                        chips: [
+                          TeamChip(
+                            status,
+                            icon: Icons.mail_outline,
+                            color: status == 'Pending'
+                                ? colors.primary
+                                : colors.onSurfaceVariant,
+                          ),
+                        ],
+                        actions: [
+                          if (status == 'Pending')
+                            TextButton(
+                              onPressed: s.busy
+                                  ? null
+                                  : () =>
+                                        cubit.revoke(i['id'], invitation: true),
+                              child: const Text('Cancel invitation'),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
         ],
       ],
-    ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => BlocBuilder<TeamCubit, TeamState>(
+    bloc: cubit,
+    builder: (context, s) => isDesktopWidth(context)
+        ? desktop(context, s)
+        : AppPage(
+            back: true,
+            eyebrow: 'TEAM & ACCESS',
+            title: 'Your people.',
+            subtitle:
+                'Assign businesses and resources. Keep each person’s access clear.',
+            children: [
+              AppButton(
+                label: 'Invite staff',
+                icon: Icons.person_add_alt,
+                onPressed: () async {
+                  await context.push('/team/invite');
+                  cubit.load();
+                },
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.sports_outlined),
+                label: const Text('Coaches'),
+                onPressed: () => context.push(Routes.teamCoaches),
+              ),
+              const SizedBox(height: 24),
+              if (s.loading)
+                AppLoadingState(
+                  initial: s.members.isEmpty && s.invitations.isEmpty,
+                  label: s.members.isEmpty && s.invitations.isEmpty
+                      ? 'Loading your team…'
+                      : null,
+                ),
+              if (s.error != null)
+                AppErrorWidget(message: s.error!, onRetry: cubit.load),
+              ...s.members.map(
+                (m) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: AppCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          m['display_name'],
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        Text(m['email']),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${m['role']} · ${m['active'] ? 'Active' : 'Access removed'}',
+                          style: const TextStyle(
+                            color: AppColors.lime,
+                            fontSize: 12,
+                          ),
+                        ),
+                        if (m['role'] != 'owner' && m['active'])
+                          Wrap(
+                            spacing: 10,
+                            children: [
+                              TextButton(
+                                onPressed: s.busy
+                                    ? null
+                                    : () async {
+                                        await context.push(
+                                          '/team/edit',
+                                          extra: m,
+                                        );
+                                        cubit.load();
+                                      },
+                                child: const Text('Edit assignments'),
+                              ),
+                              TextButton(
+                                onPressed: s.busy
+                                    ? null
+                                    : () async {
+                                        if (await confirmAction(
+                                          context,
+                                          'Remove staff access?',
+                                          'This person will lose organization access immediately.',
+                                        )) {
+                                          await cubit.revoke(m['id']);
+                                        }
+                                      },
+                                child: const Text('Remove access'),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (s.invitations.any((i) => i['accepted_at'] == null)) ...[
+                const SizedBox(height: 20),
+                Text(
+                  'Invitations',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                ...s.invitations.where((i) => i['accepted_at'] == null).map((
+                  i,
+                ) {
+                  final expired = DateTime.parse(
+                    i['expires_at'],
+                  ).isBefore(DateTime.now());
+                  final status = i['revoked_at'] != null
+                      ? 'Cancelled'
+                      : expired
+                      ? 'Expired'
+                      : 'Pending';
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            i['display_name'],
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          Text(i['email']),
+                          Text(status, style: const TextStyle(fontSize: 12)),
+                          if (status == 'Pending')
+                            TextButton(
+                              onPressed: s.busy
+                                  ? null
+                                  : () =>
+                                        cubit.revoke(i['id'], invitation: true),
+                              child: const Text('Cancel invitation'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ],
+          ),
   );
 }

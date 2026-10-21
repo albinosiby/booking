@@ -9,9 +9,11 @@ import '../../accounts/widgets/accounts_overview_widgets.dart';
 import '../../accounts/widgets/accounts_widgets.dart';
 import '../../accounts/widgets/finance_ledger_widgets.dart';
 import '../../accounts/widgets/finance_period_widgets.dart';
+import '../../expenses/widgets/finance_desktop_widgets.dart';
 import '../cubit/income_cubit.dart';
 import '../cubit/income_state.dart';
 import '../models/income_models.dart';
+import '../widgets/income_desktop_widgets.dart';
 
 IconData incomeSourceIcon(String? id, String name) {
   if (id == incomeBookings) return Icons.event_available_outlined;
@@ -43,10 +45,8 @@ class _IncomeScreenState extends State<IncomeScreen> {
   }
 
   Future<void> export() async {
-    final format = await showModalBottomSheet<String>(
+    final format = await showAdaptiveSheet<String>(
       context: context,
-      useSafeArea: true,
-      showDragHandle: true,
       builder: (c) => Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -117,71 +117,68 @@ class _IncomeScreenState extends State<IncomeScreen> {
   }
 
   Future<void> manageCategories() async {
-    await showModalBottomSheet<void>(
+    await showAdaptiveSheet<void>(
       context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (c) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: .65,
-        builder: (c, controller) => BlocBuilder<IncomeCubit, IncomeState>(
-          bloc: cubit,
-          builder: (c, s) => ListView(
-            controller: controller,
-            padding: const EdgeInsets.all(20),
-            children: [
-              Text(
-                'Income categories',
-                style: Theme.of(c).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Booking and admission payments are grouped automatically.',
-                style: Theme.of(c).textTheme.bodySmall,
-              ),
-              ListTile(
-                leading: const Icon(Icons.add),
-                title: const Text('Add category'),
-                onTap: () => categoryDialog(),
-              ),
-              for (final category in s.categories)
-                ListTile(
-                  leading: Icon(incomeSourceIcon(category.id, category.name)),
-                  title: Text(category.name),
-                  subtitle: category.active
-                      ? null
-                      : const Text('Archived · history preserved'),
-                  onTap: () => categoryDialog(category: category),
-                  trailing: IconButton(
-                    tooltip: category.active
-                        ? 'Archive category'
-                        : 'Restore category',
-                    icon: Icon(
-                      category.active
-                          ? Icons.archive_outlined
-                          : Icons.unarchive_outlined,
-                    ),
-                    onPressed: () => cubit.category(
-                      category.name,
-                      id: category.id,
-                      active: !category.active,
-                    ),
+      scrollable: false,
+      builder: (c) => AdaptiveSheetBody(
+        builder: (c, controller, shrink) =>
+            BlocBuilder<IncomeCubit, IncomeState>(
+              bloc: cubit,
+              builder: (c, s) => ListView(
+                controller: controller,
+                shrinkWrap: shrink,
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Text(
+                    'Income categories',
+                    style: Theme.of(c).textTheme.titleLarge,
                   ),
-                ),
-            ],
-          ),
-        ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Booking and admission payments are grouped automatically.',
+                    style: Theme.of(c).textTheme.bodySmall,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.add),
+                    title: const Text('Add category'),
+                    onTap: () => categoryDialog(),
+                  ),
+                  for (final category in s.categories)
+                    ListTile(
+                      leading: Icon(
+                        incomeSourceIcon(category.id, category.name),
+                      ),
+                      title: Text(category.name),
+                      subtitle: category.active
+                          ? null
+                          : const Text('Archived · history preserved'),
+                      onTap: () => categoryDialog(category: category),
+                      trailing: IconButton(
+                        tooltip: category.active
+                            ? 'Archive category'
+                            : 'Restore category',
+                        icon: Icon(
+                          category.active
+                              ? Icons.archive_outlined
+                              : Icons.unarchive_outlined,
+                        ),
+                        onPressed: () => cubit.category(
+                          category.name,
+                          id: category.id,
+                          active: !category.active,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
       ),
     );
   }
 
   Future<void> filters() async {
-    await showModalBottomSheet<void>(
+    await showAdaptiveSheet<void>(
       context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      isScrollControlled: true,
       builder: (c) => BlocBuilder<IncomeCubit, IncomeState>(
         bloc: cubit,
         builder: (c, s) => SingleChildScrollView(
@@ -255,6 +252,11 @@ class _IncomeScreenState extends State<IncomeScreen> {
     }
   }
 
+  Future<void> addIncome() async {
+    await context.push('/accounts/entry/income');
+    await cubit.load(refresh: true);
+  }
+
   @override
   Widget build(BuildContext context) => BlocConsumer<IncomeCubit, IncomeState>(
     bloc: cubit,
@@ -262,6 +264,7 @@ class _IncomeScreenState extends State<IncomeScreen> {
       if (s.message != null) showMessage(c, s.message!);
     },
     builder: (c, s) {
+      if (isDesktopWidth(c)) return _desktop(c, s);
       final catalog = s.catalog, f = s.filter, summary = s.summary;
       final filtered =
           (f.businessId != null ? 1 : 0) + (f.accountId != null ? 1 : 0);
@@ -294,10 +297,7 @@ class _IncomeScreenState extends State<IncomeScreen> {
         ],
         floatingActionButton: catalog?.canIncome == true
             ? FloatingActionButton.extended(
-                onPressed: () async {
-                  await c.push('/accounts/entry/income');
-                  await cubit.load(refresh: true);
-                },
+                onPressed: addIncome,
                 icon: const Icon(Icons.add),
                 label: const Text('Add income'),
               )
@@ -473,4 +473,293 @@ class _IncomeScreenState extends State<IncomeScreen> {
       );
     },
   );
+
+  // Wide web windows: toolbar, headline figures, then chart and ledger beside
+  // the source breakdown.
+  Widget _desktop(BuildContext c, IncomeState s) {
+    final catalog = s.catalog, f = s.filter, summary = s.summary;
+    final scheme = Theme.of(c).colorScheme;
+    final filtered =
+        (f.businessId != null ? 1 : 0) + (f.accountId != null ? 1 : 0);
+    final range = financeRangeLabel(
+      FinanceFilter(from: f.from, until: f.until),
+    );
+    final canView = catalog?.canView == true;
+    String money(int n) => financeMoney(n, catalog?.currency ?? 'INR');
+    return AppPage(
+      title: 'Income',
+      back: true,
+      scrollId: 'income',
+      maxWidth: 1240,
+      header: FinanceDesktopHeader(
+        title: 'Income',
+        subtitle: canView
+            ? 'Bookings, admissions and extra income · $range'
+            : 'Record extra income for your organization',
+        actions: [
+          if (canView && summary != null)
+            IconButton.outlined(
+              tooltip: 'Download report',
+              onPressed: s.exporting ? null : export,
+              icon: s.exporting
+                  ? const AppSavingDots()
+                  : const Icon(Icons.download_outlined),
+            ),
+          IconButton.outlined(
+            tooltip: 'Refresh',
+            onPressed: s.loading ? null : () => cubit.load(refresh: true),
+            icon: const Icon(Icons.refresh),
+          ),
+          if (catalog?.canManage == true)
+            IconButton.outlined(
+              tooltip: 'Manage categories',
+              onPressed: manageCategories,
+              icon: const Icon(Icons.category_outlined),
+            ),
+        ],
+      ),
+      children: [
+        AppToolbar(
+          leading: canView
+              ? Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    FinanceDesktopPeriod(
+                      anchor: f.anchor,
+                      yearly: f.yearly,
+                      onChanged: (anchor, yearly) => cubit.setFilter(
+                        f.copy(anchor: anchor, yearly: yearly),
+                      ),
+                    ),
+                    FinanceFilterChip(
+                      icon: Icons.savings_outlined,
+                      label: s.sourceName ?? 'All sources',
+                      tooltip: 'Choose source',
+                      active: f.source != null,
+                      onTap: pickSource,
+                      onClear: f.source == null
+                          ? null
+                          : () => cubit.setFilter(f.copy(clearSource: true)),
+                    ),
+                    FinanceFilterChip(
+                      icon: Icons.tune,
+                      label: filtered == 0 ? 'Filters' : 'Filters · $filtered',
+                      tooltip: 'Filter income',
+                      active: filtered > 0,
+                      onTap: filters,
+                    ),
+                  ],
+                )
+              : null,
+          actions: [
+            if (catalog?.canIncome == true)
+              FilledButton.icon(
+                onPressed: addIncome,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                ),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add income'),
+              ),
+          ],
+        ),
+        // Fixed height so the page does not jump while loading.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 14, 0, 18),
+          child: SizedBox(
+            height: 3,
+            child: s.loading && summary != null
+                ? const LinearProgressIndicator(minHeight: 3)
+                : null,
+          ),
+        ),
+        if (s.loading && summary == null)
+          const AppLoadingState(initial: true, label: 'Loading income…'),
+        if (s.error != null)
+          AppErrorWidget(
+            message: s.error!,
+            onRetry: () => cubit.load(refresh: true),
+          ),
+        if (catalog != null && !catalog.canView)
+          const FinanceEmptyCard(
+            icon: Icons.lock_outline,
+            title: 'Finance reports are restricted',
+            message:
+                'You can record extra income. Ask the owner for finance access to view reports and income history.',
+          ),
+        if (canView && summary != null)
+          AnimatedOpacity(
+            opacity: s.loading ? .45 : 1,
+            duration: const Duration(milliseconds: 150),
+            child: IgnorePointer(
+              ignoring: s.loading,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AppStatRow(
+                    children: [
+                      AppStatTile(
+                        highlight: true,
+                        icon: Icons.south_west_rounded,
+                        label: s.sourceName ?? 'Total income',
+                        value: money(summary.total),
+                        caption:
+                            '${summary.count} ${summary.count == 1 ? 'entry' : 'entries'} · $range',
+                      ),
+                      AppStatTile(
+                        icon: Icons.undo_rounded,
+                        accent: scheme.error,
+                        label: 'Refunds',
+                        value: money(summary.refunds),
+                        caption: summary.refunds == 0
+                            ? 'No refunds this period'
+                            : 'Returned to customers',
+                      ),
+                      AppStatTile(
+                        icon: Icons.account_balance_wallet_outlined,
+                        label: 'Net after refunds',
+                        value: money(summary.net),
+                        caption: 'Income less refunds',
+                      ),
+                      () {
+                        final (label, value) = financeAverage(
+                          summary.total,
+                          f.anchor,
+                          f.yearly,
+                          catalog!.today,
+                        );
+                        return AppStatTile(
+                          icon: Icons.show_chart_rounded,
+                          label: label,
+                          value: money(value),
+                          caption: f.yearly
+                              ? 'Across elapsed months'
+                              : 'Across elapsed days',
+                        );
+                      }(),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  AppTwoPane(
+                    primary: [
+                      AppPanel(
+                        title: 'Trend',
+                        subtitle: f.yearly
+                            ? 'Select a month to explore it'
+                            : range,
+                        child: AppCard(
+                          child: FinancePeriodChart(
+                            values: summary.bars(f),
+                            yearly: f.yearly,
+                            currency: catalog!.currency,
+                            yearlyTitle:
+                                'Monthly income · tap a month to explore',
+                            monthlyTitle: 'Daily income',
+                            note:
+                                'Refunds are listed separately. Reversals reduce income on the date they were recorded.',
+                            onMonth: (m) => cubit.setFilter(
+                              f.copy(
+                                anchor: DateTime(f.anchor.year, m),
+                                yearly: false,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      AppPanel(
+                        title: 'All income',
+                        subtitle:
+                            '${s.items.length} shown${s.next != null ? ' · more available' : ''}',
+                        child: s.items.isEmpty
+                            ? const FinanceEmptyCard(
+                                icon: Icons.savings_outlined,
+                                title: 'No income in this period',
+                                message: 'Choose another period or add income.',
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  FinanceDayGroups<IncomeItem>(
+                                    items: s.items,
+                                    dayOf: (i) => i.entry.date,
+                                    amountOf: (i) => i.entry.amount,
+                                    currency: catalog.currency,
+                                    today: catalog.today,
+                                    builder: (i) => IncomeLedgerRow(
+                                      item: i,
+                                      currency: catalog.currency,
+                                      icon: incomeSourceIcon(
+                                        i.entry.kind == 'booking_collection'
+                                            ? incomeBookings
+                                            : null,
+                                        i.source,
+                                      ),
+                                      onTap: () => c.push(
+                                        '/accounts/transaction',
+                                        extra: i.entry,
+                                      ),
+                                    ),
+                                  ),
+                                  if (s.next != null)
+                                    Center(
+                                      child: OutlinedButton(
+                                        onPressed: s.more ? null : cubit.more,
+                                        child: Text(
+                                          s.more ? 'Loading…' : 'Load more',
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                      ),
+                    ],
+                    secondary: [
+                      AppPanel(
+                        title: 'By source',
+                        subtitle: f.source == null
+                            ? 'Select a source to filter'
+                            : 'Filtered to ${s.sourceName ?? 'one source'}',
+                        child: summary.sources.isEmpty
+                            ? const FinanceEmptyCard(
+                                icon: Icons.pie_chart_outline,
+                                title: 'No sources yet',
+                                message: 'Income sources appear once recorded.',
+                              )
+                            : FinanceShareList(
+                                shares: [
+                                  for (final source in summary.sources)
+                                    FinanceShare(
+                                      source.id,
+                                      source.name,
+                                      source.total,
+                                      incomeSourceIcon(source.id, source.name),
+                                    ),
+                                ],
+                                currency: catalog.currency,
+                                selected: f.source,
+                                onSelect: (id) =>
+                                    cubit.setFilter(f.copy(source: id)),
+                              ),
+                      ),
+                      AppPanel(
+                        title: 'Reports',
+                        child: FinanceExportCard(
+                          note:
+                              '$range · includes the selected source and filters.',
+                          exporting: s.exporting,
+                          onExport: cubit.export,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }

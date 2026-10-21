@@ -122,6 +122,174 @@ class _PoolSetupScreenState extends State<PoolSetupScreen> {
         PoolSection.plans => s.selectedPlan?.name ?? 'Swimming plans',
         PoolSection.review => 'Review your pools',
       };
+      final desktop = isDesktopWidth(context);
+      final body = <Widget>[
+        if (s.business!.configuration != null &&
+            s.business!.configuration?['kind'] != 'pool_v1') ...[
+          const AppCard(
+            child: Text(
+              'Existing pools keep their resource IDs and capacity. Add their depths and review the imported plan. Legacy unlimited/visit plans are disabled until converted to attendance days.',
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (s.section != PoolSection.overview &&
+            s.section != PoolSection.review)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.arrow_back),
+              label: Text(
+                s.resourceFlow && s.section == PoolSection.pricing
+                    ? 'Pool details'
+                    : s.selectedId != null
+                    ? 'Back to list'
+                    : 'All Pool settings',
+              ),
+              onPressed: s.disabled ? null : cubit.back,
+            ),
+          ),
+        if (s.resourceFlow) ...[
+          Text(
+            s.section == PoolSection.pools
+                ? 'STEP 1 OF 2 · DETAILS'
+                : 'STEP 2 OF 2 · TIMING & PRICING',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: s.section == PoolSection.pools ? .5 : 1,
+          ),
+          const SizedBox(height: 22),
+        ],
+        Form(key: form, child: page(s)),
+        if (!s.resourceFlow &&
+            s.section == PoolSection.pools &&
+            s.selectedId != null)
+          TextButton.icon(
+            icon: const Icon(Icons.schedule_outlined),
+            label: const Text('Edit timing & pricing'),
+            onPressed: s.disabled
+                ? null
+                : () => cubit.open(PoolSection.pricing, id: s.selectedId),
+          ),
+      ];
+      final footer = <Widget>[
+        if (!desktop) const SizedBox(height: 22),
+        if (s.message != null) ...[
+          AppErrorWidget(message: s.message!),
+          const SizedBox(height: 14),
+        ],
+        ConfigurationDraftNotice(
+          status: s.localDraftStatus,
+          dirty: s.dirty,
+          message: s.localDraftMessage,
+          onRetry: cubit.retryLocalDraft,
+        ),
+        const SizedBox(height: 12),
+        if (s.resourceFlow && s.section == PoolSection.pools)
+          AppButton(
+            label: 'Continue to timing & pricing',
+            icon: Icons.arrow_forward_rounded,
+            onPressed: s.disabled
+                ? null
+                : () {
+                    if (form.currentState?.validate() == true) {
+                      cubit.continueResource();
+                    }
+                  },
+          )
+        else if (s.resourceFlow && s.section == PoolSection.pricing) ...[
+          AppButton(
+            label: 'Continue',
+            icon: Icons.check_rounded,
+            busy: s.saving,
+            onPressed: s.disabled
+                ? null
+                : () async {
+                    if (form.currentState?.validate() == true) {
+                      await cubit.finishResource();
+                    }
+                  },
+          ),
+          const SizedBox(height: 12),
+          AppButton(
+            label: 'Continue & add another pool',
+            icon: Icons.add_rounded,
+            secondary: true,
+            onPressed: s.disabled || s.draft.pools.length >= 30
+                ? null
+                : () async {
+                    if (form.currentState?.validate() == true) {
+                      await cubit.finishResource(addAnother: true);
+                    }
+                  },
+          ),
+        ] else
+          AppButton(
+            label:
+                [PoolSection.overview, PoolSection.review].contains(s.section)
+                ? 'Save changes'
+                : 'Continue',
+            icon: Icons.save_outlined,
+            busy: s.saving,
+            secondary: s.section == PoolSection.review && !s.business!.ready,
+            onPressed:
+                s.disabled ||
+                    ([
+                          PoolSection.overview,
+                          PoolSection.review,
+                        ].contains(s.section) &&
+                        !s.dirty &&
+                        s.business!.configuration?['kind'] == 'pool_v1' &&
+                        (!s.editingReady || s.business!.ready))
+                ? null
+                : () async {
+                    if (form.currentState?.validate() == true) {
+                      if ([
+                        PoolSection.overview,
+                        PoolSection.review,
+                      ].contains(s.section)) {
+                        await cubit.saveChanges();
+                      } else {
+                        cubit.back();
+                        cubit.checkpointLocalDraft();
+                      }
+                    }
+                  },
+          ),
+        if (s.section == PoolSection.review && !s.business!.ready) ...[
+          const SizedBox(height: 12),
+          AppButton(
+            label: 'Activate pools',
+            icon: Icons.check_circle_outline,
+            onPressed: s.disabled || s.draft.validate(complete: true) != null
+                ? null
+                : () async {
+                    if (await cubit.activate() && !cubit.isClosed) {
+                      cubit.open(PoolSection.overview);
+                    }
+                  },
+          ),
+        ],
+        TextButton(
+          onPressed: s.disabled
+              ? null
+              : () async {
+                  if (!s.dirty ||
+                      await confirmAction(
+                        context,
+                        'Reload saved settings?',
+                        'Your unsaved changes will be replaced with the latest saved configuration.',
+                      )) {
+                    await cubit.reloadSaved();
+                  }
+                },
+          child: const Text('Reload saved settings'),
+        ),
+      ];
       return PopScope(
         canPop:
             s.section == PoolSection.overview &&
@@ -160,174 +328,40 @@ class _PoolSetupScreenState extends State<PoolSetupScreen> {
               : s.resourceFlow
               ? 'Complete this pool before adding the next one.'
               : 'Manage each pool and edit saved settings directly.',
-          maxWidth: 760,
-          children: [
-            if (s.business!.configuration != null &&
-                s.business!.configuration?['kind'] != 'pool_v1') ...[
-              const AppCard(
-                child: Text(
-                  'Existing pools keep their resource IDs and capacity. Add their depths and review the imported plan. Legacy unlimited/visit plans are disabled until converted to attendance days.',
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            if (s.section != PoolSection.overview &&
-                s.section != PoolSection.review)
-              TextButton.icon(
-                icon: const Icon(Icons.arrow_back),
-                label: Text(
-                  s.resourceFlow && s.section == PoolSection.pricing
-                      ? 'Pool details'
-                      : s.selectedId != null
-                      ? 'Back to list'
-                      : 'All Pool settings',
-                ),
-                onPressed: s.disabled ? null : cubit.back,
-              ),
-            if (s.resourceFlow) ...[
-              Text(
-                s.section == PoolSection.pools
-                    ? 'STEP 1 OF 2 · DETAILS'
-                    : 'STEP 2 OF 2 · TIMING & PRICING',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              LinearProgressIndicator(
-                value: s.section == PoolSection.pools ? .5 : 1,
-              ),
-              const SizedBox(height: 22),
-            ],
-            Form(key: form, child: page(s)),
-            if (!s.resourceFlow &&
-                s.section == PoolSection.pools &&
-                s.selectedId != null)
-              TextButton.icon(
-                icon: const Icon(Icons.schedule_outlined),
-                label: const Text('Edit timing & pricing'),
-                onPressed: s.disabled
-                    ? null
-                    : () => cubit.open(PoolSection.pricing, id: s.selectedId),
-              ),
-            const SizedBox(height: 22),
-            if (s.message != null) ...[
-              AppErrorWidget(message: s.message!),
-              const SizedBox(height: 14),
-            ],
-            ConfigurationDraftNotice(
-              status: s.localDraftStatus,
-              dirty: s.dirty,
-              message: s.localDraftMessage,
-              onRetry: cubit.retryLocalDraft,
-            ),
-            const SizedBox(height: 12),
-            if (s.resourceFlow && s.section == PoolSection.pools)
-              AppButton(
-                label: 'Continue to timing & pricing',
-                icon: Icons.arrow_forward_rounded,
-                onPressed: s.disabled
-                    ? null
-                    : () {
-                        if (form.currentState?.validate() == true) {
-                          cubit.continueResource();
-                        }
-                      },
-              )
-            else if (s.resourceFlow && s.section == PoolSection.pricing) ...[
-              AppButton(
-                label: 'Continue',
-                icon: Icons.check_rounded,
-                busy: s.saving,
-                onPressed: s.disabled
-                    ? null
-                    : () async {
-                        if (form.currentState?.validate() == true) {
-                          await cubit.finishResource();
-                        }
-                      },
-              ),
-              const SizedBox(height: 12),
-              AppButton(
-                label: 'Continue & add another pool',
-                icon: Icons.add_rounded,
-                secondary: true,
-                onPressed: s.disabled || s.draft.pools.length >= 30
-                    ? null
-                    : () async {
-                        if (form.currentState?.validate() == true) {
-                          await cubit.finishResource(addAnother: true);
-                        }
-                      },
-              ),
-            ] else
-              AppButton(
-                label:
-                    [
-                      PoolSection.overview,
-                      PoolSection.review,
-                    ].contains(s.section)
-                    ? 'Save changes'
-                    : 'Continue',
-                icon: Icons.save_outlined,
-                busy: s.saving,
-                secondary:
-                    s.section == PoolSection.review && !s.business!.ready,
-                onPressed:
-                    s.disabled ||
-                        ([
-                              PoolSection.overview,
-                              PoolSection.review,
-                            ].contains(s.section) &&
-                            !s.dirty &&
-                            s.business!.configuration?['kind'] == 'pool_v1' &&
-                            (!s.editingReady || s.business!.ready))
-                    ? null
-                    : () async {
-                        if (form.currentState?.validate() == true) {
-                          if ([
-                            PoolSection.overview,
-                            PoolSection.review,
-                          ].contains(s.section)) {
-                            await cubit.saveChanges();
-                          } else {
-                            cubit.back();
-                            cubit.checkpointLocalDraft();
-                          }
-                        }
-                      },
-              ),
-            if (s.section == PoolSection.review && !s.business!.ready) ...[
-              const SizedBox(height: 12),
-              AppButton(
-                label: 'Activate pools',
-                icon: Icons.check_circle_outline,
-                onPressed:
-                    s.disabled || s.draft.validate(complete: true) != null
-                    ? null
-                    : () async {
-                        if (await cubit.activate() && !cubit.isClosed) {
-                          cubit.open(PoolSection.overview);
-                        }
-                      },
-              ),
-            ],
-            TextButton(
-              onPressed: s.disabled
-                  ? null
-                  : () async {
-                      if (!s.dirty ||
-                          await confirmAction(
-                            context,
-                            'Reload saved settings?',
-                            'Your unsaved changes will be replaced with the latest saved configuration.',
-                          )) {
-                        await cubit.reloadSaved();
-                      }
-                    },
-              child: const Text('Reload saved settings'),
-            ),
-          ],
+          maxWidth: desktop ? 1200 : 760,
+          children: desktop
+              ? [
+                  ConfigurationWorkspace(
+                    businessName: s.business!.name,
+                    ready: s.business!.ready,
+                    sections: [
+                      ConfigurationNavItem(
+                        key: const ValueKey('pool-nav-overview'),
+                        label: 'Overview',
+                        icon: Icons.dashboard_outlined,
+                        selected: s.section == PoolSection.overview,
+                        onTap: s.disabled || s.resourceFlow
+                            ? null
+                            : () => cubit.open(PoolSection.overview),
+                      ),
+                      for (final (section, label, subtitle, icon)
+                          in poolSections(s.overviewModel))
+                        ConfigurationNavItem(
+                          key: ValueKey('pool-nav-${section.name}'),
+                          label: label,
+                          subtitle: subtitle,
+                          icon: icon,
+                          selected: s.section == section,
+                          onTap: s.disabled || s.resourceFlow
+                              ? null
+                              : () => cubit.open(section),
+                        ),
+                    ],
+                    content: body,
+                    actions: footer,
+                  ),
+                ]
+              : [...body, ...footer],
         ),
       );
     },

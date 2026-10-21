@@ -20,6 +20,9 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
   late final cubit = getIt<CallLogsCubit>(
     param1: context.read<WorkspaceCubit>(),
   );
+
+  /// Call shown in the desktop detail pane.
+  String? selected;
   @override
   void initState() {
     super.initState();
@@ -42,10 +45,12 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
     if (picked != null) cubit.load(picked);
   }
 
-  void open(SarvamCall call) => showModalBottomSheet<void>(
+  void open(SarvamCall call) => showAdaptiveSheet<void>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
+    scrollable: false,
+    showClose: false,
+    showDragHandle: false,
+    maxWidth: 640,
     builder: (_) => BlocProvider.value(
       value: context.read<WorkspaceCubit>(),
       child: CallDetailSheet(call: call),
@@ -53,130 +58,392 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
   );
 
   @override
-  Widget build(BuildContext context) =>
-      BlocBuilder<CallLogsCubit, CallLogsState>(
-        bloc: cubit,
-        builder: (context, s) {
-          final t = Theme.of(context), c = t.colorScheme;
-          final today = DateUtils.dateOnly(DateTime.now());
-          return AppPage(
-            title: 'Call logs',
-            subtitle: 'Calls answered by your Sarvam voice agent.',
-            back: true,
-            showAppBar: true,
-            compactHeader: true,
-            scrollId: 'sarvam-call-logs',
-            actions: [
-              IconButton(
-                tooltip: 'Refresh calls',
-                onPressed: s.loading ? null : () => cubit.load(),
-                icon: const Icon(Icons.refresh_rounded),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => BlocBuilder<CallLogsCubit, CallLogsState>(
+      bloc: cubit,
+      builder: (context, s) {
+        if (isDesktopWidth(context) && box.maxWidth >= AppPage.wideWidth) {
+          return desktop(context, s);
+        }
+        final t = Theme.of(context), c = t.colorScheme;
+        return AppPage(
+          title: 'Call logs',
+          subtitle: 'Calls answered by your Sarvam voice agent.',
+          back: true,
+          showAppBar: true,
+          compactHeader: true,
+          scrollId: 'sarvam-call-logs',
+          actions: [
+            IconButton(
+              tooltip: 'Refresh calls',
+              onPressed: s.loading ? null : () => cubit.load(),
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          ],
+          children: [
+            dayChips(context, s),
+            const SizedBox(height: 16),
+            if (s.loading) const AppRefreshIndicator(label: 'Loading calls…'),
+            if (s.error != null)
+              AppErrorWidget(message: s.error!, onRetry: () => cubit.load()),
+            if (!s.loading && s.error == null && s.page.items.isEmpty)
+              const AppEmptyState(
+                title: 'No calls',
+                message: 'No calls were recorded on this day.',
+                icon: Icons.phone_disabled_outlined,
               ),
-            ],
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  ChoiceChip(
-                    label: const Text('Today'),
-                    selected: s.day == today,
-                    onSelected: (_) => cubit.load(today),
-                  ),
-                  ChoiceChip(
-                    label: const Text('Yesterday'),
-                    selected: s.day == today.subtract(const Duration(days: 1)),
-                    onSelected: (_) =>
-                        cubit.load(today.subtract(const Duration(days: 1))),
-                  ),
-                  ActionChip(
-                    avatar: const Icon(Icons.calendar_today_outlined, size: 18),
-                    label: Text(
-                      MaterialLocalizations.of(context).formatMediumDate(s.day),
-                    ),
-                    onPressed: () => pickDay(s.day),
-                  ),
-                ],
+            if (!s.loading && s.page.total > s.page.items.length)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Showing ${s.page.items.length} of ${s.page.total} calls.',
+                  style: t.textTheme.bodySmall,
+                ),
               ),
-              const SizedBox(height: 16),
-              if (s.loading) const AppRefreshIndicator(label: 'Loading calls…'),
-              if (s.error != null)
-                AppErrorWidget(message: s.error!, onRetry: () => cubit.load()),
-              if (!s.loading && s.error == null && s.page.items.isEmpty)
-                const AppEmptyState(
-                  title: 'No calls',
-                  message: 'No calls were recorded on this day.',
-                  icon: Icons.phone_disabled_outlined,
-                ),
-              if (!s.loading && s.page.total > s.page.items.length)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    'Showing ${s.page.items.length} of ${s.page.total} calls.',
-                    style: t.textTheme.bodySmall,
-                  ),
-                ),
-              for (final call in s.page.items)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: AppCard(
-                    onTap: () => open(call),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              call.direction == 'outbound'
-                                  ? Icons.call_made_rounded
-                                  : Icons.call_received_rounded,
-                              size: 18,
-                              color: c.primary,
+            for (final call in s.page.items)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: AppCard(
+                  onTap: () => open(call),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            call.direction == 'outbound'
+                                ? Icons.call_made_rounded
+                                : Icons.call_received_rounded,
+                            size: 18,
+                            color: c.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              call.title,
+                              style: t.textTheme.titleSmall,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                call.title,
-                                style: t.textTheme.titleSmall,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (call.summary.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            call.summary,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
+                      ),
+                      if (call.summary.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Text(
-                          [
-                            if (call.startedAt != null)
-                              clock(context, call.startedAt!),
-                            call.duration,
-                            call.language,
-                            call.disposition.replaceAll('_', ' '),
-                          ].where((v) => v.isNotEmpty).join(' · '),
-                          style: t.textTheme.bodySmall?.copyWith(
-                            color: c.onSurfaceVariant,
-                          ),
+                          call.summary,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
-                    ),
+                      const SizedBox(height: 6),
+                      Text(
+                        meta(context, call),
+                        style: t.textTheme.bodySmall?.copyWith(
+                          color: c.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
+          ],
+        );
+      },
+    ),
+  );
+
+  Widget dayChips(BuildContext context, CallLogsState s) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        ChoiceChip(
+          label: const Text('Today'),
+          selected: s.day == today,
+          onSelected: (_) => cubit.load(today),
+        ),
+        ChoiceChip(
+          label: const Text('Yesterday'),
+          selected: s.day == today.subtract(const Duration(days: 1)),
+          onSelected: (_) =>
+              cubit.load(today.subtract(const Duration(days: 1))),
+        ),
+        ActionChip(
+          avatar: const Icon(Icons.calendar_today_outlined, size: 18),
+          label: Text(
+            MaterialLocalizations.of(context).formatMediumDate(s.day),
+          ),
+          onPressed: () => pickDay(s.day),
+        ),
+      ],
+    );
+  }
+
+  String meta(BuildContext context, SarvamCall call) => [
+    if (call.startedAt != null) clock(context, call.startedAt!),
+    call.duration,
+    call.language,
+    call.disposition.replaceAll('_', ' '),
+  ].where((v) => v.isNotEmpty).join(' · ');
+
+  static String talkTime(double seconds) {
+    final total = seconds.round();
+    final h = total ~/ 3600, m = total % 3600 ~/ 60, sec = total % 60;
+    if (h > 0) return '${h}h ${m}m';
+    return m > 0 ? '${m}m ${sec}s' : '${sec}s';
+  }
+
+  // Wide web windows: call list beside the selected call's transcript.
+  Widget desktop(BuildContext context, CallLogsState s) {
+    final t = Theme.of(context), c = t.colorScheme;
+    final calls = s.page.items;
+    final current = calls.where((x) => x.id == selected).firstOrNull;
+    final inbound = calls.where((x) => x.direction != 'outbound').length;
+    final languages = {
+      for (final x in calls)
+        if (x.language.isNotEmpty) x.language,
+    };
+    final day = MaterialLocalizations.of(context).formatMediumDate(s.day);
+    return AppPage(
+      title: 'Call logs',
+      back: true,
+      showAppBar: true,
+      maxWidth: 1200,
+      scrollId: 'sarvam-call-logs',
+      header: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Call logs', style: t.textTheme.headlineLarge),
+                const SizedBox(height: 6),
+                Text(
+                  'Calls answered by your Sarvam voice agent.',
+                  style: TextStyle(color: c.onSurface.withValues(alpha: .65)),
+                ),
+              ],
+            ),
+          ),
+          IconButton.outlined(
+            tooltip: 'Refresh calls',
+            onPressed: s.loading ? null : () => cubit.load(),
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      children: [
+        AppToolbar(
+          leading: Align(
+            alignment: Alignment.centerLeft,
+            child: dayChips(context, s),
+          ),
+          actions: [
+            if (!s.loading && s.page.total > calls.length)
+              Text(
+                'Showing ${calls.length} of ${s.page.total} calls.',
+                style: t.textTheme.bodySmall,
+              ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        if (s.loading) const AppRefreshIndicator(label: 'Loading calls…'),
+        if (s.error != null)
+          AppErrorWidget(message: s.error!, onRetry: () => cubit.load()),
+        if (!s.loading && s.error == null && calls.isEmpty)
+          const AppEmptyState(
+            title: 'No calls',
+            message: 'No calls were recorded on this day.',
+            icon: Icons.phone_disabled_outlined,
+          ),
+        if (calls.isNotEmpty) ...[
+          AppStatRow(
+            children: [
+              AppStatTile(
+                icon: Icons.call_outlined,
+                label: 'Calls',
+                value: '${s.page.total}',
+                caption: day,
+                highlight: true,
+              ),
+              AppStatTile(
+                icon: Icons.timer_outlined,
+                label: 'Talk time',
+                value: talkTime(
+                  calls.fold<double>(0, (sum, x) => sum + x.durationSeconds),
+                ),
+                caption:
+                    'Across ${calls.length} ${calls.length == 1 ? 'call' : 'calls'} shown',
+              ),
+              AppStatTile(
+                icon: Icons.call_received_rounded,
+                label: 'Inbound · outbound',
+                value: '$inbound · ${calls.length - inbound}',
+                caption: 'By call direction',
+              ),
+              AppStatTile(
+                icon: Icons.translate_rounded,
+                label: 'Languages',
+                value: '${languages.length}',
+                caption: languages.isEmpty
+                    ? 'Not reported'
+                    : languages.join(', '),
+              ),
             ],
-          );
-        },
-      );
+          ),
+          const SizedBox(height: 28),
+          AppTwoPane(
+            secondaryWidth: 440,
+            primary: [
+              AppPanel(
+                title: 'Calls',
+                subtitle: 'Select a call to read its transcript',
+                child: AppListCard(
+                  children: [
+                    for (final call in calls)
+                      callRow(context, call, call.id == current?.id),
+                  ],
+                ),
+              ),
+            ],
+            secondary: [
+              AppPanel(
+                title: 'Call details',
+                subtitle: current == null
+                    ? 'Nothing selected'
+                    : 'What the agent understood',
+                child: current == null
+                    ? AppCard(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 36),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.forum_outlined,
+                                size: 36,
+                                color: c.onSurfaceVariant,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Select a call',
+                                style: t.textTheme.titleSmall,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Its summary, details, recording and transcript appear here.',
+                                textAlign: TextAlign.center,
+                                style: t.textTheme.bodySmall?.copyWith(
+                                  color: c.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : AppCard(
+                        padding: const EdgeInsets.all(20),
+                        child: CallDetailSheet(
+                          key: ValueKey('call-detail-${current.id}'),
+                          call: current,
+                          embedded: true,
+                          onClose: () => setState(() => selected = null),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget callRow(BuildContext context, SarvamCall call, bool active) {
+    final t = Theme.of(context), c = t.colorScheme;
+    return Material(
+      color: active ? c.primary.withValues(alpha: .07) : Colors.transparent,
+      child: InkWell(
+        key: ValueKey('call-row-${call.id}'),
+        onTap: () => setState(() => selected = call.id),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(
+                width: 3,
+                color: active ? c.primary : Colors.transparent,
+              ),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(17, 16, 16, 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: c.primary.withValues(alpha: .1),
+                child: Icon(
+                  call.direction == 'outbound'
+                      ? Icons.call_made_rounded
+                      : Icons.call_received_rounded,
+                  size: 19,
+                  color: c.primary,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      call.title,
+                      style: t.textTheme.titleSmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (call.summary.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        call.summary,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.textTheme.bodyMedium,
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      meta(context, call),
+                      style: t.textTheme.bodySmall?.copyWith(
+                        color: c.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: active ? c.primary : c.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class CallDetailSheet extends StatefulWidget {
-  const CallDetailSheet({super.key, required this.call});
+  const CallDetailSheet({
+    super.key,
+    required this.call,
+    this.embedded = false,
+    this.onClose,
+  });
   final SarvamCall call;
+
+  /// Desktop side pane: a plain column instead of a draggable sheet.
+  final bool embedded;
+  final VoidCallback? onClose;
   @override
   State<CallDetailSheet> createState() => _CallDetailSheetState();
 }
@@ -216,107 +483,116 @@ class _CallDetailSheetState extends State<CallDetailSheet> {
           (b.notice != null && b.notice != a.notice) ||
           (b.error != null && !b.loading && a.saving),
       listener: (context, s) => showMessage(context, s.notice ?? s.error!),
-      builder: (context, s) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: .85,
-        maxChildSize: .95,
-        builder: (context, scroll) => ListView(
-          controller: scroll,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(call.title, style: t.textTheme.titleLarge),
-                ),
-                IconButton(
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ],
-            ),
-            if (call.startedAt != null)
-              Text(
-                '${MaterialLocalizations.of(context).formatMediumDate(call.startedAt!)}, '
-                '${clock(context, call.startedAt!)} · ${call.duration}',
-                style: t.textTheme.bodySmall,
+      builder: (context, s) {
+        final children = <Widget>[
+          Row(
+            children: [
+              Expanded(child: Text(call.title, style: t.textTheme.titleLarge)),
+              IconButton(
+                tooltip: 'Close',
+                onPressed: widget.embedded
+                    ? widget.onClose
+                    : () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded),
               ),
-            if (call.summary.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(call.summary),
             ],
-            const SizedBox(height: 8),
+          ),
+          if (call.startedAt != null)
             Text(
-              'Details below are what the agent understood. Check the booking '
-              'list for what was actually booked.',
-              style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
+              '${MaterialLocalizations.of(context).formatMediumDate(call.startedAt!)}, '
+              '${clock(context, call.startedAt!)} · ${call.duration}',
+              style: t.textTheme.bodySmall,
             ),
-            const SizedBox(height: 8),
-            for (final (label, value) in facts)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '$label: ',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      TextSpan(text: value),
-                    ],
-                  ),
-                ),
-              ),
+          if (call.summary.isNotEmpty) ...[
             const SizedBox(height: 12),
-            AppButton(
-              label: 'Save recording',
-              busyLabel: 'Downloading…',
-              icon: Icons.download_rounded,
-              secondary: true,
-              busy: s.saving,
-              onPressed: s.saving ? null : cubit.saveRecording,
-            ),
-            const SizedBox(height: 20),
-            Text('Transcript', style: t.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            if (s.loading)
-              const AppRefreshIndicator(label: 'Loading transcript…'),
-            if (s.error != null && s.lines.isEmpty && !s.loading)
-              AppErrorWidget(message: s.error!, onRetry: cubit.load),
-            for (final line in s.lines)
-              Align(
-                alignment: line.agent
-                    ? Alignment.centerLeft
-                    : Alignment.centerRight,
-                child: Container(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  margin: const EdgeInsets.only(bottom: 6),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: line.agent
-                        ? c.surfaceContainerHighest
-                        : c.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        line.agent ? 'Agent' : 'Caller',
-                        style: t.textTheme.labelSmall,
-                      ),
-                      Text(line.text),
-                    ],
-                  ),
+            Text(call.summary),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'Details below are what the agent understood. Check the booking '
+            'list for what was actually booked.',
+            style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          for (final (label, value) in facts)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '$label: ',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    TextSpan(text: value),
+                  ],
                 ),
               ),
-          ],
-        ),
-      ),
+            ),
+          const SizedBox(height: 12),
+          AppButton(
+            label: 'Save recording',
+            busyLabel: 'Downloading…',
+            icon: Icons.download_rounded,
+            secondary: true,
+            busy: s.saving,
+            onPressed: s.saving ? null : cubit.saveRecording,
+          ),
+          const SizedBox(height: 20),
+          Text('Transcript', style: t.textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (s.loading)
+            const AppRefreshIndicator(label: 'Loading transcript…'),
+          if (s.error != null && s.lines.isEmpty && !s.loading)
+            AppErrorWidget(message: s.error!, onRetry: cubit.load),
+          for (final line in s.lines)
+            Align(
+              alignment: line.agent
+                  ? Alignment.centerLeft
+                  : Alignment.centerRight,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 420),
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: line.agent
+                      ? c.surfaceContainerHighest
+                      : c.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      line.agent ? 'Agent' : 'Caller',
+                      style: t.textTheme.labelSmall,
+                    ),
+                    Text(line.text),
+                  ],
+                ),
+              ),
+            ),
+        ];
+        if (widget.embedded) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          );
+        }
+        return AdaptiveSheetBody(
+          initialChildSize: .85,
+          maxChildSize: .95,
+          builder: (context, scroll, shrink) => ListView(
+            controller: scroll,
+            shrinkWrap: shrink,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            children: children,
+          ),
+        );
+      },
     );
   }
 }

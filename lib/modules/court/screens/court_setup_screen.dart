@@ -101,6 +101,183 @@ class _CourtSetupScreenState extends State<CourtSetupScreen> {
         CourtSection.coaching => s.selectedPlan?.name ?? 'Plans & coaching',
         CourtSection.review => 'Review your courts',
       };
+      final desktop = isDesktopWidth(context);
+      final body = <Widget>[
+        if (s.business!.configuration != null &&
+            s.business!.configuration?['kind'] != 'court_v1') ...[
+          const AppCard(
+            child: Text(
+              'Existing courts keep their resource IDs. Review the imported timing and prices before saving.',
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (s.section != CourtSection.overview &&
+            s.section != CourtSection.review)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.arrow_back),
+              label: Text(
+                s.resourceFlow && s.section == CourtSection.pricing
+                    ? 'Court details'
+                    : s.selectedId != null
+                    ? 'Back to list'
+                    : 'All Court settings',
+              ),
+              onPressed: s.disabled ? null : cubit.back,
+            ),
+          ),
+        if (s.resourceFlow) ...[
+          Text(
+            s.section == CourtSection.courts
+                ? 'STEP 1 OF 2 · DETAILS'
+                : 'STEP 2 OF 2 · TIMING & PRICING',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: s.section == CourtSection.courts ? .5 : 1,
+          ),
+          const SizedBox(height: 22),
+        ],
+        Form(key: form, child: page(s)),
+        if (!s.resourceFlow &&
+            s.section == CourtSection.courts &&
+            s.selectedId != null)
+          TextButton.icon(
+            icon: const Icon(Icons.schedule_outlined),
+            label: const Text('Edit timing & pricing'),
+            onPressed: s.disabled
+                ? null
+                : () => cubit.open(CourtSection.pricing, id: s.selectedId),
+          ),
+      ];
+      final footer = <Widget>[
+        if (s.draft.courts.isNotEmpty ||
+            ![
+              CourtSection.courts,
+              CourtSection.pricing,
+            ].contains(s.section)) ...[
+          if (!desktop) const SizedBox(height: 22),
+          if (s.message != null) ...[
+            AppErrorWidget(message: s.message!),
+            const SizedBox(height: 14),
+          ],
+          ConfigurationDraftNotice(
+            status: s.localDraftStatus,
+            dirty: s.dirty,
+            message: s.localDraftMessage,
+            onRetry: cubit.retryLocalDraft,
+          ),
+          const SizedBox(height: 12),
+          if (s.resourceFlow && s.section == CourtSection.courts)
+            AppButton(
+              label: 'Continue to timing & pricing',
+              icon: Icons.arrow_forward_rounded,
+              onPressed: s.disabled
+                  ? null
+                  : () {
+                      if (form.currentState?.validate() == true) {
+                        cubit.continueResource();
+                      }
+                    },
+            )
+          else if (s.resourceFlow && s.section == CourtSection.pricing) ...[
+            AppButton(
+              label: 'Continue',
+              icon: Icons.check_rounded,
+              busy: s.saving,
+              onPressed: s.disabled
+                  ? null
+                  : () async {
+                      if (form.currentState?.validate() == true) {
+                        await cubit.finishResource();
+                      }
+                    },
+            ),
+            const SizedBox(height: 12),
+            AppButton(
+              label: 'Continue & add another court',
+              icon: Icons.add_rounded,
+              secondary: true,
+              onPressed: s.disabled || s.draft.courts.length >= 50
+                  ? null
+                  : () async {
+                      if (form.currentState?.validate() == true) {
+                        await cubit.finishResource(addAnother: true);
+                      }
+                    },
+            ),
+          ] else
+            AppButton(
+              label:
+                  [
+                    CourtSection.overview,
+                    CourtSection.review,
+                  ].contains(s.section)
+                  ? 'Save changes'
+                  : 'Continue',
+              icon: Icons.save_outlined,
+              busy: s.saving,
+              secondary: s.section == CourtSection.review && !s.business!.ready,
+              onPressed:
+                  s.disabled ||
+                      ([
+                            CourtSection.overview,
+                            CourtSection.review,
+                          ].contains(s.section) &&
+                          !s.dirty &&
+                          s.business!.configuration?['kind'] == 'court_v1' &&
+                          (!s.editingReady || s.business!.ready))
+                  ? null
+                  : () async {
+                      if (form.currentState?.validate() == true) {
+                        if ([
+                          CourtSection.overview,
+                          CourtSection.review,
+                        ].contains(s.section)) {
+                          await cubit.saveChanges();
+                        } else {
+                          cubit.back();
+                          cubit.checkpointLocalDraft();
+                        }
+                      }
+                    },
+            ),
+          if (s.section == CourtSection.review && !s.business!.ready) ...[
+            const SizedBox(height: 12),
+            AppButton(
+              label: 'Activate courts',
+              icon: Icons.check_circle_outline,
+              onPressed: s.disabled || s.draft.validate(complete: true) != null
+                  ? null
+                  : () async {
+                      if (await cubit.activate() && !cubit.isClosed) {
+                        cubit.open(CourtSection.overview);
+                      }
+                    },
+            ),
+          ],
+          TextButton(
+            onPressed: s.disabled
+                ? null
+                : () async {
+                    if (!s.dirty ||
+                        await confirmAction(
+                          context,
+                          'Reload saved settings?',
+                          'Your unsaved changes will be replaced with the latest saved configuration.',
+                        )) {
+                      await cubit.reloadSaved();
+                    }
+                  },
+            child: const Text('Reload saved settings'),
+          ),
+        ],
+      ];
       return PopScope(
         canPop:
             s.section == CourtSection.overview &&
@@ -139,181 +316,40 @@ class _CourtSetupScreenState extends State<CourtSetupScreen> {
               : s.resourceFlow
               ? 'Complete this court before adding the next one.'
               : 'Manage each court and edit saved settings directly.',
-          maxWidth: 760,
-          children: [
-            if (s.business!.configuration != null &&
-                s.business!.configuration?['kind'] != 'court_v1') ...[
-              const AppCard(
-                child: Text(
-                  'Existing courts keep their resource IDs. Review the imported timing and prices before saving.',
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            if (s.section != CourtSection.overview &&
-                s.section != CourtSection.review)
-              TextButton.icon(
-                icon: const Icon(Icons.arrow_back),
-                label: Text(
-                  s.resourceFlow && s.section == CourtSection.pricing
-                      ? 'Court details'
-                      : s.selectedId != null
-                      ? 'Back to list'
-                      : 'All Court settings',
-                ),
-                onPressed: s.disabled ? null : cubit.back,
-              ),
-            if (s.resourceFlow) ...[
-              Text(
-                s.section == CourtSection.courts
-                    ? 'STEP 1 OF 2 · DETAILS'
-                    : 'STEP 2 OF 2 · TIMING & PRICING',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              LinearProgressIndicator(
-                value: s.section == CourtSection.courts ? .5 : 1,
-              ),
-              const SizedBox(height: 22),
-            ],
-            Form(key: form, child: page(s)),
-            if (!s.resourceFlow &&
-                s.section == CourtSection.courts &&
-                s.selectedId != null)
-              TextButton.icon(
-                icon: const Icon(Icons.schedule_outlined),
-                label: const Text('Edit timing & pricing'),
-                onPressed: s.disabled
-                    ? null
-                    : () => cubit.open(CourtSection.pricing, id: s.selectedId),
-              ),
-            if (s.draft.courts.isNotEmpty ||
-                ![
-                  CourtSection.courts,
-                  CourtSection.pricing,
-                ].contains(s.section)) ...[
-              const SizedBox(height: 22),
-              if (s.message != null) ...[
-                AppErrorWidget(message: s.message!),
-                const SizedBox(height: 14),
-              ],
-              ConfigurationDraftNotice(
-                status: s.localDraftStatus,
-                dirty: s.dirty,
-                message: s.localDraftMessage,
-                onRetry: cubit.retryLocalDraft,
-              ),
-              const SizedBox(height: 12),
-              if (s.resourceFlow && s.section == CourtSection.courts)
-                AppButton(
-                  label: 'Continue to timing & pricing',
-                  icon: Icons.arrow_forward_rounded,
-                  onPressed: s.disabled
-                      ? null
-                      : () {
-                          if (form.currentState?.validate() == true) {
-                            cubit.continueResource();
-                          }
-                        },
-                )
-              else if (s.resourceFlow && s.section == CourtSection.pricing) ...[
-                AppButton(
-                  label: 'Continue',
-                  icon: Icons.check_rounded,
-                  busy: s.saving,
-                  onPressed: s.disabled
-                      ? null
-                      : () async {
-                          if (form.currentState?.validate() == true) {
-                            await cubit.finishResource();
-                          }
-                        },
-                ),
-                const SizedBox(height: 12),
-                AppButton(
-                  label: 'Continue & add another court',
-                  icon: Icons.add_rounded,
-                  secondary: true,
-                  onPressed: s.disabled || s.draft.courts.length >= 50
-                      ? null
-                      : () async {
-                          if (form.currentState?.validate() == true) {
-                            await cubit.finishResource(addAnother: true);
-                          }
-                        },
-                ),
-              ] else
-                AppButton(
-                  label:
-                      [
-                        CourtSection.overview,
-                        CourtSection.review,
-                      ].contains(s.section)
-                      ? 'Save changes'
-                      : 'Continue',
-                  icon: Icons.save_outlined,
-                  busy: s.saving,
-                  secondary:
-                      s.section == CourtSection.review && !s.business!.ready,
-                  onPressed:
-                      s.disabled ||
-                          ([
-                                CourtSection.overview,
-                                CourtSection.review,
-                              ].contains(s.section) &&
-                              !s.dirty &&
-                              s.business!.configuration?['kind'] ==
-                                  'court_v1' &&
-                              (!s.editingReady || s.business!.ready))
-                      ? null
-                      : () async {
-                          if (form.currentState?.validate() == true) {
-                            if ([
-                              CourtSection.overview,
-                              CourtSection.review,
-                            ].contains(s.section)) {
-                              await cubit.saveChanges();
-                            } else {
-                              cubit.back();
-                              cubit.checkpointLocalDraft();
-                            }
-                          }
-                        },
-                ),
-              if (s.section == CourtSection.review && !s.business!.ready) ...[
-                const SizedBox(height: 12),
-                AppButton(
-                  label: 'Activate courts',
-                  icon: Icons.check_circle_outline,
-                  onPressed:
-                      s.disabled || s.draft.validate(complete: true) != null
-                      ? null
-                      : () async {
-                          if (await cubit.activate() && !cubit.isClosed) {
-                            cubit.open(CourtSection.overview);
-                          }
-                        },
-                ),
-              ],
-              TextButton(
-                onPressed: s.disabled
-                    ? null
-                    : () async {
-                        if (!s.dirty ||
-                            await confirmAction(
-                              context,
-                              'Reload saved settings?',
-                              'Your unsaved changes will be replaced with the latest saved configuration.',
-                            )) {
-                          await cubit.reloadSaved();
-                        }
-                      },
-                child: const Text('Reload saved settings'),
-              ),
-            ],
-          ],
+          maxWidth: desktop ? 1200 : 760,
+          children: desktop
+              ? [
+                  ConfigurationWorkspace(
+                    businessName: s.business!.name,
+                    ready: s.business!.ready,
+                    sections: [
+                      ConfigurationNavItem(
+                        key: const ValueKey('court-nav-overview'),
+                        label: 'Overview',
+                        icon: Icons.dashboard_outlined,
+                        selected: s.section == CourtSection.overview,
+                        onTap: s.disabled || s.resourceFlow
+                            ? null
+                            : () => cubit.open(CourtSection.overview),
+                      ),
+                      for (final (section, label, subtitle, icon)
+                          in courtSections(s.overviewModel))
+                        ConfigurationNavItem(
+                          key: ValueKey('court-nav-${section.name}'),
+                          label: label,
+                          subtitle: subtitle,
+                          icon: icon,
+                          selected: s.section == section,
+                          onTap: s.disabled || s.resourceFlow
+                              ? null
+                              : () => cubit.open(section),
+                        ),
+                    ],
+                    content: body,
+                    actions: footer,
+                  ),
+                ]
+              : [...body, ...footer],
         ),
       );
     },

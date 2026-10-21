@@ -55,6 +55,16 @@ class _TurfSetupScreenState extends State<TurfSetupScreen> {
     'Pricing',
     'Review',
   ];
+
+  /// Desktop rail keys, `turf-nav-<name>`, in step order.
+  static const navNames = [
+    'sports',
+    'grounds',
+    'spaces',
+    'offerings',
+    'pricing',
+    'review',
+  ];
   static const titles = [
     'Sports offered.',
     'Your physical grounds.',
@@ -129,6 +139,145 @@ class _TurfSetupScreenState extends State<TurfSetupScreen> {
           ],
         );
       }
+      final desktop = isDesktopWidth(context);
+      final body = <Widget>[
+        if (desktop && !state.editMode && state.step != 5)
+          LinearProgressIndicator(
+            key: const ValueKey('turf-step-progress'),
+            value: (state.step + 1) / labels.length,
+          )
+        else if (!state.editMode && state.step != 5)
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: labels
+                .asMap()
+                .entries
+                .map(
+                  (e) => ChoiceChip(
+                    label: Text('${e.key + 1}. ${e.value}'),
+                    selected: state.step == e.key,
+                    onSelected: state.disabled || e.key > state.step
+                        ? null
+                        : (_) => cubit.step(e.key),
+                  ),
+                )
+                .toList(),
+          ),
+        // Desktop settings start level with the rail; nothing sits above them.
+        if (state.step != 5 && (!desktop || !state.editMode))
+          const SizedBox(height: 20),
+        if (state.business!.resources.isNotEmpty &&
+            state.business!.configuration?['kind'] != 'turf_v1') ...[
+          const AppCard(
+            child: Text(
+              'Existing resources are imported as independent grounds. Change their arrangement only if they physically share space.',
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+        if (state.editMode && !state.settingsOverview)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: state.disabled ? null : cubit.showSettingsOverview,
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('All Turf settings'),
+            ),
+          ),
+        if (state.editMode && state.settingsOverview)
+          TurfSettingsOverviewScreen(
+            model: state.settingsModel,
+            cubit: cubit,
+            disabled: state.disabled,
+          )
+        else
+          Form(key: form, child: page(state)),
+      ];
+      final footer = <Widget>[
+        if (!desktop) const SizedBox(height: 22),
+        if (state.message != null) ...[
+          AppErrorWidget(message: state.message!),
+          const SizedBox(height: 14),
+        ],
+        ConfigurationDraftNotice(
+          status: state.localDraftStatus,
+          dirty: state.dirty,
+          message: state.localDraftMessage,
+          onRetry: cubit.retryLocalDraft,
+        ),
+        const SizedBox(height: 12),
+        if (state.editMode &&
+            !state.settingsOverview &&
+            (state.step < 5 || state.editingReady))
+          AppButton(
+            label: 'Save changes',
+            icon: Icons.save_outlined,
+            busy: state.saving,
+            onPressed:
+                state.disabled ||
+                    (!state.dirty &&
+                        state.business!.configuration?['kind'] == 'turf_v1' &&
+                        (!state.editingReady || state.business!.ready))
+                ? null
+                : () async {
+                    if (form.currentState?.validate() == true) {
+                      await cubit.saveSettings();
+                    }
+                  },
+          )
+        else if (!state.editMode && state.step < 5)
+          AppButton(
+            label: 'Continue',
+            busy: state.saving,
+            icon: Icons.arrow_forward,
+            onPressed: state.disabled
+                ? null
+                : () async {
+                    if (form.currentState?.validate() == true) {
+                      await cubit.continueSetup();
+                    }
+                  },
+          )
+        else if (state.step == 5 &&
+            (!state.editMode || !state.settingsOverview))
+          AppButton(
+            label: 'Activate turf',
+            icon: Icons.check_circle_outline,
+            busy: state.saving,
+            onPressed: state.disabled || state.reviewModel.validation != null
+                ? null
+                : () async {
+                    if (await cubit.activate() && context.mounted) {
+                      if (state.editMode) {
+                        cubit.showSettingsOverview();
+                      } else {
+                        context.go('/home');
+                      }
+                    }
+                  },
+          ),
+        if (!state.editMode && state.step > 0)
+          TextButton(
+            onPressed: state.disabled ? null : () => cubit.step(state.step - 1),
+            child: const Text('Previous step'),
+          ),
+        TextButton(
+          onPressed: state.disabled
+              ? null
+              : () async {
+                  if (!state.dirty ||
+                      await confirmAction(
+                        context,
+                        'Reload saved configuration?',
+                        'Your unsaved changes will be replaced with the latest server data.',
+                      )) {
+                    await cubit.refreshSaved();
+                  }
+                },
+          child: const Text('Reload saved configuration'),
+        ),
+      ];
       return PopScope(
         canPop:
             (!state.editMode || state.settingsOverview) &&
@@ -178,137 +327,57 @@ class _TurfSetupScreenState extends State<TurfSetupScreen> {
               : state.editMode && state.settingsOverview
               ? 'Choose the area you want to edit. No setup steps to repeat.'
               : descriptions[state.step],
-          maxWidth: 760,
-          children: [
-            if (!state.editMode && state.step != 5)
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: labels
-                    .asMap()
-                    .entries
-                    .map(
-                      (e) => ChoiceChip(
-                        label: Text('${e.key + 1}. ${e.value}'),
-                        selected: state.step == e.key,
-                        onSelected: state.disabled || e.key > state.step
-                            ? null
-                            : (_) => cubit.step(e.key),
-                      ),
-                    )
-                    .toList(),
-              ),
-            if (state.step != 5) const SizedBox(height: 20),
-            if (state.business!.resources.isNotEmpty &&
-                state.business!.configuration?['kind'] != 'turf_v1') ...[
-              const AppCard(
-                child: Text(
-                  'Existing resources are imported as independent grounds. Change their arrangement only if they physically share space.',
-                ),
-              ),
-              const SizedBox(height: 18),
-            ],
-            if (state.editMode && !state.settingsOverview)
-              TextButton.icon(
-                onPressed: state.disabled ? null : cubit.showSettingsOverview,
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('All Turf settings'),
-              ),
-            if (state.editMode && state.settingsOverview)
-              TurfSettingsOverviewScreen(
-                model: state.settingsModel,
-                cubit: cubit,
-                disabled: state.disabled,
-              )
-            else
-              Form(key: form, child: page(state)),
-            const SizedBox(height: 22),
-            if (state.message != null) ...[
-              AppErrorWidget(message: state.message!),
-              const SizedBox(height: 14),
-            ],
-            ConfigurationDraftNotice(
-              status: state.localDraftStatus,
-              dirty: state.dirty,
-              message: state.localDraftMessage,
-              onRetry: cubit.retryLocalDraft,
-            ),
-            const SizedBox(height: 12),
-            if (state.editMode &&
-                !state.settingsOverview &&
-                (state.step < 5 || state.editingReady))
-              AppButton(
-                label: 'Save changes',
-                icon: Icons.save_outlined,
-                busy: state.saving,
-                onPressed:
-                    state.disabled ||
-                        (!state.dirty &&
-                            state.business!.configuration?['kind'] ==
-                                'turf_v1' &&
-                            (!state.editingReady || state.business!.ready))
-                    ? null
-                    : () async {
-                        if (form.currentState?.validate() == true) {
-                          await cubit.saveSettings();
-                        }
-                      },
-              )
-            else if (!state.editMode && state.step < 5)
-              AppButton(
-                label: 'Continue',
-                busy: state.saving,
-                icon: Icons.arrow_forward,
-                onPressed: state.disabled
-                    ? null
-                    : () async {
-                        if (form.currentState?.validate() == true) {
-                          await cubit.continueSetup();
-                        }
-                      },
-              )
-            else if (state.step == 5 &&
-                (!state.editMode || !state.settingsOverview))
-              AppButton(
-                label: 'Activate turf',
-                icon: Icons.check_circle_outline,
-                busy: state.saving,
-                onPressed:
-                    state.disabled || state.reviewModel.validation != null
-                    ? null
-                    : () async {
-                        if (await cubit.activate() && context.mounted) {
-                          if (state.editMode) {
-                            cubit.showSettingsOverview();
-                          } else {
-                            context.go('/home');
-                          }
-                        }
-                      },
-              ),
-            if (!state.editMode && state.step > 0)
-              TextButton(
-                onPressed: state.disabled
-                    ? null
-                    : () => cubit.step(state.step - 1),
-                child: const Text('Previous step'),
-              ),
-            TextButton(
-              onPressed: state.disabled
-                  ? null
-                  : () async {
-                      if (!state.dirty ||
-                          await confirmAction(
-                            context,
-                            'Reload saved configuration?',
-                            'Your unsaved changes will be replaced with the latest server data.',
-                          )) {
-                        await cubit.refreshSaved();
-                      }
-                    },
-              child: const Text('Reload saved configuration'),
-            ),
-          ],
+          maxWidth: desktop ? 1200 : 760,
+          children: desktop
+              ? [
+                  ConfigurationWorkspace(
+                    businessName: state.business!.name,
+                    ready: state.business!.ready,
+                    sections: [
+                      if (state.editMode)
+                        ConfigurationNavItem(
+                          key: const ValueKey('turf-nav-overview'),
+                          label: 'Overview',
+                          icon: Icons.dashboard_outlined,
+                          selected: state.settingsOverview,
+                          onTap: state.disabled
+                              ? null
+                              : cubit.showSettingsOverview,
+                        ),
+                      for (final (index, (label, subtitle, icon))
+                          in turfSettingsAreas(state.settingsModel).indexed)
+                        ConfigurationNavItem(
+                          key: ValueKey('turf-nav-${navNames[index]}'),
+                          label: state.editMode
+                              ? label
+                              : '${index + 1}. $label',
+                          subtitle: state.editMode
+                              ? subtitle
+                              : index < state.step
+                              ? 'Done · tap to revisit'
+                              : index == state.step
+                              ? 'Current step'
+                              : 'Up next',
+                          icon: !state.editMode && index < state.step
+                              ? Icons.check_circle_outline
+                              : icon,
+                          selected: state.editMode
+                              ? !state.settingsOverview && state.step == index
+                              : state.step == index,
+                          onTap: state.disabled
+                              ? null
+                              : state.editMode
+                              ? () => cubit.openSettingsSection(index)
+                              : index > state.step
+                              ? null
+                              : () => cubit.step(index),
+                        ),
+                    ],
+                    content: body,
+                    actions: footer,
+                  ),
+                ]
+              : [...body, ...footer],
         ),
       );
     },

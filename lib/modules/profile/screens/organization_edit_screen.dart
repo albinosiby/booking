@@ -101,6 +101,282 @@ class _OrganizationEditScreenState extends State<OrganizationEditScreen> {
             ),
           ),
         );
+  // Fields of one location, in reading order. A null cell keeps its place
+  // in the desktop grid when the state picker is not shown.
+  List<Widget?> locationCells(OrganizationEditState s, int i) {
+    final location = s.draft!.locations[i];
+    final country = location.countryCode;
+    return [
+      text(
+        'Location name',
+        '${location.id}.name',
+        location.name,
+        (v) => cubit.locationFields(i, name: v),
+        s,
+      ),
+      text(
+        'Address line 1',
+        '${location.id}.line1',
+        location.line1,
+        (v) => cubit.locationFields(i, line1: v),
+        s,
+        max: 200,
+      ),
+      text(
+        'Address line 2 (optional)',
+        '${location.id}.line2',
+        location.line2,
+        (v) => cubit.locationFields(i, line2: v),
+        s,
+        max: 200,
+      ),
+      text(
+        'City',
+        '${location.id}.city',
+        location.city,
+        (v) => cubit.locationFields(i, city: v),
+        s,
+      ),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppPicker(
+            label: 'Country',
+            value: country,
+            enabled: !s.busy && !s.loading,
+            items: [
+              const PickerItem('', 'Choose country'),
+              ...s.countries.map((o) => PickerItem(o.code, o.name)),
+            ],
+            onChanged: (v) => cubit.country(i, v),
+          ),
+          pickerError(s.errors['${location.id}.country']),
+          const SizedBox(height: 16),
+        ],
+      ),
+      if (s.loadingCountries.contains(country))
+        const AppRefreshIndicator(label: 'Loading states…')
+      else if (s.failedCountries.contains(country))
+        TextButton.icon(
+          onPressed: () => cubit.loadStates(country),
+          icon: const Icon(Icons.refresh),
+          label: const Text('Retry loading states'),
+        )
+      else if (s.states[country]?.isNotEmpty == true)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AppPicker(
+              label: 'State',
+              value: location.stateCode,
+              enabled: !s.busy && !s.loading,
+              items: [
+                const PickerItem('', 'Choose state'),
+                ...s.states[country]!.map((o) => PickerItem(o.code, o.name)),
+              ],
+              onChanged: (v) => cubit.locationFields(i, stateCode: v),
+            ),
+            pickerError(s.errors['${location.id}.state']),
+            const SizedBox(height: 16),
+          ],
+        )
+      else
+        null,
+      text(
+        'Pincode',
+        '${location.id}.pincode',
+        location.pincode,
+        (v) => cubit.locationFields(i, pincode: v),
+        s,
+        max: 20,
+      ),
+      InputDecorator(
+        decoration: const InputDecoration(
+          labelText: 'Timezone',
+          enabled: false,
+          prefixIcon: Icon(Icons.schedule),
+        ),
+        child: Text(location.timezone),
+      ),
+    ];
+  }
+
+  // Shared loading and error block above the form.
+  List<Widget> status(OrganizationEditState s) => [
+    if (s.loading)
+      AppLoadingState(
+        initial: s.draft == null,
+        label: s.draft == null ? 'Loading organization details…' : null,
+      ),
+    if (s.error != null) ...[
+      AppErrorWidget(
+        message: s.error!,
+        onRetry: s.draft == null ? cubit.load : null,
+      ),
+      if (s.conflict)
+        TextButton.icon(
+          onPressed: s.busy ? null : reload,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Reload latest details'),
+        ),
+      const SizedBox(height: 16),
+    ],
+  ];
+
+  // Wide windows: organization fields beside a two-column address form, with
+  // the save action in the floating bar.
+  Widget desktopPage(BuildContext c, OrganizationEditState s) {
+    final draft = s.draft;
+    final colors = Theme.of(c).colorScheme;
+    Widget pair(Widget? a, Widget? b) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: a ?? const SizedBox.shrink()),
+        const SizedBox(width: 20),
+        Expanded(child: b ?? const SizedBox.shrink()),
+      ],
+    );
+    return AppPage(
+      title: 'Edit organization',
+      eyebrow: 'WORKSPACE MANAGEMENT',
+      subtitle: 'Update the organization name, phone number and addresses.',
+      back: true,
+      showAppBar: true,
+      onBack: exit,
+      scrollId: 'organization-edit',
+      maxWidth: 1200,
+      bottomBar: draft == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(24, 14, 14, 14),
+              child: Row(
+                children: [
+                  Icon(
+                    s.dirty ? Icons.edit_note : Icons.check_circle_outline,
+                    color: s.dirty ? colors.primary : colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      s.dirty
+                          ? 'You have unsaved changes.'
+                          : 'No unsaved changes.',
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: s.busy ? null : exit,
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 220,
+                    child: AppButton(
+                      label: 'Save changes',
+                      busy: s.busy,
+                      busyLabel: 'Saving changes…',
+                      onPressed: s.canSave ? cubit.save : null,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+      children: [
+        ...status(s),
+        if (draft != null)
+          AppTwoPane(
+            secondaryFirst: true,
+            secondaryWidth: 360,
+            secondary: [
+              AppPanel(
+                title: 'Organization information',
+                child: AppCard(
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 6),
+                  child: Column(
+                    children: [
+                      text(
+                        'Organization name',
+                        'name',
+                        draft.name,
+                        (v) => cubit.fields(name: v),
+                        s,
+                      ),
+                      text(
+                        'Phone number',
+                        'phone',
+                        draft.phone,
+                        (v) => cubit.fields(phone: v),
+                        s,
+                        max: 30,
+                        phone: true,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              AppCard(
+                padding: const EdgeInsets.all(18),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.schedule, size: 20, color: colors.primary),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Timezone stays unchanged so existing booking times remain correct.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            primary: [
+              AppPanel(
+                title: 'Locations & address',
+                subtitle:
+                    '${draft.locations.length} '
+                    '${draft.locations.length == 1 ? 'location' : 'locations'}',
+                child: Column(
+                  children: [
+                    for (var i = 0; i < draft.locations.length; i++)
+                      Padding(
+                        padding: EdgeInsets.only(top: i == 0 ? 0 : 16),
+                        child: AppCard(
+                          padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
+                          child: Builder(
+                            builder: (_) {
+                              final cells = locationCells(s, i);
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    'Location ${i + 1}',
+                                    style: Theme.of(c).textTheme.titleSmall
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                  const SizedBox(height: 18),
+                                  for (var k = 0; k < cells.length; k += 2)
+                                    pair(
+                                      cells[k],
+                                      k + 1 < cells.length
+                                          ? cells[k + 1]
+                                          : null,
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(
     BuildContext context,
@@ -119,206 +395,113 @@ class _OrganizationEditScreenState extends State<OrganizationEditScreen> {
         onPopInvokedWithResult: (popped, result) {
           if (!popped) exit();
         },
-        child: AppPage(
-          title: 'Edit organization',
-          back: true,
-          showAppBar: true,
-          compactHeader: true,
-          onBack: exit,
-          scrollId: 'organization-edit',
-          bottomBar: draft == null
-              ? null
-              : SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      24,
-                      12,
-                      24,
-                      12 + MediaQuery.viewInsetsOf(c).bottom,
+        child: isDesktopWidth(c)
+            ? desktopPage(c, s)
+            : AppPage(
+                title: 'Edit organization',
+                back: true,
+                showAppBar: true,
+                compactHeader: true,
+                onBack: exit,
+                scrollId: 'organization-edit',
+                bottomBar: draft == null
+                    ? null
+                    : SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            24,
+                            12,
+                            24,
+                            12 + MediaQuery.viewInsetsOf(c).bottom,
+                          ),
+                          child: AppButton(
+                            label: 'Save changes',
+                            busy: s.busy,
+                            busyLabel: 'Saving changes…',
+                            onPressed: s.canSave ? cubit.save : null,
+                          ),
+                        ),
+                      ),
+                children: [
+                  if (s.loading)
+                    AppLoadingState(
+                      initial: draft == null,
+                      label: draft == null
+                          ? 'Loading organization details…'
+                          : null,
                     ),
-                    child: AppButton(
-                      label: 'Save changes',
-                      busy: s.busy,
-                      busyLabel: 'Saving changes…',
-                      onPressed: s.canSave ? cubit.save : null,
+                  if (s.error != null) ...[
+                    AppErrorWidget(
+                      message: s.error!,
+                      onRetry: draft == null ? cubit.load : null,
                     ),
-                  ),
-                ),
-          children: [
-            if (s.loading)
-              AppLoadingState(
-                initial: draft == null,
-                label: draft == null ? 'Loading organization details…' : null,
-              ),
-            if (s.error != null) ...[
-              AppErrorWidget(
-                message: s.error!,
-                onRetry: draft == null ? cubit.load : null,
-              ),
-              if (s.conflict)
-                TextButton.icon(
-                  onPressed: s.busy ? null : reload,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Reload latest details'),
-                ),
-              const SizedBox(height: 16),
-            ],
-            if (draft != null) ...[
-              Text(
-                'Organization information',
-                style: Theme.of(c).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 12),
-              AppCard(
-                child: Column(
-                  children: [
-                    text(
-                      'Organization name',
-                      'name',
-                      draft.name,
-                      (v) => cubit.fields(name: v),
-                      s,
-                    ),
-                    text(
-                      'Phone number',
-                      'phone',
-                      draft.phone,
-                      (v) => cubit.fields(phone: v),
-                      s,
-                      max: 30,
-                      phone: true,
-                    ),
+                    if (s.conflict)
+                      TextButton.icon(
+                        onPressed: s.busy ? null : reload,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reload latest details'),
+                      ),
+                    const SizedBox(height: 16),
                   ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Locations & address',
-                style: Theme.of(c).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Timezone stays unchanged so existing booking times remain correct.',
-              ),
-              const SizedBox(height: 16),
-              for (var i = 0; i < draft.locations.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          'Location ${i + 1}',
-                          style: Theme.of(c).textTheme.titleSmall,
-                        ),
-                        const SizedBox(height: 16),
-                        text(
-                          'Location name',
-                          '${draft.locations[i].id}.name',
-                          draft.locations[i].name,
-                          (v) => cubit.locationFields(i, name: v),
-                          s,
-                        ),
-                        text(
-                          'Address line 1',
-                          '${draft.locations[i].id}.line1',
-                          draft.locations[i].line1,
-                          (v) => cubit.locationFields(i, line1: v),
-                          s,
-                          max: 200,
-                        ),
-                        text(
-                          'Address line 2 (optional)',
-                          '${draft.locations[i].id}.line2',
-                          draft.locations[i].line2,
-                          (v) => cubit.locationFields(i, line2: v),
-                          s,
-                          max: 200,
-                        ),
-                        text(
-                          'City',
-                          '${draft.locations[i].id}.city',
-                          draft.locations[i].city,
-                          (v) => cubit.locationFields(i, city: v),
-                          s,
-                        ),
-                        AppPicker(
-                          label: 'Country',
-                          value: draft.locations[i].countryCode,
-                          enabled: !s.busy && !s.loading,
-                          items: [
-                            const PickerItem('', 'Choose country'),
-                            ...s.countries.map(
-                              (o) => PickerItem(o.code, o.name),
-                            ),
-                          ],
-                          onChanged: (v) => cubit.country(i, v),
-                        ),
-                        pickerError(
-                          s.errors['${draft.locations[i].id}.country'],
-                        ),
-                        const SizedBox(height: 16),
-                        if (s.loadingCountries.contains(
-                          draft.locations[i].countryCode,
-                        ))
-                          const AppRefreshIndicator(label: 'Loading states…')
-                        else if (s.failedCountries.contains(
-                          draft.locations[i].countryCode,
-                        ))
-                          TextButton.icon(
-                            onPressed: () => cubit.loadStates(
-                              draft.locations[i].countryCode,
-                            ),
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Retry loading states'),
-                          )
-                        else if (s
-                                .states[draft.locations[i].countryCode]
-                                ?.isNotEmpty ==
-                            true) ...[
-                          AppPicker(
-                            label: 'State',
-                            value: draft.locations[i].stateCode,
-                            enabled: !s.busy && !s.loading,
-                            items: [
-                              const PickerItem('', 'Choose state'),
-                              ...s.states[draft.locations[i].countryCode]!.map(
-                                (o) => PickerItem(o.code, o.name),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                cubit.locationFields(i, stateCode: v),
-                          ),
-                          pickerError(
-                            s.errors['${draft.locations[i].id}.state'],
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        text(
-                          'Pincode',
-                          '${draft.locations[i].id}.pincode',
-                          draft.locations[i].pincode,
-                          (v) => cubit.locationFields(i, pincode: v),
-                          s,
-                          max: 20,
-                        ),
-                        InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Timezone',
-                            enabled: false,
-                            prefixIcon: Icon(Icons.schedule),
-                          ),
-                          child: Text(draft.locations[i].timezone),
-                        ),
-                      ],
+                  if (draft != null) ...[
+                    Text(
+                      'Organization information',
+                      style: Theme.of(c).textTheme.titleMedium,
                     ),
-                  ),
-                ),
-            ],
-          ],
-        ),
+                    const SizedBox(height: 12),
+                    AppCard(
+                      child: Column(
+                        children: [
+                          text(
+                            'Organization name',
+                            'name',
+                            draft.name,
+                            (v) => cubit.fields(name: v),
+                            s,
+                          ),
+                          text(
+                            'Phone number',
+                            'phone',
+                            draft.phone,
+                            (v) => cubit.fields(phone: v),
+                            s,
+                            max: 30,
+                            phone: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Locations & address',
+                      style: Theme.of(c).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Timezone stays unchanged so existing booking times remain correct.',
+                    ),
+                    const SizedBox(height: 16),
+                    for (var i = 0; i < draft.locations.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: AppCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'Location ${i + 1}',
+                                style: Theme.of(c).textTheme.titleSmall,
+                              ),
+                              const SizedBox(height: 16),
+                              ...locationCells(s, i).nonNulls,
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
       );
     },
   );

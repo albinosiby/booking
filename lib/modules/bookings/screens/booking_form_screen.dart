@@ -686,6 +686,8 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
   Widget page(BookingFormModel s, [AdmissionState? a]) {
     final locked = s.locked || a?.busy == true || a?.locked == true;
+    // Desktop web: details on the left, payment beside them.
+    final wide = isDesktopWidth(context);
     return PopScope(
       canPop: leaving || !locked,
       onPopInvokedWithResult: (popped, _) {
@@ -696,7 +698,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         compactHeader: true,
         title: s.original == null ? 'New booking' : 'Reschedule booking',
         scrollId: 'booking-form',
-        maxWidth: 760,
+        maxWidth: wide ? 1180 : 760,
         actions: [
           IconButton(
             tooltip: 'Close booking',
@@ -705,7 +707,10 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
           ),
         ],
         bottomBar:
-            s.loading || !s.catalog.canManage || s.catalog.businesses.isEmpty
+            s.loading ||
+                !s.catalog.canManage ||
+                s.catalog.businesses.isEmpty ||
+                (wide && !s.review && a == null)
             ? null
             : a != null
             ? admissionConfirm(a)
@@ -738,36 +743,82 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
               s.catalog.canManage &&
               s.catalog.businesses.isNotEmpty)
             if (s.review && a == null)
-              review(s)
-            else ...[
-              customerSection(s, a),
-              spaceSection(s, a),
-              if (s.original == null &&
-                  admissionBusinessTypes.contains(s.business?.type) &&
-                  s.space != null)
-                poolOptions(s, enabled: !locked && a?.loading != true),
-              if (a == null) timeSection(s) else admissionSection(s, a),
-              if (s.original == null)
-                a == null ? paymentSection(s) : admissionPayments(a)
-              else
-                BookingFormSection(
-                  number: 4,
-                  title: 'Reschedule reason',
-                  summary: 'Existing payments stay attached to this booking.',
-                  children: [
-                    ConfigurationField(
-                      label: 'Reschedule reason',
-                      value: s.draft.reason,
-                      enabled: !s.locked,
-                      onChanged: cubit.reason,
+              wide
+                  ? Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 720),
+                        child: review(s),
+                      ),
+                    )
+                  : review(s)
+            else if (wide)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: details(s, a, locked),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 28),
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        settlement(s, a),
+                        if (a == null) ...[
+                          const SizedBox(height: 16),
+                          BookingConfirmBar(
+                            model: s,
+                            onReview: cubit.review,
+                            onConfirm: cubit.confirm,
+                            inline: true,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              ...details(s, a, locked),
+              settlement(s, a),
             ],
         ],
       ),
     );
   }
+
+  List<Widget> details(BookingFormModel s, AdmissionState? a, bool locked) => [
+    customerSection(s, a),
+    spaceSection(s, a),
+    if (s.original == null &&
+        admissionBusinessTypes.contains(s.business?.type) &&
+        s.space != null)
+      poolOptions(s, enabled: !locked && a?.loading != true),
+    if (a == null) timeSection(s) else admissionSection(s, a),
+  ];
+
+  Widget settlement(BookingFormModel s, AdmissionState? a) => s.original == null
+      ? a == null
+            ? paymentSection(s)
+            : admissionPayments(a)
+      : BookingFormSection(
+          number: 4,
+          title: 'Reschedule reason',
+          summary: 'Existing payments stay attached to this booking.',
+          children: [
+            ConfigurationField(
+              label: 'Reschedule reason',
+              value: s.draft.reason,
+              enabled: !s.locked,
+              onChanged: cubit.reason,
+            ),
+          ],
+        );
 
   @override
   Widget build(BuildContext context) =>

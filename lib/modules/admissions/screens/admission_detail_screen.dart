@@ -101,17 +101,16 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
 
   Future<void> payment(bool refund) async {
     final a = cubit.state.detail!;
-    final result =
-        await showModalBottomSheet<(List<BookingPaymentDraft>, String)>(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          builder: (context) => _AdmissionPaymentSheet(
-            refund: refund,
-            currency: cubit.state.catalog.currency,
-            limit: refund ? a.paid : a.balance,
-          ),
-        );
+    final result = await showAdaptiveSheet<(List<BookingPaymentDraft>, String)>(
+      context: context,
+      scrollable: false,
+      showDragHandle: false,
+      builder: (context) => _AdmissionPaymentSheet(
+        refund: refund,
+        currency: cubit.state.catalog.currency,
+        limit: refund ? a.paid : a.balance,
+      ),
+    );
     if (result != null && mounted) {
       await cubit.collect(
         result.$1,
@@ -435,6 +434,209 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
     );
   }
 
+  // Check-in, renewal and payment actions shared by both layouts.
+  List<Widget> actionButtons(Admission a, AdmissionState s, bool enabled) => [
+    if (a.canCheckIn && s.catalog.canAttend) ...[
+      AppButton(
+        label: 'Mark present',
+        icon: Icons.how_to_reg,
+        onPressed: enabled ? checkIn : null,
+      ),
+      SizedBox(height: 10.h),
+    ],
+    if (a.canRenew && s.catalog.canManage) ...[
+      AppButton(
+        label: 'Renew plan',
+        icon: Icons.autorenew,
+        onPressed: enabled ? () => renew(a) : null,
+      ),
+      SizedBox(height: 10.h),
+    ],
+    Wrap(
+      spacing: 8.w,
+      runSpacing: 8.h,
+      children: [
+        if (a.renewalId != null)
+          OutlinedButton.icon(
+            onPressed: () => context.push('/admissions/${a.renewalId}'),
+            icon: const Icon(Icons.open_in_new, size: 18),
+            label: const Text('View renewal'),
+          ),
+        if (a.balance > 0 && s.catalog.canCollect)
+          OutlinedButton.icon(
+            onPressed: enabled ? () => payment(false) : null,
+            icon: const Icon(Icons.payments_outlined, size: 18),
+            label: const Text('Collect payment'),
+          ),
+        if (a.paid > 0 && s.catalog.owner)
+          OutlinedButton.icon(
+            onPressed: enabled ? () => payment(true) : null,
+            icon: const Icon(Icons.undo, size: 18),
+            label: const Text('Record refund'),
+          ),
+      ],
+    ),
+    if (s.busy) const AppLoadingState(initial: false),
+  ];
+
+  Widget noVisits(Admission a) => AppCard(
+    child: Row(
+      children: [
+        Icon(
+          Icons.event_busy_outlined,
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6),
+        ),
+        SizedBox(width: 12.w),
+        Expanded(
+          child: Text(
+            a.mode == 'flexible'
+                ? 'No visits yet. Tap Mark present when the student arrives.'
+                : 'No sessions scheduled.',
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget payments(Admission a, String currency) {
+    final theme = Theme.of(context), scheme = theme.colorScheme;
+    if (a.payments.isEmpty) {
+      return const AppCard(child: Text('No payments recorded yet.'));
+    }
+    return AppCard(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        children: [
+          for (final (i, p) in a.payments.indexed) ...[
+            if (i > 0) const Divider(height: 1),
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor:
+                    (p.kind == 'refund' ? scheme.error : scheme.primary)
+                        .withValues(alpha: .14),
+                child: Icon(
+                  p.kind == 'refund' ? Icons.north_east : Icons.south_west,
+                  size: 18,
+                  color: p.kind == 'refund' ? scheme.error : scheme.primary,
+                ),
+              ),
+              title: Text(
+                '${p.kind == 'refund' ? 'Refund' : 'Collected'} · ${admissionMethod(p.method)}',
+              ),
+              subtitle: Text(
+                [
+                  admissionTime(p.localReceived),
+                  if (p.reason.isNotEmpty) p.reason,
+                ].join('\n'),
+              ),
+              trailing: Text(
+                '${p.kind == 'refund' ? '−' : '+'}${bookingMoney(p.amount, currency)}',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: p.kind == 'refund' ? scheme.error : scheme.primary,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget history(Admission a) => AppCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, e) in a.history.reversed.indexed)
+          _HistoryEntry(
+            title: admissionAction(e.action),
+            time: admissionTime(e.at),
+            reason: e.reason,
+            last: i == a.history.length - 1,
+          ),
+        if (a.history.isEmpty) const Text('No history yet.'),
+      ],
+    ),
+  );
+
+  // Desktop web: headline figures, then the student, plan and payments
+  // beside the sessions and history.
+  List<Widget> desktop(Admission a, AdmissionState s, bool enabled) {
+    final scheme = Theme.of(context).colorScheme;
+    final currency = s.catalog.currency;
+    final unit = a.kind == 'coaching' ? 'classes' : 'days';
+    final upcoming = a.visits
+        .where((v) => v.status != 'cancelled' && !v.hasStarted)
+        .length;
+    return [
+      AppStatRow(
+        children: [
+          AppStatTile(
+            highlight: true,
+            icon: admissionKindIcon(a.kind),
+            label: 'Remaining',
+            value: '${a.remaining} of ${a.allowance}',
+            caption: '$unit left · expires ${a.expiry}',
+          ),
+          AppStatTile(
+            icon: Icons.how_to_reg_outlined,
+            label: 'Attended',
+            value: '${a.attended}',
+            caption: '${a.used} $unit used',
+          ),
+          AppStatTile(
+            icon: Icons.south_west_rounded,
+            label: 'Paid',
+            value: bookingMoney(a.paid, currency),
+            caption: 'of ${bookingMoney(a.total, currency)} total',
+          ),
+          AppStatTile(
+            icon: a.balance > 0
+                ? Icons.receipt_long_outlined
+                : Icons.check_circle_outline,
+            accent: a.balance > 0 ? scheme.error : null,
+            label: 'Balance due',
+            value: bookingMoney(a.balance, currency),
+            caption: a.balance > 0 ? 'Outstanding' : 'Fully paid',
+          ),
+        ],
+      ),
+      const SizedBox(height: 32),
+      AppTwoPane(
+        secondaryFirst: true,
+        secondaryWidth: 420,
+        secondary: [
+          AppPanel(title: 'Student & plan', child: summary(a, s)),
+          ...actionButtons(a, s, enabled),
+          const SizedBox(height: 28),
+          AppPanel(
+            title: 'Payments',
+            subtitle: a.payments.isEmpty
+                ? null
+                : '${a.payments.length} recorded',
+            child: payments(a, currency),
+          ),
+        ],
+        primary: [
+          AppPanel(
+            title: 'Sessions & attendance',
+            subtitle: a.visits.isEmpty
+                ? null
+                : '${a.visits.length} ${a.visits.length == 1 ? 'session' : 'sessions'}${upcoming > 0 ? ' · $upcoming upcoming' : ''}',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (a.visits.isEmpty) noVisits(a),
+                for (final v in a.visits) visit(a, v, s, enabled),
+              ],
+            ),
+          ),
+          AppPanel(title: 'History', child: history(a)),
+        ],
+      ),
+    ];
+  }
+
   @override
   Widget build(
     BuildContext context,
@@ -442,8 +644,8 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
     bloc: cubit,
     builder: (context, s) {
       final a = s.detail, enabled = !s.loading && !s.busy && !s.locked;
-      final theme = Theme.of(context), scheme = theme.colorScheme;
       final currency = s.catalog.currency;
+      final wide = isDesktopWidth(context);
       final canCancel =
           a != null &&
           ['active', 'upcoming'].contains(a.status) &&
@@ -454,6 +656,10 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
           title: a?.customer.name ?? 'Admission',
           back: true,
           scrollId: 'admission-${widget.id}',
+          maxWidth: wide ? 1240 : 620,
+          subtitle: wide && a != null
+              ? '${a.planName} · ${a.reference} · ${admissionStatusLabel(a.status)}'
+              : null,
           actions: [
             IconButton(
               tooltip: 'Refresh admission',
@@ -478,146 +684,26 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
             if (s.error != null) AppErrorWidget(message: s.error!),
             if (s.locked && !s.busy)
               AppButton(label: 'Retry action', onPressed: cubit.retry),
-            if (a != null) ...[
+            if (a != null && wide) ...desktop(a, s, enabled),
+            if (a != null && !wide) ...[
               summary(a, s),
               SizedBox(height: 12.h),
               money(a, currency),
               SizedBox(height: 16.h),
-              if (a.canCheckIn && s.catalog.canAttend) ...[
-                AppButton(
-                  label: 'Mark present',
-                  icon: Icons.how_to_reg,
-                  onPressed: enabled ? checkIn : null,
-                ),
-                SizedBox(height: 10.h),
-              ],
-              if (a.canRenew && s.catalog.canManage) ...[
-                AppButton(
-                  label: 'Renew plan',
-                  icon: Icons.autorenew,
-                  onPressed: enabled ? () => renew(a) : null,
-                ),
-                SizedBox(height: 10.h),
-              ],
-              Wrap(
-                spacing: 8.w,
-                runSpacing: 8.h,
-                children: [
-                  if (a.renewalId != null)
-                    OutlinedButton.icon(
-                      onPressed: () =>
-                          context.push('/admissions/${a.renewalId}'),
-                      icon: const Icon(Icons.open_in_new, size: 18),
-                      label: const Text('View renewal'),
-                    ),
-                  if (a.balance > 0 && s.catalog.canCollect)
-                    OutlinedButton.icon(
-                      onPressed: enabled ? () => payment(false) : null,
-                      icon: const Icon(Icons.payments_outlined, size: 18),
-                      label: const Text('Collect payment'),
-                    ),
-                  if (a.paid > 0 && s.catalog.owner)
-                    OutlinedButton.icon(
-                      onPressed: enabled ? () => payment(true) : null,
-                      icon: const Icon(Icons.undo, size: 18),
-                      label: const Text('Record refund'),
-                    ),
-                ],
-              ),
-              if (s.busy) const AppLoadingState(initial: false),
+              ...actionButtons(a, s, enabled),
               section(
                 'Sessions & attendance',
                 trailing: a.visits.isEmpty ? null : '${a.visits.length}',
               ),
-              if (a.visits.isEmpty)
-                AppCard(
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.event_busy_outlined,
-                        color: scheme.onSurface.withValues(alpha: .6),
-                      ),
-                      SizedBox(width: 12.w),
-                      Expanded(
-                        child: Text(
-                          a.mode == 'flexible'
-                              ? 'No visits yet. Tap Mark present when the student arrives.'
-                              : 'No sessions scheduled.',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              if (a.visits.isEmpty) noVisits(a),
               for (final v in a.visits) visit(a, v, s, enabled),
               section(
                 'Payments',
                 trailing: a.payments.isEmpty ? null : '${a.payments.length}',
               ),
-              if (a.payments.isEmpty)
-                const AppCard(child: Text('No payments recorded yet.'))
-              else
-                AppCard(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Column(
-                    children: [
-                      for (final (i, p) in a.payments.indexed) ...[
-                        if (i > 0) const Divider(height: 1),
-                        ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor:
-                                (p.kind == 'refund'
-                                        ? scheme.error
-                                        : scheme.primary)
-                                    .withValues(alpha: .14),
-                            child: Icon(
-                              p.kind == 'refund'
-                                  ? Icons.north_east
-                                  : Icons.south_west,
-                              size: 18,
-                              color: p.kind == 'refund'
-                                  ? scheme.error
-                                  : scheme.primary,
-                            ),
-                          ),
-                          title: Text(
-                            '${p.kind == 'refund' ? 'Refund' : 'Collected'} · ${admissionMethod(p.method)}',
-                          ),
-                          subtitle: Text(
-                            [
-                              admissionTime(p.localReceived),
-                              if (p.reason.isNotEmpty) p.reason,
-                            ].join('\n'),
-                          ),
-                          trailing: Text(
-                            '${p.kind == 'refund' ? '−' : '+'}${bookingMoney(p.amount, currency)}',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: p.kind == 'refund'
-                                  ? scheme.error
-                                  : scheme.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
+              payments(a, currency),
               section('History'),
-              AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final (i, e) in a.history.reversed.indexed)
-                      _HistoryEntry(
-                        title: admissionAction(e.action),
-                        time: admissionTime(e.at),
-                        reason: e.reason,
-                        last: i == a.history.length - 1,
-                      ),
-                    if (a.history.isEmpty) const Text('No history yet.'),
-                  ],
-                ),
-              ),
+              history(a),
             ],
           ],
         ),

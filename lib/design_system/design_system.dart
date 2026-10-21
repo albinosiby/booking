@@ -23,3 +23,6 @@ export 'components/app_pricing_time_range.dart';
 
 export 'animations/app_loading_animation.dart';
 export 'layouts/auth_split_layout.dart';
+export 'layouts/app_desktop.dart';
+export 'layouts/configuration_workspace.dart';
+export 'feedback/adaptive_sheet.dart';

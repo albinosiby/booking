@@ -611,9 +611,13 @@ class BookingConfirmBar extends StatelessWidget {
     required this.model,
     required this.onReview,
     required this.onConfirm,
+    this.inline = false,
   });
   final BookingFormModel model;
   final VoidCallback onReview, onConfirm;
+
+  /// Renders as a summary card beside the form instead of a bottom bar.
+  final bool inline;
   @override
   Widget build(BuildContext context) {
     final s = model, c = Theme.of(context).colorScheme;
@@ -671,6 +675,39 @@ class BookingConfirmBar extends StatelessWidget {
           ? onConfirm
           : onReview,
     );
+    final notes = [
+      if (s.error != null) ...[
+        const SizedBox(height: 8),
+        Text(
+          s.error!,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: c.error),
+        ),
+      ],
+      if (s.paid > 0) ...[
+        const SizedBox(height: 8),
+        Text(
+          'Received ${bookingMoney(s.paid, s.catalog.currency)}${s.balance == null ? '' : ' · Balance ${bookingMoney(s.balance!, s.catalog.currency)}'}${(s.refund ?? 0) > 0 ? ' · Refund due ${bookingMoney(s.refund!, s.catalog.currency)}' : ''}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    ];
+    if (inline) {
+      return Container(
+        key: const ValueKey('booking-summary-card'),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+          border: Border.all(color: c.primary.withValues(alpha: .35)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [total, const SizedBox(height: 16), action, ...notes],
+        ),
+      );
+    }
     return Material(
       elevation: 16,
       color: c.surface,
@@ -707,22 +744,7 @@ class BookingConfirmBar extends StatelessWidget {
                             ],
                           ),
                   ),
-                  if (s.error != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      s.error!,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: c.error),
-                    ),
-                  ],
-                  if (s.paid > 0) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Received ${bookingMoney(s.paid, s.catalog.currency)}${s.balance == null ? '' : ' · Balance ${bookingMoney(s.balance!, s.catalog.currency)}'}${(s.refund ?? 0) > 0 ? ' · Refund due ${bookingMoney(s.refund!, s.catalog.currency)}' : ''}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+                  ...notes,
                 ],
               ),
             ),

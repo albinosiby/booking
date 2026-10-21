@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../feedback/adaptive_sheet.dart';
 
 class PickerItem {
   const PickerItem(this.value, this.label);
@@ -28,10 +29,12 @@ class AppPicker extends StatelessWidget {
       onTap: !enabled
           ? null
           : () async {
-              final result = await showModalBottomSheet<String>(
+              final result = await showAdaptiveSheet<String>(
                 context: context,
-                isScrollControlled: true,
-                useSafeArea: true,
+                scrollable: false,
+                showClose: false,
+                showDragHandle: false,
+                maxWidth: 480,
                 builder: (_) => _PickerSheet(label: label, items: items),
               );
               if (result != null) {

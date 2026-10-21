@@ -274,10 +274,10 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('Connect Sarvam'), findsOneWidget);
       await tester.scrollUntilVisible(
-      find.text('Replace'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
+        find.text('Replace'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.tap(find.text('Replace'));
       await tester.pumpAndSettle();
       expect(find.text('Replace the voice tool key?'), findsOneWidget);

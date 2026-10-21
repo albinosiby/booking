@@ -6,6 +6,8 @@ import 'package:eden_booking/design_system/design_system.dart';
 import '../cubit/booking_list_cubit.dart';
 import '../models/booking_list_model.dart';
 import '../models/booking_models.dart';
+import 'booking_list_desktop.dart';
+import 'booking_month_calendar.dart';
 import 'booking_widgets.dart';
 
 /// Shared reservation presentation; Cubit owns filters, loading and pagination.
@@ -32,10 +34,8 @@ class BookingAgendaView extends StatelessWidget {
     ).toString(),
   );
 
-  Future<void> filters(BuildContext context) => showModalBottomSheet<void>(
+  Future<void> filters(BuildContext context) => showAdaptiveSheet<void>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
     builder: (context) =>
         _BookingFilters(cubit: cubit, initial: state, calendar: calendar),
   );
@@ -58,6 +58,150 @@ class BookingAgendaView extends StatelessWidget {
             .firstOrNull
             ?.name,
     ].whereType<String>().join(' · ');
+    // Desktop calendar: month grid beside the selected day's bookings.
+    final wide = calendar && isDesktopWidth(context);
+    // Desktop Bookings list: toolbar, summary tiles and a two-column grid.
+    final desk = !calendar && isDesktopWidth(context);
+    final empty = s.hasLoaded && s.error == null && s.bookings.isEmpty;
+    final dayHeader = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                calendar ? 'Bookings for $dateLabel' : 'Your bookings',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (calendar) ...[
+                const SizedBox(height: 4),
+                Text(dayLabel, style: theme.textTheme.bodySmall),
+              ],
+            ],
+          ),
+        ),
+        if (s.bookings.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '${s.bookings.length}${s.next == null ? '' : '+'} ${s.bookings.length == 1 ? 'booking' : 'bookings'}',
+              style: theme.textTheme.labelSmall,
+            ),
+          ),
+      ],
+    );
+    final searchField = TextFormField(
+      key: ValueKey('booking-search-${s.catalog.canView}'),
+      initialValue: s.query,
+      onChanged: cubit.query,
+      onFieldSubmitted: (_) => cubit.search(),
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: 'Customer, phone or reference',
+        labelText: 'Search bookings',
+        prefixIcon: const Icon(Icons.search_rounded),
+        suffixIcon: IconButton(
+          tooltip: 'Search bookings',
+          onPressed: cubit.search,
+          icon: const Icon(Icons.arrow_forward_rounded),
+        ),
+      ),
+    );
+    final spaceChips = <Widget>[
+      Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: ChoiceChip(
+          label: const Text('All spaces'),
+          selected: s.businessId == null && s.spaceId == null,
+          onSelected: (selected) {
+            if (selected) cubit.filters();
+          },
+        ),
+      ),
+      for (final space in orderedWorkspaceBusinesses(
+        context,
+        s.spaceFilters,
+        (f) => f.businessId,
+      ))
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: ChoiceChip(
+            label: Text(space.label),
+            selected:
+                s.businessId == space.businessId && s.spaceId == space.spaceId,
+            onSelected: (selected) {
+              if (selected) {
+                cubit.filters(
+                  businessId: space.businessId,
+                  spaceId: space.spaceId,
+                );
+              }
+            },
+          ),
+        ),
+    ];
+    final dateChip = InputChip(
+      avatar: const Icon(Icons.calendar_today_outlined, size: 16),
+      label: Text(dateLabel),
+      deleteButtonTooltipMessage: 'Show all dates',
+      onDeleted: () => cubit.date(null),
+    );
+    final results = [
+      if (s.loading) ...[
+        AppLoadingState(
+          initial: !s.hasLoaded,
+          label: !s.hasLoaded ? 'Loading reservations…' : null,
+        ),
+        const SizedBox(height: 8),
+      ],
+      if (s.error != null)
+        AppErrorWidget(message: s.error!, onRetry: cubit.refresh),
+      if (calendar)
+        for (final space in orderedWorkspaceBusinesses(
+          context,
+          s.bookings,
+          (b) => b.selection.businessId,
+        ).map((b) => b.selection.resourceId).toSet()) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              '${s.bookings.firstWhere((b) => b.selection.resourceId == space).businessName} · ${s.bookings.firstWhere((b) => b.selection.resourceId == space).spaceName}',
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+          ...([
+            ...s.bookings.where((b) => b.selection.resourceId == space),
+          ]..sort((a, b) => a.localStart.compareTo(b.localStart))).map(
+            (b) => BookingCard(
+              booking: b,
+              currency: s.catalog.currency,
+              canCollect: s.catalog.canCollect,
+            ),
+          ),
+        ]
+      else
+        ...s.bookings.map(
+          (b) => BookingCard(
+            booking: b,
+            currency: s.catalog.currency,
+            canCollect: s.catalog.canCollect,
+          ),
+        ),
+      if (s.next != null)
+        AppButton(
+          label: 'Load more',
+          secondary: true,
+          busy: s.loadingMore,
+          onPressed: s.loadingMore ? null : () => cubit.load(more: true),
+        ),
+    ];
     return AppPage(
       back: back,
       eyebrow: calendar ? null : 'RESERVATIONS',
@@ -116,192 +260,171 @@ class BookingAgendaView extends StatelessWidget {
         ),
       ],
       subtitle: calendar ? null : 'Every reservation, in one place.',
-      fillRemaining: s.hasLoaded && s.error == null && s.bookings.isEmpty
+      fillRemaining: empty && !wide
           ? _BookingEmptyMessage(calendar: calendar)
           : null,
-      maxWidth: 760,
+      maxWidth: wide || desk ? 1240 : 760,
       scrollId: calendar
           ? 'booking-calendar-agenda'
           : 'booking-reservation-list',
       floatingActionButton: s.catalog.canManage
           ? NewBookingFab(onPressed: () => create(context))
           : null,
-      children: [
-        if (calendar) ...[
-          BookingCalendarPanel(
-            date: selected,
-            counts: s.dateCounts,
-            onRangeChanged: cubit.countRange,
-            onChanged: (d) => cubit.date(bookingDate(d)),
-          ),
-          if (s.countsError != null)
-            TextButton.icon(
-              onPressed: cubit.refreshCounts,
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('Retry booking counts'),
-            ),
-        ],
-        if (activeFilters.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(activeFilters, style: theme.textTheme.bodySmall),
-          ),
-        if (!calendar) ...[
-          TextFormField(
-            key: ValueKey('booking-search-${s.catalog.canView}'),
-            initialValue: s.query,
-            onChanged: cubit.query,
-            onFieldSubmitted: (_) => cubit.search(),
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: 'Customer, phone or reference',
-              labelText: 'Search bookings',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: IconButton(
-                tooltip: 'Search bookings',
-                onPressed: cubit.search,
-                icon: const Icon(Icons.arrow_forward_rounded),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: const Text('All spaces'),
-                    selected: s.businessId == null && s.spaceId == null,
-                    onSelected: (selected) {
-                      if (selected) cubit.filters();
-                    },
-                  ),
-                ),
-                for (final space in orderedWorkspaceBusinesses(
-                  context,
-                  s.spaceFilters,
-                  (f) => f.businessId,
-                ))
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(space.label),
-                      selected:
-                          s.businessId == space.businessId &&
-                          s.spaceId == space.spaceId,
-                      onSelected: (selected) {
-                        if (selected) {
-                          cubit.filters(
-                            businessId: space.businessId,
-                            spaceId: space.spaceId,
-                          );
-                        }
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-        if (!calendar && s.date != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: InputChip(
-              avatar: const Icon(Icons.calendar_today_outlined, size: 16),
-              label: Text(dateLabel),
-              deleteButtonTooltipMessage: 'Show all dates',
-              onDeleted: () => cubit.date(null),
-            ),
-          ),
-        SizedBox(height: calendar ? 12 : 20),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
+      children: wide
+          ? [
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    calendar ? 'Bookings for $dateLabel' : 'Your bookings',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
+                  SizedBox(
+                    width: 360,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        BookingMonthCalendar(
+                          date: selected,
+                          counts: s.dateCounts,
+                          onRangeChanged: cubit.countRange,
+                          onChanged: (d) => cubit.date(bookingDate(d)),
+                        ),
+                        if (s.countsError != null)
+                          TextButton.icon(
+                            onPressed: cubit.refreshCounts,
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('Retry booking counts'),
+                          ),
+                        if (activeFilters.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.filter_alt_outlined,
+                                  size: 16,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    activeFilters,
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  if (calendar) ...[
-                    const SizedBox(height: 4),
-                    Text(dayLabel, style: theme.textTheme.bodySmall),
-                  ],
+                  const SizedBox(width: 32),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        dayHeader,
+                        const SizedBox(height: 18),
+                        ...results,
+                        if (empty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 48),
+                            child: _BookingEmptyMessage(calendar: calendar),
+                          ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-            ),
-            if (s.bookings.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
+            ]
+          : desk
+          ? [
+              AppToolbar(
+                key: const ValueKey('booking-list-toolbar'),
+                leading: Align(
+                  alignment: Alignment.centerLeft,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: searchField,
+                  ),
                 ),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '${s.bookings.length}${s.next == null ? '' : '+'} ${s.bookings.length == 1 ? 'booking' : 'bookings'}',
-                  style: theme.textTheme.labelSmall,
-                ),
+                actions: [if (s.date != null) dateChip],
               ),
-          ],
-        ),
-        const SizedBox(height: 18),
-        if (s.loading) ...[
-          AppLoadingState(
-            initial: !s.hasLoaded,
-            label: !s.hasLoaded ? 'Loading reservations…' : null,
-          ),
-          const SizedBox(height: 8),
-        ],
-        if (s.error != null)
-          AppErrorWidget(message: s.error!, onRetry: cubit.refresh),
-        if (calendar)
-          for (final space in orderedWorkspaceBusinesses(
-            context,
-            s.bookings,
-            (b) => b.selection.businessId,
-          ).map((b) => b.selection.resourceId).toSet()) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                '${s.bookings.firstWhere((b) => b.selection.resourceId == space).businessName} · ${s.bookings.firstWhere((b) => b.selection.resourceId == space).spaceName}',
-                style: theme.textTheme.titleMedium,
-              ),
-            ),
-            ...([
-              ...s.bookings.where((b) => b.selection.resourceId == space),
-            ]..sort((a, b) => a.localStart.compareTo(b.localStart))).map(
-              (b) => BookingCard(
-                booking: b,
+              const SizedBox(height: 14),
+              Wrap(runSpacing: 8, children: spaceChips),
+              if (activeFilters.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+                  child: Text(activeFilters, style: theme.textTheme.bodySmall),
+                ),
+              const SizedBox(height: 28),
+              if (s.error == null && s.bookings.isNotEmpty) ...[
+                BookingListStats(state: s),
+                const SizedBox(height: 32),
+              ],
+              dayHeader,
+              const SizedBox(height: 18),
+              if (s.loading) ...[
+                AppLoadingState(
+                  initial: !s.hasLoaded,
+                  label: !s.hasLoaded ? 'Loading reservations…' : null,
+                ),
+                const SizedBox(height: 8),
+              ],
+              if (s.error != null)
+                AppErrorWidget(message: s.error!, onRetry: cubit.refresh),
+              BookingDateGroups(
+                bookings: s.bookings,
                 currency: s.catalog.currency,
                 canCollect: s.catalog.canCollect,
               ),
-            ),
-          ]
-        else
-          ...s.bookings.map(
-            (b) => BookingCard(
-              booking: b,
-              currency: s.catalog.currency,
-              canCollect: s.catalog.canCollect,
-            ),
-          ),
-        if (s.next != null)
-          AppButton(
-            label: 'Load more',
-            secondary: true,
-            busy: s.loadingMore,
-            onPressed: s.loadingMore ? null : () => cubit.load(more: true),
-          ),
-      ],
+              if (s.next != null)
+                Center(
+                  child: SizedBox(
+                    width: 320,
+                    child: AppButton(
+                      label: 'Load more',
+                      secondary: true,
+                      busy: s.loadingMore,
+                      onPressed: s.loadingMore
+                          ? null
+                          : () => cubit.load(more: true),
+                    ),
+                  ),
+                ),
+            ]
+          : [
+              if (calendar) ...[
+                BookingCalendarPanel(
+                  date: selected,
+                  counts: s.dateCounts,
+                  onRangeChanged: cubit.countRange,
+                  onChanged: (d) => cubit.date(bookingDate(d)),
+                ),
+                if (s.countsError != null)
+                  TextButton.icon(
+                    onPressed: cubit.refreshCounts,
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Retry booking counts'),
+                  ),
+              ],
+              if (activeFilters.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(activeFilters, style: theme.textTheme.bodySmall),
+                ),
+              if (!calendar) ...[
+                searchField,
+                const SizedBox(height: 16),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: spaceChips),
+                ),
+              ],
+              if (!calendar && s.date != null)
+                Align(alignment: Alignment.centerLeft, child: dateChip),
+              SizedBox(height: calendar ? 12 : 20),
+              dayHeader,
+              const SizedBox(height: 18),
+              ...results,
+            ],
     );
   }
 }

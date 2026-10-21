@@ -222,4 +222,98 @@ void main() {
       await getIt.reset();
     },
   );
+  for (final size in const [Size(390, 900), Size(1440, 1000)]) {
+    testWidgets('admission sessions show the plan instead of a zero price at '
+        '${size.width}px', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await getIt.reset();
+      final session = WorkspaceCubit(BookingSource());
+      await session.load();
+      final repo = CustomersRepo();
+      final fake = FakeBookingRepository();
+      const selection = BookingSelection(
+        businessId: 'business',
+        resourceId: 'space',
+        optionId: 'hourly',
+        date: '2030-06-04',
+        time: '09:00',
+        duration: 60,
+        people: 1,
+      );
+      fake.records['visit'] = fake.row(
+        'visit',
+        selection,
+        const BookingCustomer(name: 'Alex', phone: '9876543210'),
+      );
+      repo.bookings = [
+        BookingRecord.fromJson({
+          ...fake.records['visit']!,
+          'admission_id': 'adm-1',
+          'admission_attendance': 'present',
+          'total_minor': 0,
+          'net_paid_minor': 0,
+          'balance_minor': 0,
+          'refund_due_minor': 0,
+          'payment_status': 'paid',
+        }),
+      ];
+      getIt.registerFactoryParam<CustomerDetailCubit, WorkspaceSession, String>(
+        (s, id) => CustomerDetailCubit(s, repo, id),
+      );
+      final router = GoRouter(
+        initialLocation: '/customers/customer',
+        routes: [
+          GoRoute(
+            path: '/customers/:id',
+            builder: (_, s) =>
+                CustomerDetailScreen(id: s.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/admissions/:id',
+            builder: (_, s) =>
+                Scaffold(body: Text('Admission ${s.pathParameters['id']}')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      addTearDown(session.close);
+      addTearDown(repo.events.close);
+      addTearDown(fake.events.close);
+      await tester.pumpWidget(
+        BlocProvider.value(
+          value: session,
+          child: ScreenUtilInit(
+            designSize: size,
+            builder: (_, _) => MaterialApp.router(
+              theme: AppTheme.build(Brightness.light),
+              routerConfig: router,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('customer-plan-session-visit')),
+        findsOneWidget,
+      );
+      expect(find.text('Plan session'), findsOneWidget);
+      expect(find.textContaining('Present'), findsOneWidget);
+      expect(find.text('Total: INR 0.00'), findsNothing);
+      expect(find.text('Paid'), findsNothing);
+      if (size.width > 1000) {
+        expect(find.text('Plan sessions'), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+      final open = find.byKey(const ValueKey('customer-open-admission-visit'));
+      await tester.ensureVisible(open);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      expect(find.text('Admission adm-1'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await getIt.reset();
+    });
+  }
 }

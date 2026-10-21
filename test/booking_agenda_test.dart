@@ -377,6 +377,59 @@ void main() {
     },
   );
 
+  testWidgets('desktop Calendar shows a month grid beside the day', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final w = WorkspaceCubit(BookingSource());
+    await w.load();
+    final repo = DateRepository()
+      ..seed('2030-06-04', 'Tuesday guest')
+      ..seed('2030-06-05', 'Wednesday guest');
+    final cubit = BookingListCubit(w, repo, BookingListMode.calendar);
+    cubit.date('2030-06-04');
+    addTearDown(cubit.close);
+    addTearDown(w.close);
+    await tester.pumpWidget(
+      ScreenUtilInit(
+        designSize: const Size(1440, 1000),
+        builder: (context, child) => MaterialApp(
+          theme: darkTheme(),
+          home: BlocBuilder<BookingListCubit, BookingListModel>(
+            bloc: cubit,
+            builder: (context, s) =>
+                BookingAgendaView(state: s, cubit: cubit, calendar: true),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('booking-month-calendar')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('booking-date-strip')), findsNothing);
+    expect(find.text('Tuesday guest'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('booking-month-day-2030-06-05')),
+    );
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+    expect(cubit.state.date, '2030-06-05');
+    expect(find.text('Wednesday guest'), findsOneWidget);
+    expect(cubit.state.dateCounts['2030-06-05'], 1);
+    await tester.tap(find.byTooltip('Next month'));
+    await tester.pumpAndSettle();
+    expect(find.text('July 2030'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('empty Calendar centers plain text below standalone day cards', (
     tester,
   ) async {

@@ -13,6 +13,7 @@ import '../cubit/expenses_cubit.dart';
 import '../cubit/expenses_state.dart';
 import '../models/expense_models.dart';
 import '../widgets/expenses_widgets.dart';
+import '../widgets/finance_desktop_widgets.dart';
 
 class ExpensesScreen extends StatefulWidget {
   const ExpensesScreen({super.key});
@@ -31,10 +32,8 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   }
 
   Future<void> export() async {
-    final format = await showModalBottomSheet<String>(
+    final format = await showAdaptiveSheet<String>(
       context: context,
-      useSafeArea: true,
-      showDragHandle: true,
       builder: (c) => Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -105,66 +104,61 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   }
 
   Future<void> manageCategories() async {
-    await showModalBottomSheet<void>(
+    await showAdaptiveSheet<void>(
       context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (c) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: .65,
-        builder: (c, controller) => BlocBuilder<ExpensesCubit, ExpensesState>(
-          bloc: cubit,
-          builder: (c, s) => ListView(
-            controller: controller,
-            padding: const EdgeInsets.all(20),
-            children: [
-              Text(
-                'Expense categories',
-                style: Theme.of(c).textTheme.titleLarge,
-              ),
-              ListTile(
-                leading: const Icon(Icons.add),
-                title: const Text('Add category'),
-                onTap: () => categoryDialog(),
-              ),
-              for (final category in s.categories)
-                ListTile(
-                  leading: Icon(expenseCategoryIcon(category.name)),
-                  title: Text(category.name),
-                  subtitle: category.active
-                      ? null
-                      : const Text('Archived · history preserved'),
-                  onTap: () => categoryDialog(category: category),
-                  trailing: IconButton(
-                    tooltip: category.active
-                        ? 'Archive category'
-                        : 'Restore category',
-                    icon: Icon(
-                      category.active
-                          ? Icons.archive_outlined
-                          : Icons.unarchive_outlined,
-                    ),
-                    onPressed: () => cubit.category(
-                      category.name,
-                      id: category.id,
-                      active: !category.active,
-                    ),
+      scrollable: false,
+      builder: (c) => AdaptiveSheetBody(
+        builder: (c, controller, shrink) =>
+            BlocBuilder<ExpensesCubit, ExpensesState>(
+              bloc: cubit,
+              builder: (c, s) => ListView(
+                controller: controller,
+                shrinkWrap: shrink,
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Text(
+                    'Expense categories',
+                    style: Theme.of(c).textTheme.titleLarge,
                   ),
-                ),
-            ],
-          ),
-        ),
+                  ListTile(
+                    leading: const Icon(Icons.add),
+                    title: const Text('Add category'),
+                    onTap: () => categoryDialog(),
+                  ),
+                  for (final category in s.categories)
+                    ListTile(
+                      leading: Icon(expenseCategoryIcon(category.name)),
+                      title: Text(category.name),
+                      subtitle: category.active
+                          ? null
+                          : const Text('Archived · history preserved'),
+                      onTap: () => categoryDialog(category: category),
+                      trailing: IconButton(
+                        tooltip: category.active
+                            ? 'Archive category'
+                            : 'Restore category',
+                        icon: Icon(
+                          category.active
+                              ? Icons.archive_outlined
+                              : Icons.unarchive_outlined,
+                        ),
+                        onPressed: () => cubit.category(
+                          category.name,
+                          id: category.id,
+                          active: !category.active,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
       ),
     );
   }
 
   Future<void> filters() async {
-    await showModalBottomSheet<void>(
+    await showAdaptiveSheet<void>(
       context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      isScrollControlled: true,
       builder: (c) => BlocBuilder<ExpensesCubit, ExpensesState>(
         bloc: cubit,
         builder: (c, s) => SingleChildScrollView(
@@ -205,6 +199,11 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     );
   }
 
+  Future<void> addExpense() async {
+    await context.push('/expenses/new');
+    await cubit.load(refresh: true);
+  }
+
   @override
   Widget build(
     BuildContext context,
@@ -214,6 +213,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       if (s.message != null) showMessage(c, s.message!);
     },
     builder: (c, s) {
+      if (isDesktopWidth(c)) return _desktop(c, s);
       final catalog = s.catalog, f = s.filter, summary = s.summary;
       final category = s.categories
           .where((c) => c.id == f.categoryId)
@@ -249,10 +249,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         ],
         floatingActionButton: catalog?.canExpense == true
             ? FloatingActionButton.extended(
-                onPressed: () async {
-                  await c.push('/expenses/new');
-                  await cubit.load(refresh: true);
-                },
+                onPressed: addExpense,
                 icon: const Icon(Icons.add),
                 label: const Text('Add expense'),
               )
@@ -442,5 +439,296 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     if (id != null) {
       cubit.setFilter(s.filter.copy(categoryId: id, clearCategory: id.isEmpty));
     }
+  }
+
+  // Wide web windows: toolbar, headline figures, then chart and ledger beside
+  // the category breakdown.
+  Widget _desktop(BuildContext c, ExpensesState s) {
+    final catalog = s.catalog, f = s.filter, summary = s.summary;
+    final scheme = Theme.of(c).colorScheme;
+    final category = s.categories
+        .where((c) => c.id == f.categoryId)
+        .firstOrNull;
+    final filtered =
+        (f.businessId != null ? 1 : 0) + (f.accountId != null ? 1 : 0);
+    final range = financeRangeLabel(
+      FinanceFilter(from: f.from, until: f.until),
+    );
+    final canView = catalog?.canView == true;
+    String money(int n) => financeMoney(n, catalog?.currency ?? 'INR');
+    final top = summary == null || summary.categories.isEmpty
+        ? null
+        : summary.categories.reduce((a, b) => b.total > a.total ? b : a);
+    return AppPage(
+      title: 'Expenses',
+      back: true,
+      scrollId: 'expenses',
+      maxWidth: 1240,
+      header: FinanceDesktopHeader(
+        title: 'Expenses',
+        subtitle: canView
+            ? 'Spending by category, business and account · $range'
+            : 'Record expenses for your organization',
+        actions: [
+          if (canView && summary != null)
+            IconButton.outlined(
+              tooltip: 'Download report',
+              onPressed: s.exporting ? null : export,
+              icon: s.exporting
+                  ? const AppSavingDots()
+                  : const Icon(Icons.download_outlined),
+            ),
+          IconButton.outlined(
+            tooltip: 'Refresh',
+            onPressed: s.loading ? null : () => cubit.load(refresh: true),
+            icon: const Icon(Icons.refresh),
+          ),
+          if (catalog?.canManage == true)
+            IconButton.outlined(
+              tooltip: 'Manage categories',
+              onPressed: manageCategories,
+              icon: const Icon(Icons.category_outlined),
+            ),
+        ],
+      ),
+      children: [
+        AppToolbar(
+          leading: canView
+              ? Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    FinanceDesktopPeriod(
+                      anchor: f.anchor,
+                      yearly: f.yearly,
+                      onChanged: (anchor, yearly) => cubit.setFilter(
+                        f.copy(anchor: anchor, yearly: yearly),
+                      ),
+                    ),
+                    FinanceFilterChip(
+                      icon: Icons.category_outlined,
+                      label: category?.name ?? 'All categories',
+                      tooltip: 'Choose category',
+                      active: f.categoryId != null,
+                      onTap: pickCategory,
+                      onClear: f.categoryId == null
+                          ? null
+                          : () => cubit.setFilter(f.copy(clearCategory: true)),
+                    ),
+                    FinanceFilterChip(
+                      icon: Icons.tune,
+                      label: filtered == 0 ? 'Filters' : 'Filters · $filtered',
+                      tooltip: 'Filter expenses',
+                      active: filtered > 0,
+                      onTap: filters,
+                    ),
+                  ],
+                )
+              : null,
+          actions: [
+            if (catalog?.canExpense == true)
+              FilledButton.icon(
+                onPressed: addExpense,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                ),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add expense'),
+              ),
+          ],
+        ),
+        // Fixed height so the page does not jump while loading.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 14, 0, 18),
+          child: SizedBox(
+            height: 3,
+            child: s.loading && summary != null
+                ? const LinearProgressIndicator(minHeight: 3)
+                : null,
+          ),
+        ),
+        if (s.loading && summary == null)
+          const AppLoadingState(initial: true, label: 'Loading expenses…'),
+        if (s.error != null)
+          AppErrorWidget(
+            message: s.error!,
+            onRetry: () => cubit.load(refresh: true),
+          ),
+        if (catalog != null && !catalog.canView)
+          const FinanceEmptyCard(
+            icon: Icons.lock_outline,
+            title: 'Finance reports are restricted',
+            message:
+                'You can record expenses. Ask the owner for finance access to view reports and expense history.',
+          ),
+        if (canView && summary != null)
+          AnimatedOpacity(
+            opacity: s.loading ? .45 : 1,
+            duration: const Duration(milliseconds: 150),
+            child: IgnorePointer(
+              ignoring: s.loading,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AppStatRow(
+                    children: [
+                      AppStatTile(
+                        highlight: true,
+                        icon: Icons.north_east_rounded,
+                        label: category?.name ?? 'Total expenses',
+                        value: money(summary.total),
+                        caption: range,
+                      ),
+                      AppStatTile(
+                        icon: Icons.receipt_long_outlined,
+                        label: 'Entries',
+                        value: '${summary.count}',
+                        caption: summary.count == 1
+                            ? 'Expense recorded'
+                            : 'Expenses recorded',
+                      ),
+                      () {
+                        final (label, value) = financeAverage(
+                          summary.total,
+                          f.anchor,
+                          f.yearly,
+                          catalog!.today,
+                        );
+                        return AppStatTile(
+                          icon: Icons.show_chart_rounded,
+                          label: label,
+                          value: money(value),
+                          caption: f.yearly
+                              ? 'Across elapsed months'
+                              : 'Across elapsed days',
+                        );
+                      }(),
+                      AppStatTile(
+                        icon: top == null
+                            ? Icons.category_outlined
+                            : expenseCategoryIcon(top.name),
+                        accent: scheme.error,
+                        label: 'Top category',
+                        value: top == null ? '—' : money(top.total),
+                        caption: top == null
+                            ? 'No spending yet'
+                            : summary.total <= 0
+                            ? top.name
+                            : '${top.name} · ${(top.total / summary.total * 100).round()}% of spending',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  AppTwoPane(
+                    primary: [
+                      AppPanel(
+                        title: 'Trend',
+                        subtitle: f.yearly
+                            ? 'Select a month to explore it'
+                            : range,
+                        child: AppCard(
+                          child: ExpenseChart(
+                            values: summary.bars(f),
+                            filter: f,
+                            currency: catalog!.currency,
+                            onMonth: (m) => cubit.setFilter(
+                              f.copy(
+                                anchor: DateTime(f.anchor.year, m),
+                                yearly: false,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      AppPanel(
+                        title: 'All expenses',
+                        subtitle:
+                            '${s.items.length} shown${s.next != null ? ' · more available' : ''}',
+                        child: s.items.isEmpty
+                            ? const FinanceEmptyCard(
+                                icon: Icons.receipt_long_outlined,
+                                title: 'No expenses in this period',
+                                message:
+                                    'Choose another period or add an expense.',
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  FinanceDayGroups<ExpenseItem>(
+                                    items: s.items,
+                                    dayOf: (i) => i.date,
+                                    amountOf: (i) => i.amount,
+                                    currency: catalog.currency,
+                                    today: catalog.today,
+                                    builder: (item) => ExpenseTile(
+                                      wide: true,
+                                      item: item,
+                                      currency: catalog.currency,
+                                      onTap: () => c.push(
+                                        '/expenses/${item.originalId ?? item.id}',
+                                      ),
+                                    ),
+                                  ),
+                                  if (s.next != null)
+                                    Center(
+                                      child: OutlinedButton(
+                                        onPressed: s.more ? null : cubit.more,
+                                        child: Text(
+                                          s.more ? 'Loading…' : 'Load more',
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                      ),
+                    ],
+                    secondary: [
+                      AppPanel(
+                        title: 'By category',
+                        subtitle: f.categoryId == null
+                            ? 'Select a category to filter'
+                            : 'Filtered to ${category?.name ?? 'one category'}',
+                        child: summary.categories.isEmpty
+                            ? const FinanceEmptyCard(
+                                icon: Icons.pie_chart_outline,
+                                title: 'No categories yet',
+                                message:
+                                    'Spending by category appears once recorded.',
+                              )
+                            : FinanceShareList(
+                                shares: [
+                                  for (final c in summary.categories)
+                                    FinanceShare(
+                                      c.id,
+                                      c.name,
+                                      c.total,
+                                      expenseCategoryIcon(c.name),
+                                    ),
+                                ],
+                                currency: catalog.currency,
+                                selected: f.categoryId,
+                                onSelect: (id) =>
+                                    cubit.setFilter(f.copy(categoryId: id)),
+                              ),
+                      ),
+                      AppPanel(
+                        title: 'Reports',
+                        child: FinanceExportCard(
+                          note:
+                              '$range · includes the selected category and filters.',
+                          exporting: s.exporting,
+                          onExport: cubit.export,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }

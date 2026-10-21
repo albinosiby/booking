@@ -39,12 +39,10 @@ class CalendarAttendance extends StatelessWidget {
               param1: context.read<WorkspaceCubit>(),
             );
             cubit.loadDetail(admissionId);
-            await showModalBottomSheet<void>(
+            await showAdaptiveSheet<void>(
               context: context,
-              useSafeArea: true,
               isDismissible: false,
-              enableDrag: false,
-              isScrollControlled: true,
+              showClose: false,
               builder: (context) => BlocBuilder<AdmissionCubit, AdmissionState>(
                 bloc: cubit,
                 builder: (context, s) {

@@ -16,6 +16,31 @@ class ExpenseReceipt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final item = detail.item;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ExpenseReceiptHero(detail: detail, currency: currency),
+        const ExpenseDetailHeading(title: 'Expense information'),
+        ExpenseInformationCard(item: item),
+        const ExpenseDetailHeading(title: 'Paid from'),
+        ExpensePaymentsCard(item: item, currency: currency),
+      ],
+    );
+  }
+}
+
+/// Total, category and date card, plus the reversal notice when reversed.
+class ExpenseReceiptHero extends StatelessWidget {
+  const ExpenseReceiptHero({
+    super.key,
+    required this.detail,
+    required this.currency,
+  });
+  final ExpenseDetail detail;
+  final String currency;
+  @override
+  Widget build(BuildContext context) {
+    final item = detail.item;
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     return Column(
@@ -99,46 +124,83 @@ class ExpenseReceipt extends StatelessWidget {
             ),
           ),
         ],
-        const ExpenseDetailHeading(title: 'Expense information'),
-        AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ExpenseDetailField(label: 'Reason', value: item.reason),
-              ExpenseDetailField(
-                label: 'Business',
-                value: item.business ?? 'Organization-wide',
-              ),
-              if (item.space?.trim().isNotEmpty == true)
-                ExpenseDetailField(label: 'Space', value: item.space!),
-              if (item.staff.trim().isNotEmpty)
-                ExpenseDetailField(label: 'Recorded by', value: item.staff),
-              if (item.reference.trim().isNotEmpty)
-                ExpenseDetailField(label: 'Reference', value: item.reference),
-            ],
-          ),
-        ),
-        const ExpenseDetailHeading(title: 'Paid from'),
-        if (item.lines.isEmpty)
-          const Text('No payment breakdown available')
-        else
-          AppCard(
-            child: Column(
-              children: [
-                for (var i = 0; i < item.lines.length; i++) ...[
-                  if (i > 0)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Divider(height: 1),
-                    ),
-                  _PaymentLine(line: item.lines[i], currency: currency),
-                ],
-              ],
-            ),
-          ),
       ],
     );
   }
+}
+
+/// Reason, business, space, staff and reference fields.
+class ExpenseInformationCard extends StatelessWidget {
+  const ExpenseInformationCard({
+    super.key,
+    required this.item,
+    this.wide = false,
+  });
+  final ExpenseItem item;
+
+  /// Lays the fields out in two columns on desktop.
+  final bool wide;
+  @override
+  Widget build(BuildContext context) {
+    final fields = [
+      ExpenseDetailField(label: 'Reason', value: item.reason),
+      ExpenseDetailField(
+        label: 'Business',
+        value: item.business ?? 'Organization-wide',
+      ),
+      if (item.space?.trim().isNotEmpty == true)
+        ExpenseDetailField(label: 'Space', value: item.space!),
+      if (item.staff.trim().isNotEmpty)
+        ExpenseDetailField(label: 'Recorded by', value: item.staff),
+      if (item.reference.trim().isNotEmpty)
+        ExpenseDetailField(label: 'Reference', value: item.reference),
+    ];
+    return AppCard(
+      padding: wide ? const EdgeInsets.all(22) : const EdgeInsets.all(18),
+      child: wide
+          ? AppGrid(minTileWidth: 240, maxColumns: 2, gap: 12, children: fields)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: fields,
+            ),
+    );
+  }
+}
+
+/// Accounts and methods the expense was paid from.
+class ExpensePaymentsCard extends StatelessWidget {
+  const ExpensePaymentsCard({
+    super.key,
+    required this.item,
+    required this.currency,
+    this.wide = false,
+  });
+  final ExpenseItem item;
+  final String currency;
+
+  /// Pins amounts to the card's right edge on desktop.
+  final bool wide;
+  @override
+  Widget build(BuildContext context) => item.lines.isEmpty
+      ? const Text('No payment breakdown available')
+      : AppCard(
+          child: Column(
+            children: [
+              for (var i = 0; i < item.lines.length; i++) ...[
+                if (i > 0)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Divider(height: 1),
+                  ),
+                _PaymentLine(
+                  line: item.lines[i],
+                  currency: currency,
+                  wide: wide,
+                ),
+              ],
+            ],
+          ),
+        );
 }
 
 class ExpenseDetailHeading extends StatelessWidget {
@@ -192,9 +254,14 @@ class ExpenseDetailField extends StatelessWidget {
 }
 
 class _PaymentLine extends StatelessWidget {
-  const _PaymentLine({required this.line, required this.currency});
+  const _PaymentLine({
+    required this.line,
+    required this.currency,
+    this.wide = false,
+  });
   final FinanceLine line;
   final String currency;
+  final bool wide;
   @override
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,7 +309,7 @@ class _PaymentLine extends StatelessWidget {
               children: [
                 Expanded(child: account),
                 const SizedBox(width: 12),
-                Flexible(child: amount),
+                if (wide) amount else Flexible(child: amount),
               ],
             );
           },

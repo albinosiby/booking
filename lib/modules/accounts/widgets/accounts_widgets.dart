@@ -162,16 +162,19 @@ class FinanceTransactionTile extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Flexible(
-              child: Text(
-                transfer
-                    ? financeMoney(entry.amount, currency)
-                    : positive
-                    ? '+${financeMoney(entry.amount, currency)}'
-                    : '−${financeMoney(-entry.amount, currency)}',
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: positive && !transfer ? scheme.primary : null,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  transfer
+                      ? financeMoney(entry.amount, currency)
+                      : positive
+                      ? '+${financeMoney(entry.amount, currency)}'
+                      : '−${financeMoney(-entry.amount, currency)}',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: positive && !transfer ? scheme.primary : null,
+                  ),
                 ),
               ),
             ),

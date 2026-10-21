@@ -5,6 +5,8 @@ import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
 import '../cubit/team_coaches_cubit.dart';
 import '../models/team_coaches_model.dart';
+import '../../pool/models/pool_configuration.dart';
+import '../widgets/team_desktop_widgets.dart';
 
 class TeamCoachesScreen extends StatefulWidget {
   const TeamCoachesScreen({super.key});
@@ -23,47 +25,133 @@ class _TeamCoachesScreenState extends State<TeamCoachesScreen> {
   }
 
   Future<void> editor() async {
-    await showModalBottomSheet<void>(
+    await showAdaptiveSheet<void>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
       isDismissible: false,
-      enableDrag: false,
-      builder: (_) => _CoachEditor(cubit: cubit),
+      showClose: false,
+      showDragHandle: true,
+      scrollable: false,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(top: isDesktopWidth(context) ? 16 : 0),
+        child: _CoachEditor(cubit: cubit),
+      ),
     );
     cubit.closeEditor();
   }
 
-  @override
-  Widget build(
+  void add() {
+    cubit.beginAdd();
+    editor();
+  }
+
+  Widget coachCard(
     BuildContext context,
-  ) => BlocBuilder<TeamCoachesCubit, TeamCoachesModel>(
-    bloc: cubit,
-    builder: (context, s) => AppPage(
+    TeamCoachesModel s,
+    CoachBusiness business,
+    PoolCoach coach,
+  ) => AppCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const CircleAvatar(child: Icon(Icons.sports_outlined)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    coach.name,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  SelectableText(coach.phone),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (coach.poolIds.isEmpty)
+          Text('No ${business.spacesLabel} assigned')
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final space in business.spaces.where(
+                (p) => coach.poolIds.contains(p.id),
+              ))
+                Chip(label: Text(space.name)),
+            ],
+          ),
+        OutlinedButton.icon(
+          onPressed: s.busy || business.spaces.isEmpty
+              ? null
+              : () {
+                  cubit.beginSpaces(business.id, coach.id);
+                  editor();
+                },
+          icon: Icon(
+            business.court ? Icons.sports_tennis : Icons.pool_outlined,
+          ),
+          label: Text('Assign ${business.spacesLabel}'),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          business.plans.any((p) => p.coachId == coach.id)
+              ? business.plans
+                    .where((p) => p.coachId == coach.id)
+                    .map((p) => p.name)
+                    .join(' · ')
+              : 'No coaching plans assigned',
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: s.busy || business.plans.isEmpty
+              ? null
+              : () {
+                  cubit.beginAssign(business.id, coach.id);
+                  editor();
+                },
+          icon: const Icon(Icons.assignment_ind_outlined),
+          label: const Text('Assign coaching plans'),
+        ),
+      ],
+    ),
+  );
+
+  // Wide windows: coach cards per business beside a coaching-plan summary.
+  Widget desktop(BuildContext context, TeamCoachesModel s) {
+    final theme = Theme.of(context), colors = theme.colorScheme;
+    final canAdd = s.businesses.isNotEmpty && !s.busy && !s.loading;
+    return AppPage(
       back: true,
       showAppBar: true,
       title: 'Coaches',
-      compactHeader: true,
+      eyebrow: 'TEAM & ACCESS',
       subtitle:
           'Add coach contacts and assign them to coaching plans. Staff access is managed separately.',
+      maxWidth: 1200,
       actions: [
         IconButton(
           tooltip: 'Refresh coaches',
           onPressed: s.loading || s.busy ? null : cubit.load,
           icon: const Icon(Icons.refresh),
         ),
-        if (cubit.authorized)
-          IconButton(
-            tooltip: 'Add coach',
-            onPressed: s.businesses.isEmpty || s.busy || s.loading
-                ? null
-                : () {
-                    cubit.beginAdd();
-                    editor();
-                  },
-            icon: const Icon(Icons.person_add_alt_outlined),
+        if (cubit.authorized) ...[
+          const SizedBox(width: 6),
+          Tooltip(
+            message: 'Add coach',
+            child: FilledButton.icon(
+              onPressed: canAdd ? add : null,
+              icon: const Icon(Icons.person_add_alt_outlined, size: 18),
+              label: const Text('Add coach'),
+            ),
           ),
+        ],
       ],
       children: [
         if (!cubit.authorized)
@@ -78,115 +166,207 @@ class _TeamCoachesScreenState extends State<TeamCoachesScreen> {
             AppErrorWidget(message: s.error!, onRetry: cubit.load),
           if (!s.loading && s.businesses.isEmpty)
             const AppEmptyState(
-              showCard: false,
               title: 'Set up a pool or court first',
               message:
                   'Save a pool or court configuration, then add coaches here.',
             ),
-          for (final business in s.businesses) ...[
-            Text(business.name, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            if (business.coaches.isEmpty)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 20),
-                child: Text(
-                  'No coaches added. Coaching plans remain Unassigned.',
-                ),
-              ),
-            for (final coach in business.coaches)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: AppCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const CircleAvatar(
-                            child: Icon(Icons.sports_outlined),
+          if (s.businesses.isNotEmpty)
+            AppTwoPane(
+              secondaryWidth: 340,
+              primary: [
+                for (final business in s.businesses)
+                  AppPanel(
+                    title: business.name,
+                    subtitle:
+                        '${business.coaches.length} '
+                        '${business.coaches.length == 1 ? 'coach' : 'coaches'} · '
+                        '${business.spaces.length} ${business.spacesLabel}',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (business.coaches.isEmpty)
+                          const AppCard(
+                            child: Text(
+                              'No coaches added. Coaching plans remain Unassigned.',
+                            ),
+                          )
+                        else
+                          AppGrid(
+                            minTileWidth: 320,
+                            maxColumns: 2,
+                            children: [
+                              for (final coach in business.coaches)
+                                coachCard(context, s, business, coach),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        if (business.plans.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              'Add a coaching plan in ${business.court ? 'court' : 'pool'} settings to assign a coach.',
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+              secondary: [
+                AppPanel(
+                  title: 'Coaching plans',
+                  subtitle: 'Who coaches each plan',
+                  child: AppListCard(
+                    children: [
+                      for (final business in s.businesses) ...[
+                        if (s.businesses.length > 1)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+                            child: Text(
+                              business.name,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: colors.primary,
+                              ),
+                            ),
+                          ),
+                        if (business.plans.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(18),
+                            child: Text('No coaching plans yet.'),
+                          ),
+                        for (final plan in business.plans)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 14,
+                            ),
+                            child: Row(
                               children: [
-                                Text(
-                                  coach.name,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
+                                Icon(
+                                  Icons.assignment_ind_outlined,
+                                  size: 20,
+                                  color: colors.onSurfaceVariant,
                                 ),
-                                const SizedBox(height: 4),
-                                SelectableText(coach.phone),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    plan.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 150,
+                                  ),
+                                  child: TeamChip(
+                                    business.coaches
+                                            .where((c) => c.id == plan.coachId)
+                                            .firstOrNull
+                                            ?.name ??
+                                        (plan.coachId == null
+                                            ? 'Unassigned'
+                                            : 'Staff coach'),
+                                    color: plan.coachId == null
+                                        ? colors.onSurfaceVariant
+                                        : null,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (coach.poolIds.isEmpty)
-                        Text('No ${business.spacesLabel} assigned')
-                      else
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          children: [
-                            for (final space in business.spaces.where(
-                              (p) => coach.poolIds.contains(p.id),
-                            ))
-                              Chip(label: Text(space.name)),
-                          ],
-                        ),
-                      OutlinedButton.icon(
-                        onPressed: s.busy || business.spaces.isEmpty
-                            ? null
-                            : () {
-                                cubit.beginSpaces(business.id, coach.id);
-                                editor();
-                              },
-                        icon: Icon(
-                          business.court
-                              ? Icons.sports_tennis
-                              : Icons.pool_outlined,
-                        ),
-                        label: Text('Assign ${business.spacesLabel}'),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        business.plans.any((p) => p.coachId == coach.id)
-                            ? business.plans
-                                  .where((p) => p.coachId == coach.id)
-                                  .map((p) => p.name)
-                                  .join(' · ')
-                            : 'No coaching plans assigned',
-                      ),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: s.busy || business.plans.isEmpty
-                            ? null
-                            : () {
-                                cubit.beginAssign(business.id, coach.id);
-                                editor();
-                              },
-                        icon: const Icon(Icons.assignment_ind_outlined),
-                        label: const Text('Assign coaching plans'),
-                      ),
+                      ],
                     ],
                   ),
                 ),
-              ),
-            if (business.plans.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: Text(
-                  'Add a coaching plan in ${business.court ? 'court' : 'pool'} settings to assign a coach.',
-                ),
-              ),
-          ],
+              ],
+            ),
         ],
       ],
-    ),
+    );
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) => BlocBuilder<TeamCoachesCubit, TeamCoachesModel>(
+    bloc: cubit,
+    builder: (context, s) => isDesktopWidth(context)
+        ? desktop(context, s)
+        : AppPage(
+            back: true,
+            showAppBar: true,
+            title: 'Coaches',
+            compactHeader: true,
+            subtitle:
+                'Add coach contacts and assign them to coaching plans. Staff access is managed separately.',
+            actions: [
+              IconButton(
+                tooltip: 'Refresh coaches',
+                onPressed: s.loading || s.busy ? null : cubit.load,
+                icon: const Icon(Icons.refresh),
+              ),
+              if (cubit.authorized)
+                IconButton(
+                  tooltip: 'Add coach',
+                  onPressed: s.businesses.isEmpty || s.busy || s.loading
+                      ? null
+                      : () {
+                          cubit.beginAdd();
+                          editor();
+                        },
+                  icon: const Icon(Icons.person_add_alt_outlined),
+                ),
+            ],
+            children: [
+              if (!cubit.authorized)
+                const AppErrorWidget(
+                  message: 'Only the owner can manage coaches.',
+                )
+              else ...[
+                if (s.loading)
+                  AppLoadingState(
+                    initial: s.businesses.isEmpty,
+                    label: s.businesses.isEmpty ? 'Loading coaches…' : null,
+                  ),
+                if (s.error != null && s.editor == null)
+                  AppErrorWidget(message: s.error!, onRetry: cubit.load),
+                if (!s.loading && s.businesses.isEmpty)
+                  const AppEmptyState(
+                    showCard: false,
+                    title: 'Set up a pool or court first',
+                    message:
+                        'Save a pool or court configuration, then add coaches here.',
+                  ),
+                for (final business in s.businesses) ...[
+                  Text(
+                    business.name,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  if (business.coaches.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 20),
+                      child: Text(
+                        'No coaches added. Coaching plans remain Unassigned.',
+                      ),
+                    ),
+                  for (final coach in business.coaches)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: coachCard(context, s, business, coach),
+                    ),
+                  if (business.plans.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Text(
+                        'Add a coaching plan in ${business.court ? 'court' : 'pool'} settings to assign a coach.',
+                      ),
+                    ),
+                ],
+              ],
+            ],
+          ),
   );
 }
 

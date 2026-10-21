@@ -6,6 +6,7 @@ import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
 import '../cubit/customer_cubits.dart';
 import '../models/customer_models.dart';
+import '../widgets/customer_desktop.dart';
 
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key});
@@ -39,46 +40,37 @@ class _CustomersScreenState extends State<CustomersScreen> {
     listener: (context, state) {
       if (search.text != state.query) search.text = state.query;
     },
-    builder: (context, s) => AppPage(
-      back: true,
-      title: 'Customers',
-      eyebrow: 'CUSTOMER DIRECTORY',
-      subtitle: 'Find a phone number and view its booking history.',
-      scrollId: 'customers',
-      maxWidth: 800,
-      children: [
-        TextField(
-          controller: search,
-          keyboardType: TextInputType.phone,
-          maxLength: 50,
-          onChanged: cubit.search,
-          decoration: InputDecoration(
-            labelText: 'Search phone number',
-            hintText: 'Enter the first digits',
-            prefixIcon: const Icon(Icons.search),
-            counterText: '',
-            suffixIcon: IconButton(
-              tooltip: 'Clear search',
-              onPressed: () {
-                search.clear();
-                cubit.search('');
-              },
-              icon: const Icon(Icons.close),
-            ),
+    builder: (context, s) {
+      final desk = isDesktopWidth(context);
+      final searchField = TextField(
+        controller: search,
+        keyboardType: TextInputType.phone,
+        maxLength: 50,
+        onChanged: cubit.search,
+        decoration: InputDecoration(
+          labelText: 'Search phone number',
+          hintText: 'Enter the first digits',
+          prefixIcon: const Icon(Icons.search),
+          counterText: '',
+          suffixIcon: IconButton(
+            tooltip: 'Clear search',
+            onPressed: () {
+              search.clear();
+              cubit.search('');
+            },
+            icon: const Icon(Icons.close),
           ),
         ),
-        const SizedBox(height: 8),
-        const Text(
-          'Search by the beginning of a phone number, including its country code when saved.',
-        ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: cubit.refresh,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Refresh'),
-          ),
-        ),
+      );
+      const hint = Text(
+        'Search by the beginning of a phone number, including its country code when saved.',
+      );
+      final refresh = TextButton.icon(
+        onPressed: cubit.refresh,
+        icon: const Icon(Icons.refresh),
+        label: const Text('Refresh'),
+      );
+      final status = [
         if (s.loading) AppLoadingState(initial: s.items.isEmpty),
         if (s.error != null)
           AppErrorWidget(message: s.error!, onRetry: cubit.refresh),
@@ -93,49 +85,102 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 : 'Check the number or clear your search.',
             icon: Icons.people_outline,
           ),
-        for (final customer in s.items)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: AppCard(
-              onTap: () => context.push('/customers/${customer.id}'),
-              child: Row(
-                children: [
-                  const Icon(Icons.person_outline),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          customer.phone,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(customer.name),
-                        if (customer.recordCount > 1) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            '${customer.recordCount} linked customer records',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ],
+      ];
+      final more = s.next == null
+          ? null
+          : AppButton(
+              label: 'Load more customers',
+              busy: s.loadingMore,
+              onPressed: s.loading || s.loadingMore
+                  ? null
+                  : () => cubit.load(more: true),
+            );
+      return AppPage(
+        back: true,
+        title: 'Customers',
+        eyebrow: 'CUSTOMER DIRECTORY',
+        subtitle: 'Find a phone number and view its booking history.',
+        scrollId: 'customers',
+        maxWidth: desk ? 1200 : 800,
+        children: desk
+            ? [
+                AppToolbar(
+                  key: const ValueKey('customer-toolbar'),
+                  leading: Align(
+                    alignment: Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: searchField,
                     ),
                   ),
-                  const Icon(Icons.chevron_right),
+                  actions: [refresh],
+                ),
+                const SizedBox(height: 8),
+                DefaultTextStyle.merge(
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  child: hint,
+                ),
+                const SizedBox(height: 28),
+                if (s.error == null && s.items.isNotEmpty) ...[
+                  CustomerListStats(state: s),
+                  const SizedBox(height: 28),
                 ],
-              ),
-            ),
-          ),
-        if (s.next != null)
-          AppButton(
-            label: 'Load more customers',
-            busy: s.loadingMore,
-            onPressed: s.loading || s.loadingMore
-                ? null
-                : () => cubit.load(more: true),
-          ),
-      ],
-    ),
+                ...status,
+                if (s.items.isNotEmpty) CustomerTable(items: s.items),
+                if (more != null) ...[
+                  const SizedBox(height: 20),
+                  Center(child: SizedBox(width: 320, child: more)),
+                ],
+              ]
+            : [
+                searchField,
+                const SizedBox(height: 8),
+                hint,
+                Align(alignment: Alignment.centerRight, child: refresh),
+                ...status,
+                for (final customer in s.items)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: AppCard(
+                      onTap: () => context.push('/customers/${customer.id}'),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  customer.phone,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(customer.name),
+                                if (customer.recordCount > 1) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${customer.recordCount} linked customer records',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right),
+                        ],
+                      ),
+                    ),
+                  ),
+                ?more,
+              ],
+      );
+    },
   );
 }

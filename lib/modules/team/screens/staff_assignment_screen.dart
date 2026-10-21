@@ -116,137 +116,202 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
     if (mounted) Navigator.pop(context);
   }
 
+  List<Widget> identityFields() => [
+    AppTextField(
+      label: 'Staff name',
+      controller: name,
+      validator: Validation.name,
+    ),
+    const SizedBox(height: 16),
+    AppTextField(
+      label: 'Email address',
+      controller: email,
+      keyboardType: TextInputType.emailAddress,
+      validator: Validation.email,
+      enabled: widget.member == null,
+    ),
+    const SizedBox(height: 16),
+    AppPicker(
+      label: 'Responsibility',
+      items: const [
+        PickerItem('staff', 'Staff'),
+        PickerItem('manager', 'Manager'),
+      ],
+      value: role,
+      onChanged: (v) => cubit.selectRole(v),
+    ),
+  ];
+
+  List<Widget> businessCards(StaffAssignmentScreenModel s) => [
+    for (final b in s.data.businesses)
+      AppCard(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          children: [
+            CheckboxListTile(
+              title: Text(b.name),
+              subtitle: Text(b.type.label),
+              value: businesses.contains(b.id),
+              onChanged: (v) => cubit.selectBusiness(b.id, v == true),
+            ),
+            if (businesses.contains(b.id)) ...[
+              SwitchListTile(
+                title: const Text(
+                  'Restrict to selected resources',
+                  style: TextStyle(fontSize: 13),
+                ),
+                value: restricted.contains(b.id),
+                onChanged: (v) => cubit.restrictBusiness(b.id, v),
+              ),
+              if (restricted.contains(b.id))
+                ...b.resources.map(
+                  (r) => CheckboxListTile(
+                    title: Text(r.name),
+                    value: resources[b.id]?.contains(r.id) ?? false,
+                    onChanged: (v) =>
+                        cubit.selectResource(b.id, r.id, v == true),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+  ];
+
+  Widget permissionsCard() => AppCard(
+    padding: const EdgeInsets.all(6),
+    child: Column(
+      children: labels.entries
+          .map(
+            (e) => SwitchListTile(
+              title: Text(e.value, style: const TextStyle(fontSize: 13)),
+              value: permissions.contains(e.key),
+              onChanged: (v) => cubit.selectPermission(e.key, v),
+            ),
+          )
+          .toList(),
+    ),
+  );
+
+  List<Widget> submit(StaffAssignmentScreenModel s) => [
+    if (s.error != null) ...[
+      AppErrorWidget(message: s.error!),
+      const SizedBox(height: 16),
+    ],
+    AppButton(
+      label: widget.member == null ? 'Create invitation' : 'Save staff access',
+      icon: Icons.check,
+      busy: s.busy,
+      onPressed: s.data.isOwner ? save : null,
+    ),
+  ];
+
+  // Wide windows: person and businesses on the left, permissions and the
+  // submit action in a side column.
+  Widget desktop(BuildContext c, StaffAssignmentScreenModel s) => AppPage(
+    back: true,
+    eyebrow: 'TEAM & ACCESS',
+    title: widget.member == null
+        ? 'The right people. The right access.'
+        : 'Edit staff access.',
+    subtitle:
+        'Assign staff to one business or several. You remain the organization owner.',
+    maxWidth: 1200,
+    children: [
+      Form(
+        key: form,
+        child: AppTwoPane(
+          secondaryWidth: 400,
+          primary: [
+            AppPanel(
+              title: 'Person',
+              subtitle: widget.member == null
+                  ? 'They receive a private invitation link.'
+                  : 'The email address cannot be changed.',
+              child: AppCard(
+                padding: const EdgeInsets.all(22),
+                child: Column(children: identityFields()),
+              ),
+            ),
+            AppPanel(
+              title: 'Assign businesses',
+              subtitle: 'Optionally restrict a business to selected resources.',
+              child: s.data.businesses.isEmpty
+                  ? const AppEmptyState(
+                      title: 'No businesses yet',
+                      message: 'Add a business before assigning staff.',
+                    )
+                  : AppGrid(
+                      minTileWidth: 300,
+                      maxColumns: 2,
+                      children: businessCards(s),
+                    ),
+            ),
+          ],
+          secondary: [
+            AppPanel(
+              title: 'Permissions',
+              subtitle: 'What this person can do in assigned businesses.',
+              child: permissionsCard(),
+            ),
+            ...submit(s),
+          ],
+        ),
+      ),
+    ],
+  );
+
   @override
   Widget build(
     BuildContext context,
   ) => BlocBuilder<StaffAssignmentCubit, StaffAssignmentScreenModel>(
     bloc: cubit,
-    builder: (c, s) => AppPage(
-      back: true,
-      eyebrow: 'TEAM & ACCESS',
-      title: widget.member == null
-          ? 'The right people.\nThe right access.'
-          : 'Edit staff access.',
-      subtitle:
-          'Assign staff to one business or several. You remain the organization owner.',
-      children: [
-        Form(
-          key: form,
-          child: Column(
+    builder: (c, s) => isDesktopWidth(c)
+        ? desktop(c, s)
+        : AppPage(
+            back: true,
+            eyebrow: 'TEAM & ACCESS',
+            title: widget.member == null
+                ? 'The right people.\nThe right access.'
+                : 'Edit staff access.',
+            subtitle:
+                'Assign staff to one business or several. You remain the organization owner.',
             children: [
-              AppTextField(
-                label: 'Staff name',
-                controller: name,
-                validator: Validation.name,
-              ),
-              const SizedBox(height: 16),
-              AppTextField(
-                label: 'Email address',
-                controller: email,
-                keyboardType: TextInputType.emailAddress,
-                validator: Validation.email,
-                enabled: widget.member == null,
-              ),
-              const SizedBox(height: 16),
-              AppPicker(
-                label: 'Responsibility',
-                items: const [
-                  PickerItem('staff', 'Staff'),
-                  PickerItem('manager', 'Manager'),
-                ],
-                value: role,
-                onChanged: (v) => cubit.selectRole(v),
-              ),
-              const SizedBox(height: 24),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Assign businesses',
-                  style: Theme.of(c).textTheme.titleMedium,
-                ),
-              ),
-              const SizedBox(height: 10),
-              ...s.data.businesses.map(
-                (b) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: AppCard(
-                    padding: const EdgeInsets.all(8),
-                    child: Column(
-                      children: [
-                        CheckboxListTile(
-                          title: Text(b.name),
-                          subtitle: Text(b.type.label),
-                          value: businesses.contains(b.id),
-                          onChanged: (v) =>
-                              cubit.selectBusiness(b.id, v == true),
-                        ),
-                        if (businesses.contains(b.id)) ...[
-                          SwitchListTile(
-                            title: const Text(
-                              'Restrict to selected resources',
-                              style: TextStyle(fontSize: 13),
-                            ),
-                            value: restricted.contains(b.id),
-                            onChanged: (v) => cubit.restrictBusiness(b.id, v),
-                          ),
-                          if (restricted.contains(b.id))
-                            ...b.resources.map(
-                              (r) => CheckboxListTile(
-                                title: Text(r.name),
-                                value: resources[b.id]?.contains(r.id) ?? false,
-                                onChanged: (v) =>
-                                    cubit.selectResource(b.id, r.id, v == true),
-                              ),
-                            ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Permissions',
-                  style: Theme.of(c).textTheme.titleMedium,
-                ),
-              ),
-              const SizedBox(height: 12),
-              AppCard(
-                padding: const EdgeInsets.all(6),
+              Form(
+                key: form,
                 child: Column(
-                  children: labels.entries
-                      .map(
-                        (e) => SwitchListTile(
-                          title: Text(
-                            e.value,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          value: permissions.contains(e.key),
-                          onChanged: (v) => cubit.selectPermission(e.key, v),
-                        ),
-                      )
-                      .toList(),
+                  children: [
+                    ...identityFields(),
+                    const SizedBox(height: 24),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Assign businesses',
+                        style: Theme.of(c).textTheme.titleMedium,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    for (final card in businessCards(s))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: card,
+                      ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Permissions',
+                        style: Theme.of(c).textTheme.titleMedium,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    permissionsCard(),
+                    const SizedBox(height: 24),
+                    ...submit(s),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 24),
-              if (s.error != null) ...[
-                AppErrorWidget(message: s.error!),
-                const SizedBox(height: 16),
-              ],
-              AppButton(
-                label: widget.member == null
-                    ? 'Create invitation'
-                    : 'Save staff access',
-                icon: Icons.check,
-                busy: s.busy,
-                onPressed: s.data.isOwner ? save : null,
               ),
             ],
           ),
-        ),
-      ],
-    ),
   );
 }

@@ -46,9 +46,17 @@ class AppPage extends StatelessWidget {
   final bool back;
   final List<Widget>? actions;
   final double maxWidth;
+
+  /// Content width at which the page switches to its desktop header.
+  static const wideWidth = 900.0;
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: back || showAppBar
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => page(context, box.maxWidth >= wideWidth),
+  );
+
+  Widget page(BuildContext context, bool wide) => Scaffold(
+    appBar: !wide && (back || showAppBar)
         ? AppBar(
             automaticallyImplyLeading: back,
             title: showAppBar
@@ -64,7 +72,9 @@ class AppPage extends StatelessWidget {
             actions: actions,
           )
         : null,
-    bottomNavigationBar: bottomBar,
+    bottomNavigationBar: bottomBar == null || !wide
+        ? bottomBar
+        : floatingBar(context),
     floatingActionButton: floatingActionButton,
     body: SafeArea(
       child: slivers != null
@@ -80,11 +90,15 @@ class AppPage extends StatelessWidget {
                     SliverPadding(
                       padding: EdgeInsets.fromLTRB(
                         inset,
-                        back || showAppBar ? 0 : 24,
+                        wide
+                            ? 32
+                            : back || showAppBar
+                            ? 0
+                            : 24,
                         inset,
                         0,
                       ),
-                      sliver: SliverToBoxAdapter(child: content(context)),
+                      sliver: SliverToBoxAdapter(child: content(context, wide)),
                     ),
                     for (final sliver in slivers!)
                       SliverPadding(
@@ -105,11 +119,15 @@ class AppPage extends StatelessWidget {
               key: PageStorageKey(scrollId ?? title),
               padding: EdgeInsets.fromLTRB(
                 AppSpacing.page,
-                back || showAppBar ? 0 : 24,
+                wide
+                    ? 32
+                    : back || showAppBar
+                    ? 0
+                    : 24,
                 AppSpacing.page,
                 floatingActionButton == null ? 32 : 112,
               ),
-              child: content(context),
+              child: content(context, wide),
             )
           : CustomScrollView(
               key: PageStorageKey(scrollId ?? title),
@@ -117,11 +135,15 @@ class AppPage extends StatelessWidget {
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(
                     AppSpacing.page,
-                    back || showAppBar ? 0 : 24,
+                    wide
+                        ? 32
+                        : back || showAppBar
+                        ? 0
+                        : 24,
                     AppSpacing.page,
                     0,
                   ),
-                  sliver: SliverToBoxAdapter(child: content(context)),
+                  sliver: SliverToBoxAdapter(child: content(context, wide)),
                 ),
                 SliverFillRemaining(
                   hasScrollBody: false,
@@ -145,12 +167,16 @@ class AppPage extends StatelessWidget {
     ),
   );
 
-  Widget content(BuildContext context) => Center(
+  Widget content(BuildContext context, bool wide) => Center(
     child: ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (wide && (back || onBack != null || showAppBar)) ...[
+            webBar(context),
+            const SizedBox(height: 20),
+          ],
           ?header,
           if (header == null && eyebrow != null) ...[
             Text(
@@ -164,10 +190,10 @@ class AppPage extends StatelessWidget {
             ),
             SizedBox(height: compactHeader ? 6 : 12),
           ],
-          if (header == null && !showAppBar)
+          if (header == null && (wide || !showAppBar))
             Text(title, style: Theme.of(context).textTheme.headlineLarge),
           if (header == null && subtitle != null) ...[
-            SizedBox(height: compactHeader && showAppBar ? 0 : 12),
+            SizedBox(height: compactHeader && showAppBar && !wide ? 0 : 12),
             Text(
               subtitle!,
               style: TextStyle(
@@ -177,10 +203,68 @@ class AppPage extends StatelessWidget {
               ),
             ),
           ],
-          SizedBox(height: compactHeader ? 12 : 28),
+          SizedBox(height: compactHeader && !wide ? 12 : 28),
           ...children,
         ],
       ),
     ),
   );
+
+  // Desktop replacement for the app bar: back link on the left, actions right.
+  Widget webBar(BuildContext context) {
+    final canGoBack =
+        onBack != null ||
+        (back && (ModalRoute.of(context)?.impliesAppBarDismissal ?? false));
+    return Row(
+      children: [
+        if (canGoBack)
+          TextButton.icon(
+            key: const ValueKey('web-back'),
+            onPressed: onBack ?? () => Navigator.maybePop(context),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: .75),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+            icon: const Icon(Icons.arrow_back, size: 18),
+            label: const Text('Back'),
+          ),
+        const Spacer(),
+        ...?actions,
+      ],
+    );
+  }
+
+  // Bottom actions float as a card aligned with the content on desktop.
+  Widget floatingBar(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        child: Center(
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: Material(
+              color: colors.surface,
+              elevation: 12,
+              shadowColor: Colors.black.withValues(alpha: .35),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: colors.outline.withValues(alpha: .5)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: MediaQuery.removePadding(
+                context: context,
+                removeBottom: true,
+                child: bottomBar!,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

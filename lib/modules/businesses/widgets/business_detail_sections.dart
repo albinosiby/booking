@@ -46,79 +46,84 @@ class BusinessDetailSectionView extends StatelessWidget {
     super.key,
     required this.section,
     required this.businessId,
+    this.grid = false,
   });
   final BusinessDetailSection section;
   final String businessId;
+
+  /// Desktop: entries as a card grid under a panel heading.
+  final bool grid;
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(section.title, style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 12),
-      for (final entry in section.entries)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: AppCard(
-            padding: EdgeInsets.zero,
-            child: ExpansionTile(
-              key: PageStorageKey('business-$businessId-${entry.id}'),
-              tilePadding: const EdgeInsets.symmetric(
-                horizontal: 18,
-                vertical: 8,
+  Widget build(BuildContext context) {
+    final entries = [
+      for (final entry in section.entries) entryCard(context, entry),
+    ];
+    if (grid) {
+      return AppPanel(
+        title: section.title,
+        child: AppGrid(minTileWidth: 340, maxColumns: 2, children: entries),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(section.title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 12),
+        for (final card in entries)
+          Padding(padding: const EdgeInsets.only(bottom: 12), child: card),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget entryCard(BuildContext context, BusinessDetailEntry entry) => AppCard(
+    padding: EdgeInsets.zero,
+    child: ExpansionTile(
+      key: PageStorageKey('business-$businessId-${entry.id}'),
+      tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+      expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+      shape: const Border(),
+      collapsedShape: const Border(),
+      title: Text(entry.name, style: Theme.of(context).textTheme.titleMedium),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(entry.subtitle),
+            if (entry.enabled != null) ...[
+              const SizedBox(height: 8),
+              ReviewTag(
+                entry.enabled! ? 'Enabled' : 'Disabled',
+                active: entry.enabled!,
               ),
-              childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
-              expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
-              shape: const Border(),
-              collapsedShape: const Border(),
-              title: Text(
-                entry.name,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(entry.subtitle),
-                    if (entry.enabled != null) ...[
-                      const SizedBox(height: 8),
-                      ReviewTag(
-                        entry.enabled! ? 'Enabled' : 'Disabled',
-                        active: entry.enabled!,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+            ],
+          ],
+        ),
+      ),
+      children: [
+        const Divider(height: 24),
+        BusinessDetailFields(fields: entry.fields),
+        if (entry.prices.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Text('Saved prices', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 6),
+          const Text(
+            'Prices apply on the selected days and times. Seasonal prices take priority on their dates.',
+          ),
+          const SizedBox(height: 12),
+          for (final price in entry.prices)
+            ReviewPricingGroup(
+              schedule: price.schedule,
               children: [
-                const Divider(height: 24),
-                BusinessDetailFields(fields: entry.fields),
-                if (entry.prices.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  Text(
-                    'Saved prices',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Prices apply on the selected days and times. Seasonal prices take priority on their dates.',
-                  ),
-                  const SizedBox(height: 12),
-                  for (final price in entry.prices)
-                    ReviewPricingGroup(
-                      schedule: price.schedule,
-                      children: [
-                        for (final rate in price.rates)
-                          ReviewRate(label: rate.label, price: rate.value),
-                      ],
-                    ),
-                ],
+                for (final rate in price.rates)
+                  ReviewRate(label: rate.label, price: rate.value),
               ],
             ),
-          ),
-        ),
-      const SizedBox(height: 16),
-    ],
+        ],
+      ],
+    ),
   );
 }
 

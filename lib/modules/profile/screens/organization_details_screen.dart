@@ -54,6 +54,7 @@ class _OrganizationDetailsScreenState extends State<OrganizationDetailsScreen> {
         bloc: cubit,
         builder: (context, state) {
           final details = state.organizationDetails;
+          if (isDesktopWidth(context)) return desktop(context, state);
           return AppPage(
             back: true,
             showAppBar: true,
@@ -134,6 +135,319 @@ class _OrganizationDetailsScreenState extends State<OrganizationDetailsScreen> {
           );
         },
       );
+}
+
+extension on _OrganizationDetailsScreenState {
+  // Wide windows: identity and logo on the left, details as panels on the right.
+  Widget desktop(BuildContext context, ProfileScreenModel state) {
+    final details = state.organizationDetails;
+    final busy = state.busy || picking;
+    return AppPage(
+      back: true,
+      showAppBar: true,
+      title: 'Organization details',
+      eyebrow: 'WORKSPACE MANAGEMENT',
+      subtitle: 'Organization, contact information and logo.',
+      scrollId: 'organization-details',
+      maxWidth: 1200,
+      actions: state.data.isOwner
+          ? [
+              Tooltip(
+                message: 'Edit organization',
+                child: FilledButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () => context.push(Routes.organizationEdit),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Edit details'),
+                ),
+              ),
+            ]
+          : null,
+      children: [
+        if (!state.data.isOwner)
+          const AppErrorWidget(
+            message: 'Only the owner can manage organization details.',
+          )
+        else ...[
+          if (state.error != null) ...[
+            AppErrorWidget(message: state.error!),
+            const SizedBox(height: 16),
+          ],
+          AppTwoPane(
+            secondaryFirst: true,
+            secondaryWidth: 340,
+            secondary: [
+              _DesktopIdentityCard(
+                details: details,
+                busy: busy,
+                onChangeLogo: pickLogo,
+              ),
+            ],
+            primary: [
+              AppPanel(
+                title: 'Contact details',
+                subtitle: 'How customers and staff reach the organization.',
+                child: AppCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 8,
+                  ),
+                  child: _FieldGrid([
+                    _DetailField(label: 'Phone number', value: details.phone),
+                    _DetailField(label: 'Currency', value: details.currency),
+                  ]),
+                ),
+              ),
+              AppPanel(
+                title: 'Locations',
+                subtitle: details.locations.isEmpty
+                    ? null
+                    : '${details.locations.length} '
+                          '${details.locations.length == 1 ? 'venue' : 'venues'}',
+                child: details.locations.isEmpty
+                    ? const AppCard(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Center(child: Text('No location added yet.')),
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          for (final (i, location) in details.locations.indexed)
+                            Padding(
+                              padding: EdgeInsets.only(top: i == 0 ? 0 : 16),
+                              child: _DesktopLocationCard(location: location),
+                            ),
+                        ],
+                      ),
+              ),
+              AppPanel(
+                title: 'Owner',
+                child: AppCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 8,
+                  ),
+                  child: _FieldGrid([
+                    _DetailField(label: 'Full name', value: details.ownerName),
+                    _DetailField(
+                      label: 'Email address',
+                      value: details.ownerEmail,
+                    ),
+                  ]),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Lays detail fields out in equal columns with a divider between rows.
+class _FieldGrid extends StatelessWidget {
+  const _FieldGrid(this.fields, {this.columns = 2});
+  final List<Widget> fields;
+  final int columns;
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      for (var row = 0; row < fields.length; row += columns) ...[
+        if (row > 0) const _FieldDivider(),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = row; i < row + columns; i++) ...[
+              if (i > row) const SizedBox(width: 24),
+              Expanded(
+                child: i < fields.length ? fields[i] : const SizedBox.shrink(),
+              ),
+            ],
+          ],
+        ),
+      ],
+    ],
+  );
+}
+
+class _DesktopIdentityCard extends StatelessWidget {
+  const _DesktopIdentityCard({
+    required this.details,
+    required this.busy,
+    required this.onChangeLogo,
+  });
+  final OrganizationDetailsModel details;
+  final bool busy;
+  final VoidCallback onChangeLogo;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context), colors = theme.colorScheme;
+    Widget fallback() =>
+        Icon(Icons.business_outlined, size: 48, color: colors.primary);
+    Widget fact(IconData icon, String text) => Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: colors.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+    return AppCard(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 112,
+            height: 112,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: colors.primaryContainer.withValues(alpha: .55),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: colors.primary.withValues(alpha: .2)),
+            ),
+            child: details.logo == null
+                ? fallback()
+                : Image.memory(
+                    details.logo!,
+                    fit: BoxFit.cover,
+                    cacheWidth: 336,
+                    errorBuilder: (c, e, stack) => fallback(),
+                  ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'YOUR ORGANIZATION',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: colors.primary,
+              letterSpacing: 1.1,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            details.name.isEmpty ? 'Your organization' : details.name,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (details.phone.isNotEmpty)
+            fact(Icons.phone_outlined, details.phone),
+          if (details.locations.isNotEmpty)
+            fact(
+              Icons.location_on_outlined,
+              details.locations.length == 1
+                  ? [
+                      details.locations.single.city,
+                      details.locations.single.country,
+                    ].where((v) => v.isNotEmpty).join(', ')
+                  : '${details.locations.length} locations',
+            ),
+          if (details.currency.isNotEmpty)
+            fact(Icons.payments_outlined, 'Currency ${details.currency}'),
+          const SizedBox(height: 20),
+          const _FieldDivider(),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: busy ? null : onChangeLogo,
+              icon: busy
+                  ? const AppSavingDots()
+                  : const Icon(Icons.add_photo_alternate_outlined, size: 20),
+              label: Text(
+                busy
+                    ? 'Updating logo…'
+                    : details.logo == null
+                    ? 'Add logo'
+                    : 'Change logo',
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Optional · PNG, JPEG or WebP · up to 2 MB',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DesktopLocationCard extends StatelessWidget {
+  const _DesktopLocationCard({required this.location});
+  final OrganizationLocationDetails location;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context), colors = theme.colorScheme;
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(
+                  Icons.location_on_outlined,
+                  size: 19,
+                  color: colors.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  location.name.isEmpty ? 'Location' : location.name,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _FieldGrid(columns: 3, [
+            _DetailField(label: 'Location name', value: location.name),
+            _DetailField(label: 'Address line 1', value: location.addressLine1),
+            if (location.addressLine2.isNotEmpty)
+              _DetailField(
+                label: 'Address line 2',
+                value: location.addressLine2,
+              ),
+            _DetailField(label: 'City', value: location.city),
+            if (location.state.isNotEmpty)
+              _DetailField(label: 'State', value: location.state),
+            _DetailField(label: 'Country', value: location.country),
+            _DetailField(label: 'Pincode', value: location.pincode),
+            _DetailField(label: 'Timezone', value: location.timezone),
+          ]),
+        ],
+      ),
+    );
+  }
 }
 
 class _IdentityCard extends StatelessWidget {

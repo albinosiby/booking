@@ -61,14 +61,26 @@ class ExpenseTile extends StatelessWidget {
     required this.item,
     required this.currency,
     required this.onTap,
+    this.wide = false,
   });
   final ExpenseItem item;
   final String currency;
   final VoidCallback onTap;
+
+  /// Desktop rows pin the amount to the right edge with a chevron.
+  final bool wide;
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final reversal = item.originalId != null;
+    final amount = Text(
+      '${reversal || item.amount < 0 ? '+' : '−'}${financeMoney(item.amount.abs(), currency)}',
+      textAlign: TextAlign.right,
+      style: TextStyle(
+        fontWeight: FontWeight.w700,
+        color: reversal ? scheme.primary : null,
+      ),
+    );
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -109,16 +121,19 @@ class ExpenseTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                '${reversal || item.amount < 0 ? '+' : '−'}${financeMoney(item.amount.abs(), currency)}',
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: reversal ? scheme.primary : null,
-                ),
+            if (wide) ...[
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 110),
+                child: amount,
               ),
-            ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+            ] else
+              Flexible(child: amount),
           ],
         ),
       ),

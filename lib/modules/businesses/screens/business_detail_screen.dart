@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
+import '../../workspace/models/workspace.dart';
 import '../cubit/business_management_cubit.dart';
 import '../models/business_management_model.dart';
 import '../models/business_detail_model.dart';
@@ -40,6 +41,231 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     super.dispose();
   }
 
+  Future<void> rename(Business business) async {
+    final name = await editBusinessName(context, business);
+    if (name != null && mounted) await cubit.rename(business.id, name);
+  }
+
+  String readiness(Business business) => business.ready
+      ? 'Ready for bookings. Review your spaces and current setup below.'
+      : business.status == 'paused'
+      ? 'This business is paused. Review its configuration before taking bookings.'
+      : 'Finish setting up spaces, hours and prices to start taking bookings.';
+
+  // Wide windows: overview tiles, a grid of spaces with their hours and
+  // prices, and business information beside it.
+  Widget desktop(
+    BuildContext context,
+    BusinessManagementModel s,
+    Business? business,
+    BusinessLocationSummary? location,
+    BusinessDetailSummary? detail,
+  ) {
+    final theme = Theme.of(context), colors = theme.colorScheme;
+    final position = business == null
+        ? 0
+        : s.data.businesses.indexWhere((b) => b.id == business.id) + 1;
+    final spaces = detail?.spaceCount ?? business?.resources.length ?? 0;
+    final rates = detail == null
+        ? 0
+        : detail.sections
+              .expand((x) => x.entries)
+              .expand((e) => e.prices)
+              .fold<int>(0, (n, g) => n + g.rates.length);
+    return AppPage(
+      back: true,
+      title: business?.name ?? 'Business details',
+      eyebrow: 'WORKSPACE MANAGEMENT',
+      subtitle: 'Overview, spaces, opening hours and prices.',
+      maxWidth: 1200,
+      scrollId: 'business-details-${widget.id}',
+      actions: s.data.isOwner && business != null
+          ? [
+              TextButton.icon(
+                onPressed: s.busy ? null : cubit.reload,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Refresh'),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: s.busy ? null : () => rename(business),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Rename business'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    context.push('/businesses/${business.id}/bookings'),
+                icon: const Icon(Icons.event_note_outlined, size: 18),
+                label: const Text('View bookings'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: s.busy
+                    ? null
+                    : () => context.push(businessSettingsPath(business)),
+                icon: const Icon(Icons.tune, size: 18),
+                label: Text(
+                  business.ready ? 'Configure business' : 'Continue setup',
+                ),
+              ),
+            ]
+          : null,
+      children: [
+        if (!s.data.isOwner)
+          const AppErrorWidget(message: 'Only the owner can manage businesses.')
+        else if (business == null)
+          AppErrorWidget(
+            message: 'This business is no longer available.',
+            onRetry: cubit.reload,
+          )
+        else ...[
+          AppStatRow(
+            children: [
+              AppStatTile(
+                icon: businessIcon(business.type),
+                label: business.type.label,
+                value: businessStatus(business),
+                caption: s.data.organization?.name ?? 'Your workspace',
+                highlight: true,
+              ),
+              AppStatTile(
+                icon: Icons.grid_view_rounded,
+                label: 'Configured spaces',
+                value: '$spaces',
+                caption: detail?.enabledCount == null
+                    ? null
+                    : '${detail!.enabledCount} enabled',
+              ),
+              AppStatTile(
+                icon: Icons.sell_outlined,
+                label: 'Saved prices',
+                value: '$rates',
+                caption: 'Across all spaces and options',
+              ),
+              AppStatTile(
+                icon: Icons.format_list_numbered,
+                label: 'Display position',
+                value: '$position of ${s.data.businesses.length}',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: BoxDecoration(
+              color: (business.ready ? colors.primary : colors.onSurface)
+                  .withValues(alpha: .07),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  business.ready
+                      ? Icons.check_circle_outline
+                      : Icons.info_outline,
+                  size: 20,
+                  color: business.ready
+                      ? colors.primary
+                      : colors.onSurfaceVariant,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    readiness(business),
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (s.error != null || s.message != null) ...[
+            const SizedBox(height: 16),
+            AppErrorWidget(
+              message: s.message ?? s.error!,
+              onRetry: cubit.reload,
+            ),
+          ],
+          const SizedBox(height: 32),
+          AppTwoPane(
+            secondaryWidth: 360,
+            primary: [
+              if (detail?.notice != null) ...[
+                Text(detail!.notice!),
+                const SizedBox(height: 18),
+              ],
+              if (spaces == 0)
+                const AppEmptyState(
+                  title: 'No spaces configured',
+                  message:
+                      'Open configuration to add spaces and complete this business’s setup.',
+                ),
+              if (detail != null)
+                for (final section in detail.sections.where(
+                  (s) => s.entries.isNotEmpty,
+                ))
+                  BusinessDetailSectionView(
+                    section: section,
+                    businessId: business.id,
+                    grid: true,
+                  ),
+            ],
+            secondary: [
+              AppPanel(
+                title: 'Business information',
+                child: AppCard(
+                  child: BusinessDetailFields(
+                    fields: [
+                      BusinessDetailField('Business name', business.name),
+                      BusinessDetailField('Business type', business.type.label),
+                      BusinessDetailField(
+                        'Organization',
+                        s.data.organization?.name ?? 'Not provided',
+                      ),
+                      BusinessDetailField(
+                        'Organization phone',
+                        s.data.organization?.phone ?? 'Not provided',
+                      ),
+                      BusinessDetailField(
+                        'Currency',
+                        s.data.organization?.currency ?? 'Not provided',
+                      ),
+                      if (s.ownerName.isNotEmpty)
+                        BusinessDetailField('Owner', s.ownerName),
+                      if (s.ownerEmail.isNotEmpty)
+                        BusinessDetailField('Owner email', s.ownerEmail),
+                    ],
+                  ),
+                ),
+              ),
+              AppPanel(
+                title: 'Location',
+                child: AppCard(
+                  child: BusinessDetailFields(
+                    fields: [
+                      BusinessDetailField(
+                        'Venue',
+                        location?.name ?? 'Not provided',
+                      ),
+                      BusinessDetailField(
+                        'Address',
+                        location?.address ?? 'Not provided',
+                      ),
+                      BusinessDetailField(
+                        'Timezone',
+                        location?.timezone ?? 'Not provided',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(
     BuildContext context,
@@ -52,6 +278,9 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       final location = business == null ? null : s.locationFor(business);
       final detail = s.details[widget.id];
       final theme = Theme.of(context), colors = theme.colorScheme;
+      if (isDesktopWidth(context)) {
+        return desktop(context, s, business, location, detail);
+      }
       return AppPage(
         back: true,
         title: business?.name ?? 'Business details',

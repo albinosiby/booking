@@ -102,10 +102,9 @@ class FinanceFilterBar extends StatelessWidget {
 
   Future<void> _pickScope(BuildContext context) async {
     String? business = filter.businessId, space = filter.spaceId;
-    final apply = await showModalBottomSheet<bool>(
+    final apply = await showAdaptiveSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
+      showDragHandle: false,
       builder: (c) => StatefulBuilder(
         builder: (c, set) => Padding(
           padding: EdgeInsets.fromLTRB(
@@ -149,9 +148,11 @@ class FinanceFilterBar extends StatelessWidget {
     final t = DateTime.tryParse(catalog.today) ?? DateTime.now();
     final current = financePeriodLabel(filter, catalog.today);
     const presets = ['Today', 'This month', 'This year'];
-    final choice = await showModalBottomSheet<String>(
+    final choice = await showAdaptiveSheet<String>(
       context: context,
-      useSafeArea: true,
+      showClose: false,
+      showDragHandle: false,
+      maxWidth: 420,
       builder: (c) => Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
         child: Column(
@@ -338,10 +339,13 @@ class FinanceDuesBanner extends StatelessWidget {
           if (due) ...[
             const SizedBox(width: 8),
             Flexible(
-              child: Text(
-                financeMoney(amount, currency),
-                textAlign: TextAlign.right,
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  financeMoney(amount, currency),
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ),
           ],
@@ -423,10 +427,13 @@ class FinanceAmountRow extends StatelessWidget {
         Expanded(child: Text(label)),
         const SizedBox(width: 8),
         Flexible(
-          child: Text(
-            amount,
-            textAlign: TextAlign.right,
-            style: const TextStyle(fontWeight: FontWeight.w600),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              amount,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
           ),
         ),
       ],
@@ -465,11 +472,14 @@ class FinanceMethodSplit extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Flexible(
-                child: Text(
-                  financeMoney(total, currency),
-                  textAlign: TextAlign.right,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    financeMoney(total, currency),
+                    textAlign: TextAlign.right,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
@@ -578,10 +588,13 @@ class FinanceAccountsList extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Flexible(
-                      child: Text(
-                        financeMoney(a.balance ?? 0, currency),
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          financeMoney(a.balance ?? 0, currency),
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
                     ),
                   ],

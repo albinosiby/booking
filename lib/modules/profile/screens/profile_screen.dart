@@ -8,6 +8,7 @@ import '../../../core/settings/application_setting.dart';
 import '../../../di/injection.dart';
 import '../../auth/cubit/auth_cubit.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
+import '../../workspace/models/workspace.dart';
 import '../cubit/profile_cubit.dart';
 import '../models/profile_screen_model.dart';
 
@@ -47,201 +48,366 @@ class _ProfileScreenState extends State<ProfileScreen> {
     trailing: const Icon(Icons.chevron_right),
     onTap: () => context.push(path),
   );
-  @override
-  Widget build(
-    BuildContext context,
-  ) => BlocBuilder<ProfileCubit, ProfileScreenModel>(
-    bloc: cubit,
-    builder: (context, s) {
-      final w = s.data, user = context.watch<AuthCubit>().state.user;
-      return AppPage(
-        title: 'Profile',
-        eyebrow: 'YOUR ACCOUNT',
-        subtitle: 'Your workspace, account and preferences.',
-        scrollId: 'profile',
+  // Destinations grouped by section; mobile lists them, desktop tiles them.
+  List<(String?, List<_Destination>)> sections(Workspace w) => [
+    (
+      null,
+      [
+        if ([
+          'view_bookings',
+          'manage_bookings',
+          'collect_payments',
+        ].any(w.hasPermission))
+          const _Destination(
+            Icons.people_outline,
+            'Customers',
+            'Find phone numbers and booking history',
+            Routes.customers,
+          ),
+        if ([
+          'view_bookings',
+          'manage_bookings',
+          'manage_attendance',
+          'collect_payments',
+        ].any(w.hasPermission))
+          const _Destination(
+            Icons.pool_outlined,
+            'Admissions & Coaching',
+            'Plans, attendance, remaining days and renewals',
+            '/admissions',
+          ),
+        if (w.hasPermission('view_finance') ||
+            w.hasPermission('record_expenses'))
+          const _Destination(
+            Icons.receipt_long_outlined,
+            'Expenses',
+            'Spending, invoices and monthly/yearly reports',
+            Routes.expenses,
+          ),
+        if (w.hasPermission('view_finance') ||
+            w.hasPermission('collect_payments'))
+          const _Destination(
+            Icons.savings_outlined,
+            'Income',
+            'Bookings, admissions, extra income and reports',
+            Routes.income,
+          ),
+      ],
+    ),
+    if (w.isOwner)
+      (
+        'Workspace management',
+        const [
+          _Destination(
+            Icons.business_outlined,
+            'Organization details',
+            'Organization, contact information and logo',
+            Routes.organizationDetails,
+          ),
+          _Destination(
+            Icons.storefront_outlined,
+            'Businesses',
+            'Add, configure and reorder your businesses',
+            Routes.businesses,
+          ),
+          _Destination(
+            Icons.groups_outlined,
+            'Team & access',
+            'People, roles and assigned spaces',
+            Routes.team,
+          ),
+          _Destination(
+            Icons.account_balance_outlined,
+            'Accounts & payments',
+            'Bank accounts and payment routing',
+            '/accounts/settings',
+          ),
+          _Destination(
+            Icons.chat_bubble_outline,
+            'Booking message templates',
+            'WhatsApp messages and primary template',
+            '/profile/message-templates',
+          ),
+          _Destination(
+            Icons.support_agent_outlined,
+            'Sarvam voice agent',
+            'Phone bookings, call logs and transcripts',
+            Routes.sarvam,
+          ),
+        ],
+      ),
+  ];
+
+  Widget identity(BuildContext context, ProfileScreenModel s, bool wide) {
+    final w = s.data, user = context.watch<AuthCubit>().state.user;
+    final colors = Theme.of(context).colorScheme;
+    final size = wide ? 72.0 : 56.0;
+    return AppCard(
+      padding: EdgeInsets.all(wide ? 24 : 18),
+      child: Row(
+        crossAxisAlignment: wide
+            ? CrossAxisAlignment.center
+            : CrossAxisAlignment.start,
         children: [
-          AppCard(
-            child: Row(
+          if (w.logo != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.memory(
+                w.logo!,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+              ),
+            )
+          else
+            CircleAvatar(
+              radius: size / 2,
+              backgroundColor: colors.primaryContainer,
+              child: Icon(
+                Icons.business_outlined,
+                color: colors.onPrimaryContainer,
+              ),
+            ),
+          SizedBox(width: wide ? 20 : 16),
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (w.logo != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.memory(
-                      w.logo!,
-                      width: 56,
-                      height: 56,
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                else
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundColor: Theme.of(
+                Text(
+                  w.organization?.name ?? 'Your organization',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                SizedBox(height: wide ? 6 : 10),
+                if (user?.name.isNotEmpty == true) Text(user!.name),
+                Text(user?.email ?? ''),
+                if (!wide) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    s.roleLabel,
+                    style: Theme.of(
                       context,
-                    ).colorScheme.primaryContainer,
-                    child: Icon(
-                      Icons.business_outlined,
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
+                    ).textTheme.labelMedium?.copyWith(color: colors.primary),
                   ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        w.organization?.name ?? 'Your organization',
-                        style: Theme.of(context).textTheme.titleLarge,
+                ],
+              ],
+            ),
+          ),
+          if (wide)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: colors.primary.withValues(alpha: .14),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                s.roleLabel,
+                style: TextStyle(
+                  color: colors.primary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> preferences(BuildContext context, ProfileScreenModel s) => [
+    BlocBuilder<SettingsCubit, ThemeMode>(
+      builder: (context, mode) => SwitchListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        secondary: const Icon(Icons.light_mode_outlined),
+        title: const Text('Light appearance'),
+        value: mode == ThemeMode.light,
+        onChanged: (_) => context.read<SettingsCubit>().toggle(),
+      ),
+    ),
+    if (AppConfig.useAuthEmulator)
+      const ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(Icons.science_outlined),
+        title: Text('Local development'),
+        subtitle: Text('Authentication emulator · no production customers'),
+      ),
+    if (s.error != null) AppErrorWidget(message: s.error!),
+  ];
+
+  @override
+  Widget build(BuildContext context) =>
+      BlocBuilder<ProfileCubit, ProfileScreenModel>(
+        bloc: cubit,
+        builder: (context, s) => LayoutBuilder(
+          builder: (context, box) =>
+              box.maxWidth >= 900 ? wide(context, s) : narrow(context, s),
+        ),
+      );
+
+  Widget narrow(BuildContext context, ProfileScreenModel s) => AppPage(
+    title: 'Profile',
+    eyebrow: 'YOUR ACCOUNT',
+    subtitle: 'Your workspace, account and preferences.',
+    scrollId: 'profile',
+    children: [
+      identity(context, s, false),
+      for (final (title, items) in sections(s.data))
+        if (items.isNotEmpty) ...[
+          SizedBox(height: title == null ? 20 : 28),
+          if (title != null) ...[
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+          ],
+          for (final d in items)
+            destination(
+              context,
+              icon: d.icon,
+              title: d.title,
+              subtitle: d.subtitle,
+              path: d.path,
+            ),
+        ],
+      const SizedBox(height: 24),
+      Text('Preferences', style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      ...preferences(context, s),
+      const SizedBox(height: 24),
+      AppButton(
+        label: 'Sign out',
+        secondary: true,
+        onPressed: () => context.read<AuthCubit>().signOut(),
+      ),
+    ],
+  );
+
+  Widget wide(BuildContext context, ProfileScreenModel s) => AppPage(
+    title: 'Profile',
+    eyebrow: 'YOUR ACCOUNT',
+    subtitle: 'Your workspace, account and preferences.',
+    scrollId: 'profile',
+    maxWidth: 1120,
+    children: [
+      identity(context, s, true),
+      for (final (title, items) in sections(s.data))
+        if (items.isNotEmpty) ...[
+          const SizedBox(height: 32),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 14),
+            child: Text(
+              title ?? 'Daily work',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          LayoutBuilder(
+            builder: (context, box) {
+              const gap = 16.0;
+              final columns = box.maxWidth >= 1000 ? 3 : 2;
+              final width = (box.maxWidth - gap * (columns - 1)) / columns;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  for (final d in items)
+                    SizedBox(
+                      width: width,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 104),
+                        child: _DestinationTile(d),
                       ),
-                      const SizedBox(height: 10),
-                      if (user?.name.isNotEmpty == true) Text(user!.name),
-                      Text(user?.email ?? ''),
-                      const SizedBox(height: 6),
-                      Text(
-                        s.roleLabel,
-                        style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                      ),
-                    ],
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      const SizedBox(height: 32),
+      Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: 14),
+        child: Text(
+          'Preferences',
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ),
+      AppCard(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Column(children: preferences(context, s)),
+      ),
+      const SizedBox(height: 28),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: () => context.read<AuthCubit>().signOut(),
+          icon: const Icon(Icons.logout, size: 18),
+          label: const Text('Sign out'),
+        ),
+      ),
+    ],
+  );
+}
+
+class _Destination {
+  const _Destination(this.icon, this.title, this.subtitle, this.path);
+  final IconData icon;
+  final String title, subtitle, path;
+}
+
+class _DestinationTile extends StatelessWidget {
+  const _DestinationTile(this.d);
+  final _Destination d;
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AppCard(
+      onTap: () => context.push(d.path),
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colors.primary.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(d.icon, color: colors.primary),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  d.title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  d.subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: colors.onSurface.withValues(alpha: .65),
                   ),
                 ),
               ],
             ),
           ),
-          if ([
-            'view_bookings',
-            'manage_bookings',
-            'collect_payments',
-          ].any(w.hasPermission)) ...[
-            const SizedBox(height: 20),
-            destination(
-              context,
-              icon: Icons.people_outline,
-              title: 'Customers',
-              subtitle: 'Find phone numbers and booking history',
-              path: Routes.customers,
-            ),
-          ],
-          if ([
-            'view_bookings',
-            'manage_bookings',
-            'manage_attendance',
-            'collect_payments',
-          ].any(w.hasPermission)) ...[
-            const SizedBox(height: 12),
-            destination(
-              context,
-              icon: Icons.pool_outlined,
-              title: 'Admissions & Coaching',
-              subtitle: 'Plans, attendance, remaining days and renewals',
-              path: '/admissions',
-            ),
-          ],
-          if (w.hasPermission('view_finance') ||
-              w.hasPermission('record_expenses')) ...[
-            const SizedBox(height: 20),
-            destination(
-              context,
-              icon: Icons.receipt_long_outlined,
-              title: 'Expenses',
-              subtitle: 'Spending, invoices and monthly/yearly reports',
-              path: Routes.expenses,
-            ),
-          ],
-          if (w.hasPermission('view_finance') ||
-              w.hasPermission('collect_payments')) ...[
-            const SizedBox(height: 12),
-            destination(
-              context,
-              icon: Icons.savings_outlined,
-              title: 'Income',
-              subtitle: 'Bookings, admissions, extra income and reports',
-              path: Routes.income,
-            ),
-          ],
-          if (w.isOwner) ...[
-            const SizedBox(height: 28),
-            Text(
-              'Workspace management',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            destination(
-              context,
-              icon: Icons.business_outlined,
-              title: 'Organization details',
-              subtitle: 'Organization, contact information and logo',
-              path: Routes.organizationDetails,
-            ),
-            destination(
-              context,
-              icon: Icons.storefront_outlined,
-              title: 'Businesses',
-              subtitle: 'Add, configure and reorder your businesses',
-              path: Routes.businesses,
-            ),
-            destination(
-              context,
-              icon: Icons.groups_outlined,
-              title: 'Team & access',
-              subtitle: 'People, roles and assigned spaces',
-              path: Routes.team,
-            ),
-            destination(
-              context,
-              icon: Icons.account_balance_outlined,
-              title: 'Accounts & payments',
-              subtitle: 'Bank accounts and payment routing',
-              path: '/accounts/settings',
-            ),
-            destination(
-              context,
-              icon: Icons.chat_bubble_outline,
-              title: 'Booking message templates',
-              subtitle: 'WhatsApp messages and primary template',
-              path: '/profile/message-templates',
-            ),
-            destination(
-              context,
-              icon: Icons.support_agent_outlined,
-              title: 'Sarvam voice agent',
-              subtitle: 'Phone bookings, call logs and transcripts',
-              path: Routes.sarvam,
-            ),
-          ],
-          const SizedBox(height: 24),
-          Text('Preferences', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          BlocBuilder<SettingsCubit, ThemeMode>(
-            builder: (context, mode) => SwitchListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              secondary: const Icon(Icons.light_mode_outlined),
-              title: const Text('Light appearance'),
-              value: mode == ThemeMode.light,
-              onChanged: (_) => context.read<SettingsCubit>().toggle(),
-            ),
-          ),
-          if (AppConfig.useAuthEmulator)
-            const ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.science_outlined),
-              title: Text('Local development'),
-              subtitle: Text(
-                'Authentication emulator · no production customers',
-              ),
-            ),
-          if (s.error != null) AppErrorWidget(message: s.error!),
-          const SizedBox(height: 24),
-          AppButton(
-            label: 'Sign out',
-            secondary: true,
-            onPressed: () => context.read<AuthCubit>().signOut(),
+          Icon(
+            Icons.arrow_forward,
+            size: 18,
+            color: colors.onSurface.withValues(alpha: .4),
           ),
         ],
-      );
-    },
-  );
+      ),
+    );
+  }
 }

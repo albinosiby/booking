@@ -109,22 +109,20 @@ class FinanceOption {
   final String? note;
 }
 
-/// Bottom sheet listing [options]; returns the chosen ID, or null if dismissed.
+/// Sheet (dialog on wide windows) listing [options]; returns the chosen ID, or null if dismissed.
 Future<String?> showFinanceOptions(
   BuildContext context, {
   required String title,
   required List<FinanceOption> options,
   required String selected,
-}) => showModalBottomSheet<String>(
+}) => showAdaptiveSheet<String>(
   context: context,
-  useSafeArea: true,
-  showDragHandle: true,
-  isScrollControlled: true,
-  builder: (c) => DraggableScrollableSheet(
-    expand: false,
+  scrollable: false,
+  builder: (c) => AdaptiveSheetBody(
     initialChildSize: math.min(.9, .2 + options.length * .075),
-    builder: (c, controller) => ListView(
+    builder: (c, controller, shrink) => ListView(
       controller: controller,
+      shrinkWrap: shrink,
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
       children: [
         Padding(
@@ -353,10 +351,13 @@ class _FinanceBreakdownState extends State<FinanceBreakdown> {
                       ),
                       const SizedBox(width: 8),
                       Flexible(
-                        child: Text(
-                          financeMoney(s.total, widget.currency),
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            financeMoney(s.total, widget.currency),
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
                         ),
                       ),
                     ],

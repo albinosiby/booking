@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import 'utils/services/supabase_session_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -189,6 +190,7 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
         darkTheme: darkTheme(),
         themeMode: mode,
         routerConfig: router,
+        scrollBehavior: const AppScrollBehavior(),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
           child: !AppConfig.useSupabase && AppConfig.useAuthEmulator && kIsWeb
@@ -201,4 +203,17 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
       ),
     ),
   );
+}
+
+/// Lets mouse and trackpad drags scroll lists on web and desktop, such as the
+/// calendar date strip, in addition to touch.
+class AppScrollBehavior extends MaterialScrollBehavior {
+  const AppScrollBehavior();
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.trackpad,
+    PointerDeviceKind.stylus,
+  };
 }
