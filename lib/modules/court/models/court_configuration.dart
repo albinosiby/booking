@@ -5,6 +5,8 @@ import 'package:equatable/equatable.dart';
 import 'package:uuid/uuid.dart';
 import '../../../utils/helpers/validation.dart';
 import '../../workspace/models/workspace.dart';
+import 'court_coaching.dart';
+export 'court_coaching.dart';
 
 int courtMinute(String value) =>
     int.parse(value.split(':')[0]) * 60 + int.parse(value.split(':')[1]);
@@ -301,20 +303,53 @@ class CourtConfiguration extends Equatable {
     ),
   );
 
-  CourtConfiguration({Iterable<CourtResource> courts = const []})
-    : courts = List.unmodifiable(courts);
+  CourtConfiguration({
+    Iterable<CourtResource> courts = const [],
+    Iterable<CourtPlan> plans = const [],
+    Iterable<CourtCoach> coaches = const [],
+  }) : courts = List.unmodifiable(courts),
+       plans = List.unmodifiable(plans),
+       coaches = List.unmodifiable(coaches);
   final List<CourtResource> courts;
-  CourtConfiguration copyWith({Iterable<CourtResource>? courts}) =>
-      CourtConfiguration(courts: courts ?? this.courts);
+  final List<CourtPlan> plans;
+  final List<CourtCoach> coaches;
+  CourtConfiguration copyWith({
+    Iterable<CourtResource>? courts,
+    Iterable<CourtPlan>? plans,
+    Iterable<CourtCoach>? coaches,
+  }) => CourtConfiguration(
+    courts: courts ?? this.courts,
+    plans: plans ?? this.plans,
+    coaches: coaches ?? this.coaches,
+  );
+
+  /// Removes references to a deleted court from plans and coach contacts.
+  CourtConfiguration withoutCourt(String id) => copyWith(
+    courts: courts.where((c) => c.id != id),
+    plans: plans.map(
+      (p) => p.copyWith(courtIds: p.courtIds.where((v) => v != id)),
+    ),
+    coaches: coaches.map((c) => c.withCourts(c.courtIds.where((v) => v != id))),
+  );
+  // Optional keys are omitted when empty so older APIs keep accepting saves.
   Map<String, dynamic> toJson({bool localDraft = false}) => {
     'kind': 'court_v1',
     'schema_version': 1,
     'courts': courts.map((p) => p.toJson(localDraft: localDraft)).toList(),
+    if (plans.isNotEmpty)
+      'plans': plans.map((p) => p.toJson(localDraft: localDraft)).toList(),
+    if (coaches.isNotEmpty) 'coaches': coaches.map((c) => c.toJson()).toList(),
   };
   factory CourtConfiguration.fromJson(Map<String, dynamic> v) =>
       CourtConfiguration(
         courts: (v['courts'] as List).map(
           (p) => CourtResource.fromJson(Map<String, dynamic>.from(p)),
+        ),
+        plans: ((v['plans'] as List?) ?? const []).map(
+          (p) => CourtPlan.fromJson(Map<String, dynamic>.from(p)),
+        ),
+        coaches: ((v['coaches'] as List?) ?? const []).map(
+          (c) => CourtCoach.fromJson(Map<String, dynamic>.from(c)),
         ),
       );
   factory CourtConfiguration.initial(Business? b) {
@@ -354,8 +389,13 @@ class CourtConfiguration extends Equatable {
       ),
     );
   }
-  String? validate({bool complete = false}) {
+  String? validate({bool complete = false, String? today}) {
     if (courts.length > 50) return 'Use at most 50 courts per business.';
+    if (plans.length > 50) return 'Use at most 50 coaching plans.';
+    final ids = [...courts.map((c) => c.id), ...plans.map((p) => p.id)];
+    if (ids.toSet().length != ids.length) {
+      return 'Use unique court and plan identifiers.';
+    }
     if (courts.map((p) => p.id).toSet().length != courts.length ||
         courts.map((p) => p.name.trim().toLowerCase()).toSet().length !=
             courts.length) {
@@ -442,9 +482,18 @@ class CourtConfiguration extends Equatable {
         return 'Complete prices and valid durations for ${p.name}.';
       }
     }
+    for (final p in plans) {
+      final error = p.validate(
+        courts,
+        coaches,
+        complete: complete,
+        today: today,
+      );
+      if (error != null) return error;
+    }
     return null;
   }
 
   @override
-  List<Object?> get props => [courts];
+  List<Object?> get props => [courts, plans, coaches];
 }

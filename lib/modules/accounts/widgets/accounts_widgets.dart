@@ -1,6 +1,5 @@
 import '../../workspace/widgets/workspace_business_order.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../models/accounts_models.dart';
 import '../../bookings/models/booking_models.dart';
@@ -75,61 +74,6 @@ Future<FinanceFilter?> chooseFinanceDates(
       : filter.dates(bookingDate(range.start), bookingDate(range.end));
 }
 
-class FinancePeriodPicker extends StatelessWidget {
-  const FinancePeriodPicker({
-    super.key,
-    required this.filter,
-    required this.onChanged,
-    this.today,
-  });
-  final FinanceFilter filter;
-  final ValueChanged<FinanceFilter> onChanged;
-  final String? today;
-  @override
-  Widget build(BuildContext context) {
-    final d = DateTime.tryParse(today ?? '') ?? DateTime.now();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              for (final p in ['Today', 'This month', 'This year', 'Custom'])
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ActionChip(
-                    label: Text(p),
-                    onPressed: () async {
-                      if (p == 'Custom') {
-                        final next = await chooseFinanceDates(context, filter);
-                        if (next != null) onChanged(next);
-                      } else {
-                        final start = p == 'Today'
-                            ? d
-                            : p == 'This month'
-                            ? DateTime(d.year, d.month)
-                            : DateTime(d.year);
-                        onChanged(
-                          filter.dates(bookingDate(start), bookingDate(d)),
-                        );
-                      }
-                    },
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '${filter.from} → ${filter.until}',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
-    );
-  }
-}
-
 class FinanceSection extends StatelessWidget {
   const FinanceSection(this.title, {super.key, this.action, this.onTap});
   final String title;
@@ -154,74 +98,47 @@ class FinanceSection extends StatelessWidget {
   );
 }
 
-class FinanceStat extends StatelessWidget {
-  const FinanceStat(
-    this.title,
-    this.value, {
-    super.key,
-    this.icon = Icons.payments_outlined,
-    this.note,
-  });
-  final String title, value;
-  final IconData icon;
-  final String? note;
-  @override
-  Widget build(BuildContext context) => AppCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
-        const SizedBox(height: 12),
-        Text(title, style: Theme.of(context).textTheme.bodySmall),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        if (note != null) ...[
-          const SizedBox(height: 6),
-          Text(note!, style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ],
-    ),
-  );
-}
-
 class FinanceTransactionTile extends StatelessWidget {
   const FinanceTransactionTile({
     super.key,
     required this.entry,
     required this.currency,
     this.onTap,
+    this.label,
   });
   final FinanceTransaction entry;
   final String currency;
   final VoidCallback? onTap;
+
+  /// Replaces the entry kind in the subtitle, e.g. the income source.
+  final String? label;
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final transfer = entry.kind == 'transfer', positive = entry.amount >= 0;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: AppCard(
-        onTap: onTap,
+    final tone = transfer
+        ? scheme.onSurfaceVariant
+        : positive
+        ? scheme.primary
+        : scheme.error;
+    final stamp = financeStamp(entry.date);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(
-              radius: 20,
-              backgroundColor: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: .1),
+              radius: 18,
+              backgroundColor: tone.withValues(alpha: .12),
               child: Icon(
                 transfer
                     ? Icons.swap_horiz
                     : positive
                     ? Icons.south_west
                     : Icons.north_east,
-                color: Theme.of(context).colorScheme.primary,
-                size: 20,
+                color: tone,
+                size: 18,
               ),
             ),
             const SizedBox(width: 12),
@@ -235,14 +152,9 @@ class FinanceTransactionTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
-                    '${financeLabel(entry.kind)} · ${entry.business ?? 'Shared'}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    financeStamp(entry.date),
+                    '${label ?? financeLabel(entry.kind)} · ${entry.business ?? 'Shared'} · ${stamp.length > 11 ? stamp.substring(11) : stamp}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -251,13 +163,15 @@ class FinanceTransactionTile extends StatelessWidget {
             const SizedBox(width: 8),
             Flexible(
               child: Text(
-                '${!transfer && positive ? '+' : ''}${financeMoney(entry.amount, currency)}',
+                transfer
+                    ? financeMoney(entry.amount, currency)
+                    : positive
+                    ? '+${financeMoney(entry.amount, currency)}'
+                    : '−${financeMoney(-entry.amount, currency)}',
                 textAlign: TextAlign.right,
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: positive && !transfer
-                      ? Theme.of(context).colorScheme.primary
-                      : null,
+                  color: positive && !transfer ? scheme.primary : null,
                 ),
               ),
             ),
@@ -266,37 +180,6 @@ class FinanceTransactionTile extends StatelessWidget {
       ),
     );
   }
-}
-
-Future<void> openFinanceActions(
-  BuildContext context,
-  FinanceCatalog catalog,
-) async {
-  final kind = await showModalBottomSheet<String>(
-    context: context,
-    useSafeArea: true,
-    builder: (c) => Padding(
-      padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (catalog.canIncome)
-            ListTile(
-              leading: const Icon(Icons.south_west),
-              title: const Text('Add extra income'),
-              onTap: () => Navigator.pop(c, 'income'),
-            ),
-          if (catalog.canManage)
-            ListTile(
-              leading: const Icon(Icons.swap_horiz),
-              title: const Text('Transfer money'),
-              onTap: () => Navigator.pop(c, 'transfer'),
-            ),
-        ],
-      ),
-    ),
-  );
-  if (context.mounted && kind != null) context.push('/accounts/entry/$kind');
 }
 
 Future<DateTime?> chooseFinanceDateTime(

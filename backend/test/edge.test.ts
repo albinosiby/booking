@@ -20,10 +20,13 @@ function fixture() {
   );
   const services = {
     workspace: service,
+    admissions: service,
     messages: service,
     bookings: service,
+    blocks: service,
     accounts: service,
     expenses: service,
+    income: service,
     turf: service,
     court: service,
     pool: service,
@@ -85,6 +88,23 @@ test("Edge preserves route parameters, actor and configuration payloads for all 
     assert.equal(f.calls.at(-1).args[0].uid, "actor");
     assert.equal(f.calls.at(-1).args[1], id);
   }
+});
+test("Edge routes income endpoints with the actor, query and category ID", async () => {
+  const f = fixture();
+  assert.equal(
+    (await f.request("/v1/income/overview?from=2030-01-01&until=2030-01-31"))
+      .status,
+    200,
+  );
+  assert.equal(f.calls.at(-1).method, "overview");
+  assert.equal(f.calls.at(-1).args[1].from, "2030-01-01");
+  await f.request(`/v1/income/categories/${id}`, "PATCH", { name: "Events" });
+  assert.equal(f.calls.at(-1).method, "category");
+  assert.equal(f.calls.at(-1).args[2], id);
+  assert.equal(
+    (await f.request("/v1/income", "GET", undefined, null)).status,
+    401,
+  );
 });
 test("Edge accepts bodyless activate and rejects malformed JSON and invalid UUID before mutation", async () => {
   const f = fixture();
@@ -256,7 +276,7 @@ test("public health exposes a revision for deployment verification without accou
   assert.deepEqual(await response.json(), {
     status: "ok",
     runtime: "supabase-edge",
-    revision: "2026-10-20-customer-lookup-performance",
+    revision: "2026-10-21-block-slot-grid",
   });
 });
 
@@ -292,4 +312,109 @@ test("Edge authenticates and dispatches message-template operations", async () =
   );
   assert.equal(f.calls.at(-1).method, "remove");
   assert.equal(f.calls.at(-1).args[1], id);
+});
+
+test("Edge accepts streamed empty activation bodies but requires JSON for non-empty bodies", async () => {
+  const f = fixture();
+  for (const content of ["", new Uint8Array(0)]) {
+    const response = await f.handler(
+      new Request(
+        `https://example.com/booking-api/v1/businesses/${id}/activate`,
+        {
+          method: "POST",
+          headers: { authorization: "Bearer valid" },
+          body: content,
+        },
+      ),
+    );
+    assert.equal(response.status, 201);
+    assert.equal(f.calls.at(-1).method, "activate");
+  }
+  const count = f.calls.length;
+  for (const content of ["not-json", "{}"]) {
+    const response = await f.handler(
+      new Request(
+        `https://example.com/booking-api/v1/businesses/${id}/activate`,
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer valid",
+            "content-type": "text/plain",
+          },
+          body: content,
+        },
+      ),
+    );
+    assert.equal(response.status, 415);
+  }
+  assert.equal(f.calls.length, count);
+  assert.equal(
+    (await f.request(`/v1/businesses/${id}/activate`, "POST", {})).status,
+    201,
+  );
+});
+
+test("Edge authenticates admission, renewal, attendance and payment routes", async () => {
+  const f = fixture();
+  for (const path of [
+    "/v1/admissions",
+    "/v1/admissions/catalog",
+    `/v1/admissions/${id}`,
+  ])
+    assert.equal((await f.request(path, "GET", undefined, null)).status, 401);
+  await f.request("/v1/admissions/preview", "POST", { mode: "fixed" });
+  assert.equal(f.calls.at(-1).method, "preview");
+  await f.request(`/v1/admissions/${id}/sessions/${id}/attendance`, "POST", {
+    attendance: "present",
+  });
+  assert.equal(f.calls.at(-1).method, "attendance");
+  assert.equal(f.calls.at(-1).args[2], id);
+  await f.request(`/v1/admissions/${id}/sessions/${id}/change`, "POST", {
+    action: "reschedule",
+  });
+  assert.equal(f.calls.at(-1).method, "sessionChange");
+  await f.request(`/v1/admissions/${id}/payments`, "POST", {
+    kind: "collection",
+  });
+  assert.equal(f.calls.at(-1).method, "payments");
+});
+test("Edge authenticates and dispatches block list, create and unblock routes", async () => {
+  const f = fixture();
+  assert.equal(
+    (await f.request("/v1/booking-blocks", "GET", undefined, null)).status,
+    401,
+  );
+  assert.equal(
+    (await f.request(`/v1/booking-blocks?business_id=${id}&date=2030-06-04`))
+      .status,
+    200,
+  );
+  assert.equal(f.calls.at(-1).method, "list");
+  assert.equal(
+    (
+      await f.request(
+        `/v1/booking-blocks/slots?business_id=${id}&date=2030-06-04&resource_ids=${id}`,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(f.calls.at(-1).method, "slots");
+  assert.equal(
+    (await f.request("/v1/booking-blocks", "POST", { business_id: id })).status,
+    201,
+  );
+  assert.equal(f.calls.at(-1).method, "create");
+  assert.equal(
+    (await f.request(`/v1/booking-blocks/${id}/unblock`, "POST", {})).status,
+    201,
+  );
+  assert.equal(f.calls.at(-1).method, "unblock");
+});
+test("Edge exposes non-sensitive server timing for performance diagnosis", async () => {
+  const f = fixture();
+  const result = await f.request("/v1/workspace");
+  assert.match(
+    result.headers.get("server-timing") ?? "",
+    /^app;dur=\d+\.\d+, auth;dur=\d+\.\d+$/,
+  );
 });

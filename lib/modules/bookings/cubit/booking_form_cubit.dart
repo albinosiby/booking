@@ -1,3 +1,5 @@
+import '../repositories/booking_feedback_repository.dart';
+import '../repositories/booking_opening_mapper.dart';
 import '../models/booking_discount.dart';
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -16,7 +18,7 @@ String bookingScope(WorkspaceSession session) =>
     workspaceAccessScope(session.state.data);
 
 class BookingFormCubit extends Cubit<BookingFormModel> {
-  BookingFormCubit(this.session, this.repository, this.launch)
+  BookingFormCubit(this.session, this.repository, this.launch, {this.feedback})
     : super(BookingFormModel()) {
     scope = bookingScope(session);
     subscription = session.snapshots.listen((_) {
@@ -40,6 +42,8 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
   final WorkspaceSession session;
   final BookingRepository repository;
   final BookingLaunch launch;
+  final BookingFeedbackRepository? feedback;
+  final Set<String> _announced = {};
   late StreamSubscription subscription;
   late String scope;
   int generation = 0, searchGeneration = 0, slotGeneration = 0;
@@ -109,6 +113,12 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
         BookingFormModel(
           catalog: catalog,
           draft: draft,
+          open24Hours: bookingOpensAllDay(
+            session.state.data,
+            draft.businessId,
+            draft.spaceId,
+            draft.optionId,
+          ),
           original: original,
           loading: false,
         ),
@@ -154,6 +164,12 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
     emit(
       state.copyWith(
         draft: draft,
+        open24Hours: bookingOpensAllDay(
+          session.state.data,
+          draft.businessId,
+          draft.spaceId,
+          draft.optionId,
+        ),
         clearQuote: selection,
         choosingEnd: selection && !preserveRange ? false : null,
         rangeComplete: selection && !preserveRange ? false : null,
@@ -169,6 +185,38 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
       ),
     );
     if (selection && refreshSlots) scheduleSlots();
+  }
+
+  void poolMode(PoolBookingMode mode, {BookingCustomer? customer}) {
+    if (state.locked ||
+        state.original != null ||
+        !admissionBusinessTypes.contains(state.business?.type) ||
+        state.space == null) {
+      return;
+    }
+    generation++;
+    slotGeneration++;
+    availabilityTimer?.cancel();
+    quoteTimer?.cancel();
+    emit(
+      state.copyWith(
+        checking: false,
+        slotsLoading: false,
+        poolMode: mode,
+        draft: state.draft.copyWith(
+          customer: customer,
+          payments: [],
+          clearDiscount: true,
+        ),
+        review: false,
+        rangeComplete: false,
+        choosingEnd: false,
+        clearQuote: true,
+      ),
+    );
+    if (mode == PoolBookingMode.singleVisit && !state.slotsLoaded) {
+      scheduleSlots();
+    }
   }
 
   void chooseBusiness(String id, {bool keepDraft = false}) {
@@ -735,7 +783,7 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
   }
 
   Future<void> confirm() async {
-    if (state.saving) return;
+    if (state.saving || state.resultId != null) return;
     if (state.pending != null) {
       await _send(state.pending!);
       return;
@@ -769,6 +817,19 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
     await _send(command);
   }
 
+  void _complete(String id, BookingCommand command) {
+    emit(state.copyWith(saving: false, resultId: id, clearPending: true));
+    if (command.endpoint == '/bookings' && _announced.add(id)) {
+      unawaited(() async {
+        try {
+          await feedback?.created(id);
+        } catch (_) {
+          // Device feedback is optional and must not affect the saved booking.
+        }
+      }());
+    }
+  }
+
   Future<void> _send(BookingCommand command) async {
     final g = generation;
     availabilityTimer?.cancel();
@@ -778,7 +839,7 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
     try {
       final id = await repository.submit(command);
       if (valid(g)) {
-        emit(state.copyWith(saving: false, resultId: id, clearPending: true));
+        _complete(id, command);
       }
     } catch (e) {
       if (!valid(g)) return;
@@ -786,9 +847,7 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
         try {
           final id = await repository.commandResult(command.key);
           if (valid(g) && id != null) {
-            emit(
-              state.copyWith(saving: false, resultId: id, clearPending: true),
-            );
+            _complete(id, command);
             return;
           }
         } catch (_) {}

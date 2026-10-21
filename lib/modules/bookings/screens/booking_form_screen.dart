@@ -1,3 +1,8 @@
+import 'dart:async';
+import '../../admissions/widgets/admission_form_fields.dart';
+import '../../admissions/cubit/admission_cubit.dart';
+import '../../admissions/cubit/admission_state.dart';
+import '../../admissions/models/admission_models.dart';
 import '../widgets/booking_discount_editor.dart';
 import '../../../utils/helpers/time_format.dart';
 import '../../workspace/widgets/workspace_business_order.dart';
@@ -27,6 +32,9 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     param2: widget.launch,
   );
   bool leaving = false;
+  bool switchingPool = false;
+  AdmissionCubit? admission;
+  AdmissionDraft? admissionBaseline;
   @override
   void initState() {
     super.initState();
@@ -35,12 +43,138 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
   @override
   void dispose() {
+    admission?.close();
     cubit.close();
     super.dispose();
   }
 
+  Future<void> poolMode(PoolBookingMode mode) async {
+    final s = cubit.state, a = admission;
+    if (switchingPool ||
+        mode == s.poolMode ||
+        s.locked ||
+        a?.state.loading == true ||
+        a?.state.busy == true ||
+        a?.state.locked == true) {
+      return;
+    }
+    switchingPool = true;
+    try {
+      final dirty = s.poolMode == PoolBookingMode.singleVisit
+          ? s.rangeComplete ||
+                s.draft.recordedPayments.isNotEmpty ||
+                s.draft.discount != null
+          : admissionBaseline != null &&
+                a != null &&
+                a.state.draft.copyWith(customer: admissionBaseline!.customer) !=
+                    admissionBaseline;
+      if (dirty) {
+        final discard = await showDialog<bool>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: Text(
+              s.business?.type == 'pool'
+                  ? 'Change pool option?'
+                  : 'Change booking option?',
+            ),
+            content: Text(
+              'The current schedule, plan and payment entries will be cleared. Your customer and selected ${s.business?.type == 'pool' ? 'pool' : 'court'} will stay.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('Keep editing'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: const Text('Change option'),
+              ),
+            ],
+          ),
+        );
+        if (discard != true || !mounted || cubit.isClosed) return;
+      }
+      if (!mounted ||
+          cubit.isClosed ||
+          cubit.state.draft.businessId != s.draft.businessId ||
+          cubit.state.draft.spaceId != s.draft.spaceId ||
+          cubit.state.poolMode != s.poolMode ||
+          (a != null && !a.authorized)) {
+        return;
+      }
+      final customer = s.poolMode == PoolBookingMode.singleVisit
+          ? s.draft.customer
+          : a?.state.draft.customer ?? s.draft.customer;
+      if (mode == PoolBookingMode.singleVisit) {
+        cubit.poolMode(mode, customer: customer);
+        admission = null;
+        admissionBaseline = null;
+        if (a != null) unawaited(a.close());
+      } else {
+        final controller = getIt<AdmissionCubit>(
+          param1: context.read<WorkspaceCubit>(),
+        );
+        admission = controller;
+        admissionBaseline = null;
+        final loading = controller.loadForm(
+          cachedCatalog: a?.reusableCatalog,
+          cachedAt: a?.catalogLoadedAt,
+          businessId: s.draft.businessId,
+          poolId: s.draft.spaceId,
+          date: s.draft.date,
+          customer: customer,
+          // Court businesses sell `play` plans where pools sell swimming plans.
+          formKind:
+              mode == PoolBookingMode.swimming && s.business?.type != 'pool'
+              ? 'play'
+              : mode.name,
+          strictLocation: true,
+        );
+        cubit.poolMode(mode, customer: customer);
+        if (a != null) unawaited(a.close());
+        await loading;
+        if (mounted && !controller.isClosed) {
+          admissionBaseline = controller.state.draft;
+        }
+      }
+    } finally {
+      switchingPool = false;
+    }
+  }
+
+  Widget poolOptions(BookingFormModel s, {bool enabled = true}) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final mode in PoolBookingMode.values)
+              ChoiceChip(
+                label: Text(switch (mode) {
+                  PoolBookingMode.singleVisit =>
+                    s.business?.type == 'pool'
+                        ? 'Single visit'
+                        : 'Court booking',
+                  PoolBookingMode.swimming =>
+                    s.business?.type == 'pool' ? 'Swimming plan' : 'Court plan',
+                  PoolBookingMode.coaching => 'Coaching',
+                }),
+                selected: s.poolMode == mode,
+                onSelected: enabled ? (_) => poolMode(mode) : null,
+              ),
+          ],
+        ),
+      ],
+    ),
+  );
+
   void back() {
-    if (cubit.state.locked) {
+    if (cubit.state.locked ||
+        admission?.state.locked == true ||
+        admission?.state.busy == true) {
       showMessage(
         context,
         'Retry confirmation to verify the booking before leaving.',
@@ -65,51 +199,109 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     if (value != null && !cubit.isClosed) cubit.date(bookingDate(value));
   }
 
-  Widget customerSection(BookingFormModel s) => BookingFormSection(
-    number: 1,
-    title: 'Customer',
-    children: s.original != null
-        ? [
-            Text(
-              s.draft.customer.name,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            Text(s.draft.customer.phone),
-            const SizedBox(height: 8),
-            const Text('Customer details and existing payments stay attached.'),
-          ]
-        : [
-            BookingCustomerFields(
-              compact: true,
-              customer: s.draft.customer,
-              notes: s.draft.notes,
-              enabled: !s.locked,
-              onName: cubit.customerName,
-              onPhone: cubit.customerPhone,
-              onEmail: cubit.customerEmail,
-              onNotes: cubit.notes,
-            ),
-            for (final customer
-                in s.draft.customer.name.trim().isEmpty
-                    ? s.customers
-                    : <BookingCustomer>[])
-              ListTile(
-                title: Text(customer.name),
-                subtitle: Text(customer.phone),
-                onTap: s.locked ? null : () => cubit.chooseCustomer(customer),
+  Widget customerSection(BookingFormModel s, [AdmissionState? a]) {
+    final customer = a?.draft.customer ?? s.draft.customer;
+    final enabled =
+        !(s.locked ||
+            a?.loading == true ||
+            a?.busy == true ||
+            a?.locked == true);
+    return BookingFormSection(
+      number: 1,
+      title: 'Customer',
+      children: s.original != null
+          ? [
+              Text(
+                customer.name,
+                style: Theme.of(context).textTheme.titleMedium,
               ),
-          ],
-  );
-  Widget spaceSection(BookingFormModel s) => BookingSpaceSelection(
-    model: s,
-    businesses: s.original == null
-        ? orderedWorkspaceBusinesses(context, s.catalog.businesses, (b) => b.id)
-        : [if (s.business != null) s.business!],
-    onBusiness: cubit.chooseBusiness,
-    onSport: cubit.chooseSport,
-    onSpace: cubit.chooseSpace,
-    onOption: cubit.chooseOption,
-  );
+              Text(customer.phone),
+              const SizedBox(height: 8),
+              const Text(
+                'Customer details and existing payments stay attached.',
+              ),
+            ]
+          : [
+              BookingCustomerFields(
+                compact: true,
+                customer: customer,
+                notes: s.draft.notes,
+                showNotes: a == null,
+                enabled: enabled,
+                onName: a == null
+                    ? cubit.customerName
+                    : (v) => admission!.update(
+                        a.draft.copyWith(
+                          customer: customer.copyWith(name: v, clearId: true),
+                        ),
+                      ),
+                onPhone: a == null
+                    ? cubit.customerPhone
+                    : admission!.customerPhone,
+                onEmail: a == null
+                    ? cubit.customerEmail
+                    : (v) => admission!.update(
+                        a.draft.copyWith(customer: customer.copyWith(email: v)),
+                      ),
+                onNotes: cubit.notes,
+              ),
+              if (customer.name.trim().isEmpty)
+                for (final match in a?.customers ?? s.customers)
+                  ListTile(
+                    title: Text(match.name),
+                    subtitle: Text(match.phone),
+                    onTap: !enabled
+                        ? null
+                        : () => a == null
+                              ? cubit.chooseCustomer(match)
+                              : admission!.chooseCustomer(match),
+                  ),
+            ],
+    );
+  }
+
+  Future<void> location(String id, {bool space = false}) async {
+    if (id ==
+        (space ? cubit.state.draft.spaceId : cubit.state.draft.businessId)) {
+      return;
+    }
+    final a = admission;
+    if (a == null) {
+      space ? cubit.chooseSpace(id) : cubit.chooseBusiness(id);
+      return;
+    }
+    if (a.state.loading || a.state.busy || a.state.locked) return;
+    final mode = cubit.state.poolMode;
+    await poolMode(PoolBookingMode.singleVisit);
+    if (!mounted || cubit.state.poolMode != PoolBookingMode.singleVisit) return;
+    space ? cubit.chooseSpace(id) : cubit.chooseBusiness(id);
+    if (admissionBusinessTypes.contains(cubit.state.business?.type) &&
+        cubit.state.space != null) {
+      await poolMode(mode);
+    }
+  }
+
+  Widget spaceSection(BookingFormModel s, [AdmissionState? a]) =>
+      BookingSpaceSelection(
+        model: s.copyWith(
+          saving:
+              s.saving ||
+              a?.loading == true ||
+              a?.busy == true ||
+              a?.locked == true,
+        ),
+        businesses: s.original == null
+            ? orderedWorkspaceBusinesses(
+                context,
+                s.catalog.businesses,
+                (b) => b.id,
+              )
+            : [if (s.business != null) s.business!],
+        onBusiness: (id) => location(id),
+        onSport: cubit.chooseSport,
+        onSpace: (id) => location(id, space: true),
+        onOption: cubit.chooseOption,
+      );
   Widget timeSection(BookingFormModel s) => BookingFormSection(
     number: 3,
     title: 'Date & time',
@@ -225,6 +417,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
           choosingEnd: s.choosingEnd,
           minimumDuration: s.option?.minimumDuration,
           selectedDate: s.draft.date,
+          showDayOffset: !s.open24Hours,
           enabled: !s.locked,
           onSelected: cubit.chooseSlot,
         )
@@ -391,25 +584,110 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     );
   }
 
-  @override
-  Widget build(
-    BuildContext context,
-  ) => BlocConsumer<BookingFormCubit, BookingFormModel>(
-    bloc: cubit,
-    listener: (context, s) {
-      if (s.resultId != null) {
-        if (s.original != null && context.canPop()) {
-          setState(() => leaving = true);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) context.pop();
-          });
-        } else {
-          context.replace('/booking/${s.resultId}?created=1');
-        }
-      }
-    },
-    builder: (context, s) => PopScope(
-      canPop: leaving || !s.locked,
+  Widget admissionSection(BookingFormModel s, AdmissionState a) =>
+      BookingFormSection(
+        number: 3,
+        title: s.poolMode == PoolBookingMode.coaching
+            ? 'Coaching plan'
+            : s.business?.type == 'pool'
+            ? 'Swimming plan'
+            : 'Court plan',
+        children: [
+          if (a.loading) const AppLoadingState(initial: false),
+          if (a.error != null) AppErrorWidget(message: a.error!),
+          if (!a.loading && a.availablePlans.isEmpty) ...[
+            const AppEmptyState(
+              showCard: false,
+              title: 'No matching plans',
+              message: 'Configure a plan for this space to continue.',
+            ),
+            if (a.catalog.owner)
+              TextButton(
+                onPressed: () =>
+                    context.push('/businesses/${s.draft.businessId}/settings'),
+                child: const Text('Configure plans'),
+              ),
+          ] else if (!a.loading) ...[
+            if (a.preview != null) ...[
+              AdmissionReviewSummary(state: a),
+              TextButton(
+                onPressed: a.locked || a.busy ? null : admission!.edit,
+                child: const Text('Edit admission details'),
+              ),
+            ] else
+              AdmissionScheduleFields(cubit: admission!, state: a),
+          ],
+        ],
+      );
+  Widget admissionPayments(AdmissionState a) => BookingFormSection(
+    number: 4,
+    title: 'Payments',
+    summary: 'Optional · you can confirm unpaid',
+    children: [
+      if (a.loading)
+        const Text('Loading payment settings…')
+      else if (a.catalog.canCollect)
+        AdmissionPaymentFields(cubit: admission!, state: a)
+      else
+        const Text(
+          'You can confirm unpaid. Payment collection requires permission.',
+        ),
+    ],
+  );
+  Widget admissionConfirm(AdmissionState a) => SafeArea(
+    top: false,
+    child: Container(
+      padding: const EdgeInsets.all(16),
+      color: Theme.of(context).colorScheme.surface,
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('TOTAL'),
+                Text(
+                  a.plan == null
+                      ? '—'
+                      : bookingMoney(
+                          a.paymentEntry.total ?? 0,
+                          a.catalog.currency,
+                        ),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 2,
+            child: AppButton(
+              label: a.locked
+                  ? 'Retry confirmation'
+                  : a.preview == null
+                  ? 'Review admission'
+                  : 'Confirm admission',
+              busy: a.busy,
+              onPressed:
+                  a.loading || a.busy || !a.catalog.canManage || a.plan == null
+                  ? null
+                  : a.locked
+                  ? admission!.retry
+                  : a.preview == null
+                  ? admission!.review
+                  : admission!.create,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget page(BookingFormModel s, [AdmissionState? a]) {
+    final locked = s.locked || a?.busy == true || a?.locked == true;
+    return PopScope(
+      canPop: leaving || !locked,
       onPopInvokedWithResult: (popped, _) {
         if (!popped) back();
       },
@@ -429,6 +707,8 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         bottomBar:
             s.loading || !s.catalog.canManage || s.catalog.businesses.isEmpty
             ? null
+            : a != null
+            ? admissionConfirm(a)
             : BookingConfirmBar(
                 model: s,
                 onReview: cubit.review,
@@ -457,14 +737,18 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
           if (!s.loading &&
               s.catalog.canManage &&
               s.catalog.businesses.isNotEmpty)
-            if (s.review)
+            if (s.review && a == null)
               review(s)
             else ...[
-              customerSection(s),
-              spaceSection(s),
-              timeSection(s),
+              customerSection(s, a),
+              spaceSection(s, a),
+              if (s.original == null &&
+                  admissionBusinessTypes.contains(s.business?.type) &&
+                  s.space != null)
+                poolOptions(s, enabled: !locked && a?.loading != true),
+              if (a == null) timeSection(s) else admissionSection(s, a),
               if (s.original == null)
-                paymentSection(s)
+                a == null ? paymentSection(s) : admissionPayments(a)
               else
                 BookingFormSection(
                   number: 4,
@@ -482,6 +766,38 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
             ],
         ],
       ),
-    ),
-  );
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      BlocConsumer<BookingFormCubit, BookingFormModel>(
+        bloc: cubit,
+        listener: (context, s) {
+          if (s.resultId != null) {
+            if (s.original != null && context.canPop()) {
+              setState(() => leaving = true);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (context.mounted) context.pop();
+              });
+            } else {
+              context.replace('/booking/${s.resultId}?created=1');
+            }
+          }
+        },
+        builder: (context, s) =>
+            s.poolMode != PoolBookingMode.singleVisit && admission != null
+            ? BlocConsumer<AdmissionCubit, AdmissionState>(
+                key: ObjectKey(admission),
+                bloc: admission,
+                listenWhen: (p, n) => p.savedId != n.savedId,
+                listener: (context, a) {
+                  if (a.savedId != null) {
+                    context.replace('/admissions/${a.savedId}');
+                  }
+                },
+                builder: (context, a) => page(s, a),
+              )
+            : page(s),
+      );
 }

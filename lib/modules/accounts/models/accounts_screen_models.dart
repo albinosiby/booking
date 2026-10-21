@@ -1,4 +1,5 @@
 import 'accounts_models.dart';
+import '../../income/models/income_models.dart' show IncomeCategory;
 
 class AccountsOverviewModel {
   const AccountsOverviewModel({
@@ -8,13 +9,56 @@ class AccountsOverviewModel {
     this.transactions = const [],
     this.loading = false,
     this.error,
+    this.selectedMonth,
   });
   final FinanceFilter filter;
   final FinanceCatalog? catalog;
   final FinanceOverview? overview;
   final List<FinanceTransaction> transactions;
   final bool loading;
-  final String? error;
+  final String? error, selectedMonth;
+  FinanceMonthAnalysis? get activeMonth =>
+      overview?.monthlyAnalysis
+          .where(
+            (m) => m.month == (selectedMonth ?? filter.until.substring(0, 7)),
+          )
+          .firstOrNull ??
+      overview?.monthlyAnalysis.firstOrNull;
+  List<FinanceSpaceMonth> get spaceBreakdown {
+    final rows = [...?activeMonth?.spaces];
+    for (final business in catalog?.businesses ?? <FinanceBusiness>[]) {
+      if (filter.businessId != null && filter.businessId != business.id) {
+        continue;
+      }
+      for (final space in business.spaces) {
+        if (filter.spaceId != null && filter.spaceId != space.id) continue;
+        if (!rows.any(
+          (r) => r.businessId == business.id && r.spaceId == space.id,
+        )) {
+          rows.add(
+            FinanceSpaceMonth(
+              businessId: business.id,
+              spaceId: space.id,
+              business: business.name,
+              space: space.name,
+            ),
+          );
+        }
+      }
+    }
+    rows.sort((a, b) => a.label.compareTo(b.label));
+    return List.unmodifiable(rows);
+  }
+
+  AccountsOverviewModel month(String value) => AccountsOverviewModel(
+    filter: filter,
+    catalog: catalog,
+    overview: overview,
+    transactions: transactions,
+    loading: loading,
+    error: error,
+    selectedMonth: value,
+  );
 }
 
 class AccountSettingsModel {
@@ -45,8 +89,15 @@ class FinanceEntryModel {
     this.toAccountId,
     this.error,
     this.saved = false,
+    this.incomeCategories = const [],
+    this.incomeCategoryId,
   });
   final String kind, reason, category, reference;
+
+  /// Managed income categories; empty when they could not be loaded, in
+  /// which case the form falls back to a typed category.
+  final List<IncomeCategory> incomeCategories;
+  final String? incomeCategoryId;
   final DateTime date;
   final FinanceCatalog? catalog;
   final String? businessId, spaceId, toAccountId, error;
@@ -67,6 +118,8 @@ class FinanceEntryModel {
     String? toAccountId,
     String? error,
     bool? saved,
+    List<IncomeCategory>? incomeCategories,
+    String? incomeCategoryId,
   }) => FinanceEntryModel(
     kind: kind,
     date: date ?? this.date,
@@ -82,6 +135,8 @@ class FinanceEntryModel {
     toAccountId: toAccountId ?? this.toAccountId,
     error: error,
     saved: saved ?? this.saved,
+    incomeCategories: incomeCategories ?? this.incomeCategories,
+    incomeCategoryId: incomeCategoryId ?? this.incomeCategoryId,
   );
 }
 
@@ -161,6 +216,36 @@ class TransactionDetailsModel {
     this.error,
   });
   final FinanceTransaction transaction;
+  bool get isTransfer =>
+      transaction.kind == 'transfer' ||
+      (transaction.kind == 'reversal' &&
+          transaction.net == 0 &&
+          transaction.lines.any((l) => l.amount < 0) &&
+          transaction.lines.any((l) => l.amount > 0));
+  int get displayAmount => isTransfer
+      ? transaction.lines
+            .where((l) => l.amount > 0)
+            .fold(0, (n, l) => n + l.amount)
+      : transaction.amount.abs();
+  String get typeLabel => switch (transaction.kind) {
+    'booking_collection' => 'Booking payment',
+    'admission_collection' => 'Admission payment',
+    'admission_refund' => 'Admission refund',
+    'booking_refund' => 'Refund',
+    'reversal' => isTransfer ? 'Transfer reversal' : 'Reversal',
+    _ => financeLabel(transaction.kind),
+  };
+  String get categoryLabel => transaction.category.isNotEmpty
+      ? transaction.category
+      : transaction.bookingId != null
+      ? 'Booking'
+      : 'Not specified';
+  String get scopeLabel => [
+    transaction.business ?? 'Organization',
+    if (transaction.space?.isNotEmpty == true) transaction.space!,
+  ].join(' · ');
+  bool get reversibleKind =>
+      ['income', 'expense', 'transfer'].contains(transaction.kind);
   final bool busy, reversed;
   final String? error;
 }

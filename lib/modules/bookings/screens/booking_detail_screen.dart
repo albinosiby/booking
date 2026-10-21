@@ -1,11 +1,10 @@
-import '../widgets/booking_history_sections.dart';
+import '../widgets/booking_payment_summary.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
-import '../models/booking_models.dart';
 import '../models/booking_detail_model.dart';
 import '../cubit/booking_detail_cubit.dart';
 import '../widgets/booking_widgets.dart';
@@ -131,6 +130,12 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
+              BookingPaymentSummary(
+                booking: b,
+                currency: s.catalog.currency,
+                onCollect: s.canCollectPending && enabled ? collect : null,
+              ),
+              const SizedBox(height: 16),
               AppCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,40 +159,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       spacing: 12,
                       children: [
                         Chip(label: Text(paymentLabel(b.status))),
-                        Chip(label: Text(paymentLabel(b.paymentStatus))),
+                        if (b.checkedIn)
+                          const Chip(
+                            avatar: Icon(Icons.how_to_reg_outlined, size: 18),
+                            label: Text('Checked in'),
+                          ),
                       ],
                     ),
                     Text('${b.customer.name} · ${b.customer.phone}'),
                     if (b.customer.email.isNotEmpty) Text(b.customer.email),
                     if (b.notes.isNotEmpty) Text(b.notes),
-                    const Divider(),
-                    if (b.discountMinor > 0) ...[
-                      Text(
-                        'Subtotal: ${bookingMoney(b.subtotal ?? b.total + b.discountMinor, s.catalog.currency)}',
-                      ),
-                      Text(
-                        'Discount: ${bookingMoney(b.discountMinor, s.catalog.currency)}',
-                      ),
-                      if (b.selection.discount?.reason.isNotEmpty == true)
-                        Text(b.selection.discount!.reason),
-                    ],
-                    Text(
-                      'Booking total: ${bookingMoney(b.total, s.catalog.currency)}',
-                    ),
-                    Text(
-                      'Net received: ${bookingMoney(b.netPaid, s.catalog.currency)}',
-                    ),
-                    Text(
-                      'Balance due: ${bookingMoney(b.balance, s.catalog.currency)}',
-                    ),
-                    if (b.refundDue > 0)
-                      Text(
-                        'Refund due: ${bookingMoney(b.refundDue, s.catalog.currency)}',
-                      ),
-                    if (b.status == 'cancelled')
-                      const Text(
-                        'Cancellation does not automatically refund payments.',
-                      ),
                   ],
                 ),
               ),
@@ -202,12 +183,6 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                         : null,
                   ),
                 const SizedBox(height: 12),
-                if (s.canCollectPending)
-                  AppButton(
-                    label: 'Record payment',
-                    secondary: true,
-                    onPressed: enabled ? collect : null,
-                  ),
                 if (s.catalog.canRefund && b.refundDue > 0)
                   AppButton(
                     label: 'Record refund',
@@ -224,26 +199,36 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     child: const Text('Edit customer & notes'),
                   ),
                   if (b.status == 'confirmed') ...[
-                    TextButton(
-                      onPressed: enabled
-                          ? () => cubit.begin(BookingDetailAction.cancelled)
-                          : null,
-                      child: const Text('Cancel booking'),
+                    if (s.canCheckIn) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: enabled
+                              ? () => cubit.begin(BookingDetailAction.checkedIn)
+                              : null,
+                          icon: const Icon(Icons.how_to_reg_outlined),
+                          label: const Text('Check in'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(
+                            context,
+                          ).colorScheme.onSurface,
+                          side: BorderSide(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                        ),
+                        onPressed: enabled
+                            ? () => cubit.begin(BookingDetailAction.cancelled)
+                            : null,
+                        child: const Text('Cancel booking'),
+                      ),
                     ),
-                    if (!DateTime.parse(b.endsAt).isAfter(DateTime.now()))
-                      TextButton(
-                        onPressed: enabled
-                            ? () => cubit.begin(BookingDetailAction.completed)
-                            : null,
-                        child: const Text('Mark completed'),
-                      ),
-                    if (!DateTime.parse(b.startsAt).isAfter(DateTime.now()))
-                      TextButton(
-                        onPressed: enabled
-                            ? () => cubit.begin(BookingDetailAction.noShow)
-                            : null,
-                        child: const Text('Mark no-show'),
-                      ),
                   ],
                 ],
               ] else
@@ -259,10 +244,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                             ? 'Record split payment'
                             : s.action == BookingDetailAction.refund
                             ? 'Record refund'
+                            : s.action == BookingDetailAction.checkedIn
+                            ? 'Check in customer'
                             : 'Confirm ${paymentLabel(s.action.name)}',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 16),
+                      if (s.action == BookingDetailAction.checkedIn)
+                        const Text(
+                          'Confirm the customer has arrived. This keeps the booking confirmed and does not change payments.',
+                        ),
                       if (s.action == BookingDetailAction.collection ||
                           s.action == BookingDetailAction.refund)
                         BookingPaymentEditor(
@@ -296,6 +287,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                         ConfigurationField(
                           label: s.action == BookingDetailAction.collection
                               ? 'Payment note · optional'
+                              : s.action == BookingDetailAction.checkedIn
+                              ? 'Arrival note · optional'
                               : 'Reason',
                           value: s.reason,
                           enabled: enabled,
@@ -305,7 +298,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       const SizedBox(height: 16),
                       AppButton(
                         label: s.pending == null
-                            ? 'Save changes'
+                            ? (s.action == BookingDetailAction.checkedIn
+                                  ? 'Confirm check in'
+                                  : 'Save changes')
                             : 'Retry action',
                         busy: s.saving,
                         onPressed: s.saving ? null : cubit.submit,
@@ -317,15 +312,6 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     ],
                   ),
                 ),
-              const SizedBox(height: 24),
-              BookingPaymentHistory(
-                payments: s.paymentHistory,
-                currency: s.catalog.currency,
-                collectAmount: s.canCollectPending ? b.balance : null,
-                onCollect: enabled ? collect : null,
-              ),
-              const SizedBox(height: 24),
-              BookingActivityHistory(events: s.bookingHistory),
             ],
           ],
         ),

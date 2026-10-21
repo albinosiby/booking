@@ -170,3 +170,34 @@ test("linked and new users authenticate with one read and no recurring identity 
   assert.equal(statements.length, 1);
   assert.ok(statements[0].startsWith("SELECT"));
 });
+test("parallel identical bearer checks share verification, but later requests and other tokens recheck", async () => {
+  const { coalesceActorChecks } = await import("../src/common/supabase-auth");
+  let calls = 0,
+    release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const verify = coalesceActorChecks(async (token) => {
+    calls++;
+    await gate;
+    return { uid: token, email: "owner@example.com", name: "Owner" };
+  });
+  const first = verify("one"),
+    second = verify("one"),
+    other = verify("two");
+  await Promise.resolve();
+  assert.equal(calls, 2);
+  release();
+  const [a, b] = await Promise.all([first, second, other]);
+  a.name = "changed";
+  assert.equal(b.name, "Owner");
+  await verify("one");
+  assert.equal(calls, 3);
+  let failures = 0;
+  const denied = coalesceActorChecks(async () => {
+    failures++;
+    throw new UnauthorizedException();
+  });
+  await Promise.allSettled([denied("bad"), denied("bad")]);
+  assert.equal(failures, 1);
+  await assert.rejects(() => denied("bad"));
+  assert.equal(failures, 2);
+});

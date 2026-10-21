@@ -9,6 +9,7 @@ enum BookingDetailAction {
   customer,
   cancelled,
   completed,
+  checkedIn,
   noShow,
 }
 
@@ -35,6 +36,10 @@ class BookingDetailModel extends Equatable {
   final String notes, reason;
   final String? error;
   final BookingCommand? pending;
+  bool get canCheckIn =>
+      catalog.canManage &&
+      record?.status == 'confirmed' &&
+      record?.checkedIn == false;
   bool get canCollectPending =>
       catalog.canCollect &&
       record != null &&

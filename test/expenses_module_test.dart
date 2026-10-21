@@ -207,7 +207,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('Feb'));
+      await tester.tap(find.byKey(const ValueKey('finance-bar-1')));
       expect(chosen, 2);
       expect(tester.takeException(), isNull);
     },

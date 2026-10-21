@@ -1,3 +1,5 @@
+import 'compact_booking_card.dart';
+import '../models/compact_booking_model.dart';
 export 'booking_payment_editor.dart';
 export 'booking_payment_helpers.dart';
 import 'booking_payment_helpers.dart';
@@ -65,120 +67,21 @@ class BookingStatusChip extends StatelessWidget {
 }
 
 class BookingCard extends StatelessWidget {
-  const BookingCard({super.key, required this.booking, required this.currency});
+  const BookingCard({
+    super.key,
+    required this.booking,
+    required this.currency,
+    this.canCollect = false,
+  });
   final BookingRecord booking;
   final String currency;
+  final bool canCollect;
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context), b = booking;
-    final local = DateTime.tryParse(b.localStart);
-    final end = DateTime.tryParse(b.localEnd);
-    final locale = MaterialLocalizations.of(context);
-    final day = local == null
-        ? b.selection.date
-        : locale.formatMediumDate(local);
-    final time = b.localStart.length >= 16
-        ? TimeFormat.display(b.localStart.substring(11, 16))
-        : '';
-    final endTime = b.localEnd.length >= 16
-        ? TimeFormat.display(b.localEnd.substring(11, 16))
-        : '';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: AppCard(
-        onTap: () => context.push('/booking/${b.id}'),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                BookingStatusChip(status: b.status),
-                Text(
-                  b.reference,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              b.spaceName,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${b.businessName} · ${b.optionName}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.schedule_rounded,
-                  size: 18,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '$day · $time–$endTime${local != null && end != null && bookingDate(local) != bookingDate(end) ? ' (ends ${locale.formatMediumDate(end)})' : ''}',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.person_outline_rounded, size: 18),
-                const SizedBox(width: 8),
-                Expanded(child: Text(b.customer.name)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 14),
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              spacing: 16,
-              runSpacing: 10,
-              children: [
-                Text(
-                  bookingMoney(b.total, currency),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                BookingStatusChip(status: b.paymentStatus),
-                if (b.balance > 0)
-                  Text(
-                    'Due ${bookingMoney(b.balance, currency)}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                if (b.refundDue > 0)
-                  Text(
-                    'Refund ${bookingMoney(b.refundDue, currency)}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => CompactBookingCard(
+    model: CompactBookingModel.booking(booking),
+    currency: currency,
+    canCollect: canCollect,
+  );
 }
 
 class BookingDateButton extends StatelessWidget {
@@ -231,12 +134,13 @@ class BookingCustomerFields extends StatelessWidget {
     required this.onEmail,
     required this.onNotes,
     this.compact = false,
+    this.showNotes = true,
   });
   final BookingCustomer customer;
   final String notes;
   final bool enabled;
   final ValueChanged<String> onName, onPhone, onEmail, onNotes;
-  final bool compact;
+  final bool compact, showNotes;
   @override
   Widget build(BuildContext context) => Column(
     children: [
@@ -259,7 +163,7 @@ class BookingCustomerFields extends StatelessWidget {
       const SizedBox(height: 16),
       if (compact)
         ReviewMore(
-          title: 'Email & notes · optional',
+          title: showNotes ? 'Email & notes · optional' : 'Email · optional',
           children: [
             ConfigurationField(
               label: 'Email · optional',
@@ -268,13 +172,14 @@ class BookingCustomerFields extends StatelessWidget {
               onChanged: onEmail,
               keyboardType: TextInputType.emailAddress,
             ),
-            const SizedBox(height: 12),
-            ConfigurationField(
-              label: 'Booking notes · optional',
-              value: notes,
-              enabled: enabled,
-              onChanged: onNotes,
-            ),
+            if (showNotes) const SizedBox(height: 12),
+            if (showNotes)
+              ConfigurationField(
+                label: 'Booking notes · optional',
+                value: notes,
+                enabled: enabled,
+                onChanged: onNotes,
+              ),
           ],
         )
       else ...[
@@ -284,13 +189,14 @@ class BookingCustomerFields extends StatelessWidget {
           enabled: enabled,
           onChanged: onEmail,
         ),
-        const SizedBox(height: 16),
-        ConfigurationField(
-          label: 'Booking notes · optional',
-          value: notes,
-          enabled: enabled,
-          onChanged: onNotes,
-        ),
+        if (showNotes) const SizedBox(height: 16),
+        if (showNotes)
+          ConfigurationField(
+            label: 'Booking notes · optional',
+            value: notes,
+            enabled: enabled,
+            onChanged: onNotes,
+          ),
       ],
     ],
   );

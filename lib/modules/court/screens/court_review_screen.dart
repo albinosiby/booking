@@ -84,6 +84,34 @@ class CourtReviewScreen extends StatelessWidget {
                 ),
             ],
           ),
+        for (final p in c.plans)
+          ReviewSpaceCard(
+            name: p.name,
+            icon: Icons.sports_outlined,
+            enabled: p.enabled,
+            subtitle: p.coaching
+                ? '${p.allowance} classes · ${p.validityLabel} · ${p.seats} students per class'
+                : 'Court plan · ${p.allowance} play days · ${p.validityLabel}',
+            children: [
+              ReviewDetail(
+                label: 'Courts',
+                value: c.courts
+                    .where((court) => p.courtIds.contains(court.id))
+                    .map((court) => court.name)
+                    .join(', '),
+              ),
+              ReviewDetail(
+                label: 'Coaching days and times',
+                value: courtSchedule(p.hours),
+              ),
+              ReviewRate(
+                label: p.coaching
+                    ? '${p.classDuration} min classes'
+                    : 'Plan price',
+                price: reviewPrice(model.currency, p.price),
+              ),
+            ],
+          ),
         const ReviewNote(
           'Prices follow the booking start time. Seasonal prices take priority on their selected dates.',
         ),

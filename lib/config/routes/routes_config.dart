@@ -1,3 +1,8 @@
+import '../../modules/booking_blocks/models/slot_block_models.dart';
+import '../../modules/booking_blocks/screens/slot_block_screens.dart';
+import '../../modules/admissions/screens/admissions_screen.dart';
+import '../../modules/admissions/screens/admission_form_screen.dart';
+import '../../modules/admissions/screens/admission_detail_screen.dart';
 import '../../modules/messages/screens/templates_screen.dart';
 import '../../modules/messages/screens/template_editor_screen.dart';
 import '../../modules/messages/screens/message_preview_screen.dart';
@@ -9,6 +14,7 @@ import '../../modules/customers/screens/customer_detail_screen.dart';
 import '../../modules/expenses/screens/expenses_screen.dart';
 import '../../modules/expenses/screens/expense_form_screen.dart';
 import '../../modules/expenses/screens/expense_detail_screen.dart';
+import '../../modules/income/screens/income_screen.dart';
 import '../../modules/businesses/screens/business_management_screen.dart';
 import '../../modules/businesses/screens/business_detail_screen.dart';
 import '../../modules/profile/screens/organization_details_screen.dart';
@@ -108,6 +114,7 @@ GoRouter createRouter(
             MessagePreviewScreen(bookingId: s.pathParameters['id']!),
       ),
       GoRoute(path: Routes.expenses, builder: (c, s) => const ExpensesScreen()),
+      GoRoute(path: Routes.income, builder: (c, s) => const IncomeScreen()),
       GoRoute(
         path: Routes.addExpense,
         builder: (c, s) => const ExpenseFormScreen(),
@@ -119,25 +126,32 @@ GoRouter createRouter(
       GoRoute(path: '/auth-callback', builder: (c, s) => const StartupScreen()),
       GoRoute(
         path: '/update-password',
-        builder: (c, s) => const PasswordUpdateScreen(),
+        builder: (c, s) => const AuthSplitLayout(child: PasswordUpdateScreen()),
       ),
       GoRoute(
         path: Routes.register,
-        builder: (c, s) => AuthScreen(
-          invitationToken: s.uri.queryParameters['invite'],
-          returnTo: s.uri.queryParameters['from'],
+        builder: (c, s) => AuthSplitLayout(
+          child: AuthScreen(
+            invitationToken: s.uri.queryParameters['invite'],
+            returnTo: s.uri.queryParameters['from'],
+          ),
         ),
       ),
       GoRoute(
         path: Routes.signIn,
-        builder: (c, s) => AuthScreen(
-          register: false,
-          returnTo: s.uri.queryParameters['from'],
-          invitationToken: s.uri.queryParameters['invite'],
+        builder: (c, s) => AuthSplitLayout(
+          child: AuthScreen(
+            register: false,
+            returnTo: s.uri.queryParameters['from'],
+            invitationToken: s.uri.queryParameters['invite'],
+          ),
         ),
       ),
       GoRoute(path: Routes.loading, builder: (c, s) => const StartupScreen()),
-      GoRoute(path: '/verify', builder: (c, s) => const VerificationScreen()),
+      GoRoute(
+        path: '/verify',
+        builder: (c, s) => const AuthSplitLayout(child: VerificationScreen()),
+      ),
       GoRoute(
         path: Routes.organization,
         builder: (c, s) => const OrganizationScreen(),
@@ -199,6 +213,22 @@ GoRouter createRouter(
         ],
       ),
       GoRoute(
+        path: Routes.bookingBlocks,
+        builder: (c, s) => SlotBlocksScreen(
+          launch: s.extra is BlockLaunch
+              ? s.extra as BlockLaunch
+              : const BlockLaunch(),
+        ),
+      ),
+      GoRoute(
+        path: Routes.newBookingBlock,
+        builder: (c, s) => NewSlotBlockScreen(
+          launch: s.extra is BlockLaunch
+              ? s.extra as BlockLaunch
+              : const BlockLaunch(),
+        ),
+      ),
+      GoRoute(
         path: '/accounts/settings',
         builder: (c, s) => const AccountSettingsScreen(),
       ),
@@ -248,6 +278,21 @@ GoRouter createRouter(
                 back: true,
                 children: [],
               ),
+      ),
+      GoRoute(path: '/admissions', builder: (c, s) => const AdmissionsScreen()),
+      GoRoute(
+        path: '/admissions/new',
+        builder: (c, s) => AdmissionFormScreen(
+          renewalId: s.uri.queryParameters['renewal_id'],
+          businessId: s.uri.queryParameters['business_id'],
+          poolId: s.uri.queryParameters['space_id'],
+          planId: s.uri.queryParameters['plan_id'],
+          date: s.uri.queryParameters['date'],
+        ),
+      ),
+      GoRoute(
+        path: '/admissions/:id',
+        builder: (c, s) => AdmissionDetailScreen(id: s.pathParameters['id']!),
       ),
       GoRoute(
         path: '/booking/new',

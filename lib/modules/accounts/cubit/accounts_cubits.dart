@@ -13,6 +13,8 @@ import '../../workspace/cubit/workspace_state.dart' show LoadStatus;
 import '../models/accounts_models.dart';
 import '../models/accounts_screen_models.dart';
 import '../repositories/accounts_repository.dart';
+import '../../income/models/income_models.dart' show IncomeCategory;
+import '../../income/repositories/income_repository.dart';
 import '../../workspace/repositories/refreshable_reads.dart';
 
 String financeError(Object e) => e is AppException
@@ -97,9 +99,12 @@ class AccountsOverviewCubit extends FinanceCubit<AccountsOverviewModel> {
     emit(
       AccountsOverviewModel(
         filter: f,
+        selectedMonth: retain ? old.selectedMonth : null,
         catalog: old.catalog,
-        overview: retain ? old.overview : null,
-        transactions: retain ? old.transactions : const [],
+        // Keep the previous figures visible (faded) while the new period
+        // or scope loads, instead of collapsing the page to a loader.
+        overview: old.overview,
+        transactions: old.transactions,
         loading: true,
       ),
     );
@@ -122,6 +127,7 @@ class AccountsOverviewCubit extends FinanceCubit<AccountsOverviewModel> {
         emit(
           AccountsOverviewModel(
             filter: selected,
+            selectedMonth: state.selectedMonth,
             catalog: catalog,
             overview: results[0] as FinanceOverview,
             transactions: (results[1] as FinanceTransactionPage).items
@@ -135,6 +141,7 @@ class AccountsOverviewCubit extends FinanceCubit<AccountsOverviewModel> {
         emit(
           AccountsOverviewModel(
             filter: f,
+            selectedMonth: accessFailure(e) ? null : state.selectedMonth,
             catalog: accessFailure(e) ? null : state.catalog,
             overview: accessFailure(e) ? null : state.overview,
             transactions: accessFailure(e) ? const [] : state.transactions,
@@ -143,6 +150,15 @@ class AccountsOverviewCubit extends FinanceCubit<AccountsOverviewModel> {
         );
       }
     }
+  }
+
+  void selectMonth(String month) {
+    if (!authorized ||
+        state.catalog?.canView != true ||
+        state.overview?.monthlyAnalysis.any((m) => m.month == month) != true) {
+      return;
+    }
+    emit(state.month(month));
   }
 
   @override
@@ -338,9 +354,14 @@ class BankAccountCubit extends FinanceCubit<BankAccountModel> {
 }
 
 class FinanceEntryCubit extends FinanceCubit<FinanceEntryModel> {
-  FinanceEntryCubit(WorkspaceSession session, this.repository, String kind)
-    : super(session, FinanceEntryModel(kind: kind, date: DateTime.now()));
+  FinanceEntryCubit(
+    WorkspaceSession session,
+    this.repository,
+    String kind, {
+    this.income,
+  }) : super(session, FinanceEntryModel(kind: kind, date: DateTime.now()));
   final AccountsRepository repository;
+  final IncomeRepository? income;
   final key = const Uuid().v4();
   Map<String, Object?>? pending;
   @override
@@ -357,11 +378,23 @@ class FinanceEntryCubit extends FinanceCubit<FinanceEntryModel> {
     emit(state.copyWith(loading: true));
     try {
       final c = await repository.catalog();
+      var categories = const <IncomeCategory>[];
+      if (state.kind == 'income' && income != null) {
+        try {
+          categories = [
+            for (final category in await income!.categories())
+              if (category.active) category,
+          ];
+        } catch (_) {
+          // Older servers have no managed income categories; keep typed text.
+        }
+      }
       if (current(g)) {
         emit(
           state.copyWith(
             catalog: c,
             loading: false,
+            incomeCategories: categories,
             lines: [
               FinanceDraftLine(
                 id: const Uuid().v4(),
@@ -396,6 +429,15 @@ class FinanceEntryCubit extends FinanceCubit<FinanceEntryModel> {
           toAccountId: toAccountId,
         ),
       );
+    }
+  }
+
+  void incomeCategory(String id) {
+    final category = state.incomeCategories
+        .where((c) => c.id == id)
+        .firstOrNull;
+    if (editable && category != null) {
+      emit(state.copyWith(incomeCategoryId: id, category: category.name));
     }
   }
 
@@ -500,6 +542,8 @@ class FinanceEntryCubit extends FinanceCubit<FinanceEntryModel> {
       'business_id': state.kind == 'transfer' ? null : state.businessId,
       'resource_id': state.kind == 'transfer' ? null : state.spaceId,
       'category': state.category.trim(),
+      if (state.kind == 'income' && state.incomeCategoryId != null)
+        'income_category_id': state.incomeCategoryId,
       'reason': state.reason.trim(),
       'reference': state.reference.trim(),
       'occurred_at': state.date.toUtc().toIso8601String(),
@@ -625,7 +669,13 @@ class TransactionDetailsCubit extends FinanceCubit<TransactionDetailsModel> {
     ),
   );
   Future<void> reverse(String reason) async {
-    if (state.busy || state.reversed || !authorized) return;
+    if (state.busy ||
+        state.reversed ||
+        !authorized ||
+        !session.state.data.isOwner ||
+        !state.reversibleKind) {
+      return;
+    }
     final g = ++epoch;
     emit(TransactionDetailsModel(state.transaction, busy: true));
     try {

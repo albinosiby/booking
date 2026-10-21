@@ -1,3 +1,5 @@
+import type { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
+import { AdmissionService } from "../src/admissions/admission.service";
 import type { MessagesService } from "../src/messages/messages.service";
 import { z, ZodError } from "zod";
 import {
@@ -19,9 +21,14 @@ import { renderReport } from "../src/accounts/accounts.report";
 
 import type { ExpensesService } from "../src/expenses/expenses.service";
 import { renderExpenseReport } from "../src/expenses/expenses.report";
+import type { IncomeService } from "../src/income/income.service";
+import { renderIncomeReport } from "../src/income/income.report";
 type Services = {
+  blocks: SlotBlocksService;
+  admissions: AdmissionService;
   messages: MessagesService;
   expenses: ExpensesService;
+  income: IncomeService;
   workspace: WorkspaceService;
   bookings: BookingService;
   accounts: AccountsService;
@@ -43,13 +50,6 @@ async function body(req: Request) {
   if (!req.body) return undefined;
   if (Number(req.headers.get("content-length")) > MAX_BODY)
     throw new HttpException("Request body is too large.", 413);
-  if (
-    !req.headers
-      .get("content-type")
-      ?.toLowerCase()
-      .startsWith("application/json")
-  )
-    throw new HttpException("JSON content type is required.", 415);
   const reader = req.body?.getReader();
   if (!reader) throw new BadRequestException("JSON body is required.");
   const chunks: Uint8Array[] = [];
@@ -68,6 +68,14 @@ async function body(req: Request) {
   } finally {
     reader.releaseLock();
   }
+  if (size === 0) return undefined;
+  if (
+    !req.headers
+      .get("content-type")
+      ?.toLowerCase()
+      .startsWith("application/json")
+  )
+    throw new HttpException("JSON content type is required.", 415);
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const part of chunks) {
@@ -89,6 +97,49 @@ export function createHandler(
   const routes: Route[] = [];
   const add = (method: string, path: string, run: Route["run"]) =>
     routes.push({ method, path, run });
+  add("GET", "/v1/admissions/customers", (i) =>
+    services.admissions.customers(i.actor, i.query.q ?? ""),
+  );
+  add("GET", "/v1/admissions/catalog", (i) =>
+    services.admissions.catalog(i.actor),
+  );
+  add("POST", "/v1/admissions/preview", (i) =>
+    services.admissions.preview(i.actor, i.body),
+  );
+  add("GET", "/v1/admissions", (i) =>
+    services.admissions.list(i.actor, i.query),
+  );
+  add("POST", "/v1/admissions", (i) =>
+    services.admissions.create(i.actor, i.body),
+  );
+  add("GET", "/v1/admissions/:id", (i) =>
+    services.admissions.detail(i.actor, i.params.id),
+  );
+  add("POST", "/v1/admissions/:id/check-ins", (i) =>
+    services.admissions.checkIn(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/admissions/:id/sessions/:visitId/attendance", (i) =>
+    services.admissions.attendance(
+      i.actor,
+      i.params.id,
+      i.params.visitId,
+      i.body,
+    ),
+  );
+  add("POST", "/v1/admissions/:id/sessions/:visitId/change", (i) =>
+    services.admissions.sessionChange(
+      i.actor,
+      i.params.id,
+      i.params.visitId,
+      i.body,
+    ),
+  );
+  add("POST", "/v1/admissions/:id/payments", (i) =>
+    services.admissions.payments(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/admissions/:id/cancel", (i) =>
+    services.admissions.cancel(i.actor, i.params.id, i.body),
+  );
   add("GET", "/v1/message-templates", (i) =>
     services.messages.catalog(i.actor),
   );
@@ -156,6 +207,18 @@ export function createHandler(
       headers: { "Content-Type": logo.content_type },
     });
   });
+  add("GET", "/v1/booking-blocks", (i) =>
+    services.blocks.list(i.actor, i.query),
+  );
+  add("GET", "/v1/booking-blocks/slots", (i) =>
+    services.blocks.slots(i.actor, i.query),
+  );
+  add("POST", "/v1/booking-blocks", (i) =>
+    services.blocks.create(i.actor, i.body),
+  );
+  add("POST", "/v1/booking-blocks/:id/unblock", (i) =>
+    services.blocks.unblock(i.actor, i.params.id, i.body),
+  );
   add("GET", "/v1/bookings/catalog", (i) => b.catalog(i.actor));
   add("GET", "/v1/bookings/date-counts", (i) => b.dateCounts(i.actor, i.query));
   add("GET", "/v1/bookings/customers", (i) =>
@@ -269,10 +332,40 @@ export function createHandler(
   add("DELETE", "/v1/expenses/:id/attachments/:attachmentId", (i) =>
     e.removePending(i.actor, i.params.id, i.params.attachmentId),
   );
+  const inc = services.income;
+  add("GET", "/v1/income/catalog", (i) => inc.catalog(i.actor));
+  add("POST", "/v1/income/categories", (i) => inc.category(i.actor, i.body));
+  add("PATCH", "/v1/income/categories/:id", (i) =>
+    inc.category(i.actor, i.body, i.params.id),
+  );
+  add("GET", "/v1/income/overview", (i) => inc.overview(i.actor, i.query));
+  add("GET", "/v1/income", (i) => inc.list(i.actor, i.query));
+  add("POST", "/v1/income", (i) => inc.create(i.actor, i.body));
+  add("GET", "/v1/income/reports/:format", async (i) => {
+    const format = z.enum(["pdf", "xlsx"]).parse(i.params.format);
+    const data = await inc.report(i.actor, i.query),
+      bytes = await renderIncomeReport(data, format);
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type":
+          format === "pdf"
+            ? "application/pdf"
+            : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="income-${data.from}-${data.until}.${format}"`,
+      },
+    });
+  });
   // Bounded, per-worker burst protection; authorization stays in shared services.
   const bursts = new Map<string, { until: number; count: number }>();
   return async (req: Request): Promise<Response> => {
     const requestId = crypto.randomUUID();
+    const started = performance.now();
+    let authenticationMs = 0;
+    const timing = () =>
+      headers.set(
+        "Server-Timing",
+        `app;dur=${(performance.now() - started).toFixed(1)}, auth;dur=${authenticationMs.toFixed(1)}`,
+      );
     const headers = new Headers({
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
@@ -295,11 +388,13 @@ export function createHandler(
       );
       headers.set(
         "Access-Control-Expose-Headers",
-        "Content-Disposition,X-Request-Id",
+        "Content-Disposition,X-Request-Id,Server-Timing",
       );
     }
-    const respond = (data: unknown, status = 200) =>
-      Response.json(data, { status, headers });
+    const respond = (data: unknown, status = 200) => {
+      timing();
+      return Response.json(data, { status, headers });
+    };
     try {
       if (origin && !allowed.includes(origin))
         throw new HttpException("Origin is not allowed.", 403);
@@ -325,7 +420,7 @@ export function createHandler(
         return respond({
           status: "ok",
           runtime: "supabase-edge",
-          revision: "2026-10-20-customer-lookup-performance",
+          revision: "2026-10-21-block-slot-grid",
         });
       }
       if (req.method === "GET" && path === "/v1/catalog")
@@ -378,7 +473,10 @@ export function createHandler(
         req.headers.get("authorization") ?? "",
       )?.[1];
       if (!token) throw new UnauthorizedException("Sign in to continue.");
-      const actor = await authenticate(token);
+      const authStarted = performance.now();
+      const actor = await authenticate(token).finally(() => {
+        authenticationMs = performance.now() - authStarted;
+      });
       const now = Date.now();
       for (const [key, v] of bursts) if (v.until <= now) bursts.delete(key);
       if (bursts.size >= 1000 && !bursts.has(actor.uid))
@@ -399,6 +497,7 @@ export function createHandler(
         query: Object.fromEntries(url.searchParams),
       });
       if (result instanceof Response) {
+        timing();
         for (const [key, value] of headers) result.headers.set(key, value);
         return result;
       }

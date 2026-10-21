@@ -125,6 +125,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               path: Routes.customers,
             ),
           ],
+          if ([
+            'view_bookings',
+            'manage_bookings',
+            'manage_attendance',
+            'collect_payments',
+          ].any(w.hasPermission)) ...[
+            const SizedBox(height: 12),
+            destination(
+              context,
+              icon: Icons.pool_outlined,
+              title: 'Admissions & Coaching',
+              subtitle: 'Plans, attendance, remaining days and renewals',
+              path: '/admissions',
+            ),
+          ],
           if (w.hasPermission('view_finance') ||
               w.hasPermission('record_expenses')) ...[
             const SizedBox(height: 20),
@@ -134,6 +149,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: 'Expenses',
               subtitle: 'Spending, invoices and monthly/yearly reports',
               path: Routes.expenses,
+            ),
+          ],
+          if (w.hasPermission('view_finance') ||
+              w.hasPermission('collect_payments')) ...[
+            const SizedBox(height: 12),
+            destination(
+              context,
+              icon: Icons.savings_outlined,
+              title: 'Income',
+              subtitle: 'Bookings, admissions, extra income and reports',
+              path: Routes.income,
             ),
           ],
           if (w.isOwner) ...[

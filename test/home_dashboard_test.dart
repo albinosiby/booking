@@ -279,11 +279,13 @@ void main() {
         await tester.tap(find.text('Collect'));
         await tester.pumpAndSettle();
         expect(find.text('Record split payment'), findsOneWidget);
+        expect(find.text('Payment history'), findsNothing);
+        expect(find.text('Booking history'), findsNothing);
         await tester.ensureVisible(
-          find.byKey(const ValueKey('history-collect')),
+          find.byKey(const ValueKey('booking-summary-collect')),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('history-collect')));
+        await tester.tap(find.byKey(const ValueKey('booking-summary-collect')));
         await tester.pumpAndSettle();
         expect(find.text('Record split payment').hitTestable(), findsOneWidget);
         expect(repo.submitted, isEmpty);

@@ -3,15 +3,16 @@ import { BadRequestException } from "@nestjs/common";
 import { Queryable } from "../common/database";
 type Row = Record<string, any>;
 export async function systemAccounts(db: Queryable, org: string) {
-  for (const [key, name, kind] of [
-    ["cash", "Cash in hand", "cash"],
-    ["unassigned", "Unassigned bank receipts", "clearing"],
-  ]) {
-    await db.query(
-      "INSERT INTO money_accounts(id,organization_id,name,kind,system_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(organization_id,system_key) DO NOTHING",
-      [randomUUID(), org, name, kind, key],
-    );
-  }
+  await db.query(
+    `INSERT INTO money_accounts(id,organization_id,name,kind,system_key)
+     SELECT seed.id,$1,seed.name,seed.kind,seed.key FROM (VALUES
+       ($2::uuid,'Cash in hand','cash','cash'),
+       ($3::uuid,'Unassigned bank receipts','clearing','unassigned')
+     ) AS seed(id,name,kind,key)
+     WHERE NOT EXISTS (SELECT 1 FROM money_accounts a WHERE a.organization_id=$1 AND a.system_key=seed.key)
+     ON CONFLICT(organization_id,system_key) DO NOTHING`,
+    [org, randomUUID(), randomUUID()],
+  );
 }
 export async function destination(
   db: Queryable,

@@ -1,3 +1,7 @@
+import {
+  inventoryIsBlocked,
+  SlotBlockedException,
+} from "../slot-blocks/inventory-blocks";
 import { allDayDatesCover } from "../common/operating-hours";
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { createHash } from "node:crypto";
@@ -444,11 +448,20 @@ export function buildQuote(
   };
 }
 
+export type InventoryQuote = Pick<
+  ReturnType<typeof buildQuote>,
+  | "inventory_keys"
+  | "occupied_from"
+  | "occupied_until"
+  | "capacity"
+  | "quantity"
+>;
 export function inventoryRemaining(
-  q: ReturnType<typeof buildQuote>,
+  q: InventoryQuote,
   allocations: Row[],
   exclude?: string,
 ) {
+  if (inventoryIsBlocked(q, allocations)) return 0;
   const matches = allocations.filter(
     (a) =>
       a.booking_id !== exclude &&
@@ -482,11 +495,12 @@ export function inventoryRemaining(
   }
   return Math.max(0, available);
 }
-export function checkInventory(
-  q: ReturnType<typeof buildQuote>,
+export function checkInventory<T extends InventoryQuote>(
+  q: T,
   allocations: Row[],
   exclude?: string,
 ) {
+  if (inventoryIsBlocked(q, allocations)) throw new SlotBlockedException();
   const remaining = inventoryRemaining(q, allocations, exclude);
   if (q.quantity > remaining)
     throw new ConflictException(

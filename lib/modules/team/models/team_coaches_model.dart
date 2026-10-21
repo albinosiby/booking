@@ -28,6 +28,7 @@ class CoachBusiness extends Equatable {
     required Iterable<PoolCoach> coaches,
     required Iterable<CoachPlan> plans,
     required Iterable<CoachSpace> spaces,
+    this.court = false,
   }) : coaches = List.unmodifiable(coaches),
        plans = List.unmodifiable(plans),
        spaces = List.unmodifiable(spaces);
@@ -36,8 +37,12 @@ class CoachBusiness extends Equatable {
   final List<PoolCoach> coaches;
   final List<CoachPlan> plans;
   final List<CoachSpace> spaces;
+
+  /// Court businesses assign coaches to courts instead of pool spaces.
+  final bool court;
+  String get spacesLabel => court ? 'courts' : 'pool spaces';
   @override
-  List<Object?> get props => [id, name, version, coaches, plans, spaces];
+  List<Object?> get props => [id, name, version, coaches, plans, spaces, court];
 }
 
 enum CoachEditor { add, assign, spaces }

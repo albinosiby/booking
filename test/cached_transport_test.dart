@@ -30,6 +30,7 @@ class TestAuth extends Fake implements AuthRepository {
 
 class TestAdapter implements HttpClientAdapter {
   final requests = <String>[];
+  RequestOptions? lastOptions;
   int status = 200;
   Completer<ResponseBody>? pending;
   Completer<void>? started;
@@ -39,6 +40,7 @@ class TestAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    lastOptions = options;
     requests.add('${options.method} ${options.path}');
     if (started != null && !started!.isCompleted) started!.complete();
     final gate = pending;
@@ -84,6 +86,47 @@ void main() {
   tearDown(() async {
     await api.dispose();
     await auth.events.close();
+  });
+
+  test(
+    'branding and pricing changes do not discard an unchanged access cache; reassignment does',
+    () async {
+      Map<String, dynamic> workspace(String label, List<String> resources) => {
+        'organization': {'id': 'org'},
+        'membership': {'role': 'owner'},
+        'businesses': [
+          {
+            'id': 'business',
+            'name': label,
+            'configuration': {'price': label},
+            'resources': [
+              for (final id in resources) {'id': id},
+            ],
+          },
+        ],
+      };
+      await api.authorizeReads(workspace('before', ['one']));
+      await api.retainedRead('/accounts/catalog');
+      final count = adapter.requests.length;
+      await api.authorizeReads(workspace('after', ['one']));
+      await api.retainedRead('/accounts/catalog');
+      expect(adapter.requests.length, count);
+      await api.authorizeReads(workspace('after', ['two']));
+      await api.retainedRead('/accounts/catalog');
+      expect(adapter.requests.length, count + 1);
+    },
+  );
+
+  test('bodyless activation sends an explicit empty JSON object', () async {
+    await api.request('/businesses/pool/activate', method: 'POST');
+    expect(adapter.lastOptions!.contentType, Headers.jsonContentType);
+    expect(adapter.lastOptions!.data, <String, Object?>{});
+    await api.request(
+      '/bookings/b/status',
+      method: 'POST',
+      data: {'status': 'checked_in'},
+    );
+    expect(adapter.lastOptions!.data, {'status': 'checked_in'});
   });
 
   test(
@@ -172,6 +215,47 @@ void main() {
       expect(adapter.requests.where((r) => r == 'GET /bookings'), hasLength(2));
     },
   );
+  test(
+    'transaction writes preserve setup catalogs and branding but refresh balances and reservations',
+    () async {
+      final kept = [
+        '/bookings/catalog',
+        '/admissions/catalog',
+        '/organization/logo',
+        '/catalog/states/IN',
+      ];
+      for (final path in [...kept, '/bookings', '/accounts/catalog']) {
+        await api.retainedRead(path);
+      }
+      await api.request(
+        '/bookings/one/payments',
+        method: 'POST',
+        data: {'amount': 500},
+      );
+      for (final path in [...kept, '/bookings', '/accounts/catalog']) {
+        await api.retainedRead(path);
+      }
+      for (final path in kept) {
+        expect(adapter.requests.where((r) => r == 'GET $path').length, 1);
+      }
+      expect(adapter.requests.where((r) => r == 'GET /bookings').length, 2);
+      expect(
+        adapter.requests.where((r) => r == 'GET /accounts/catalog').length,
+        2,
+      );
+      await api.request(
+        '/businesses/one/pool-configuration',
+        method: 'PATCH',
+        data: {},
+      );
+      await api.retainedRead('/bookings/catalog');
+      expect(
+        adapter.requests.where((r) => r == 'GET /bookings/catalog').length,
+        2,
+      );
+    },
+  );
+
   test(
     'availability is always fetched and does not evict cached page data',
     () async {

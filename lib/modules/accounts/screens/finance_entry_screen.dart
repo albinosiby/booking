@@ -84,12 +84,25 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            _text(
-              'Category',
-              s.category,
-              (v) => cubit.fields(category: v),
-              enabled,
-            ),
+            if (s.incomeCategories.isNotEmpty) ...[
+              AppPicker(
+                label: 'Category',
+                value: s.incomeCategoryId,
+                enabled: enabled,
+                items: [
+                  for (final category in s.incomeCategories)
+                    PickerItem(category.id, category.name),
+                ],
+                onChanged: cubit.incomeCategory,
+              ),
+              const SizedBox(height: 16),
+            ] else
+              _text(
+                'Category',
+                s.category,
+                (v) => cubit.fields(category: v),
+                enabled,
+              ),
             _text(
               expense
                   ? 'Reason for expense'

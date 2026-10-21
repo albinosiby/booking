@@ -47,6 +47,14 @@ class CourtOverviewScreen extends StatelessWidget {
           Icons.schedule_outlined,
         ),
         (
+          CourtSection.coaching,
+          'Plans & coaching',
+          model.configuration.plans.isEmpty
+              ? 'Optional · sell court plans and coaching through Admissions'
+              : '${model.configuration.plans.length} plans',
+          Icons.sports_outlined,
+        ),
+        (
           CourtSection.review,
           'Review & activation',
           model.ready

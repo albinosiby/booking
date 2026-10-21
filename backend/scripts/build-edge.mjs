@@ -7,7 +7,8 @@ mkdirSync(output, { recursive: true });
 const font = readFileSync(
   resolve(root, "assets/fonts/NotoSans-Regular.ttf"),
 ).toString("base64");
-await build({
+const built = await build({
+  metafile: true,
   entryPoints: [resolve(root, "edge/entry.ts")],
   outfile: resolve(output, "index.ts"),
   bundle: true,
@@ -44,6 +45,15 @@ await build({
     },
   ],
 });
+// Reports must stay off the startup import graph for every normal API request.
+const eagerReportImports = Object.values(built.metafile.outputs)
+  .flatMap((o) => o.imports)
+  .filter(
+    (i) =>
+      i.kind === "import-statement" && /npm:(pdfkit|exceljs)@/.test(i.path),
+  );
+if (eagerReportImports.length)
+  throw new Error("Report engines must use dynamic imports.");
 writeFileSync(
   resolve(output, "deno.json"),
   JSON.stringify(

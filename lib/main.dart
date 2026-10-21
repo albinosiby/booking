@@ -168,8 +168,17 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
   }
 
   @override
-  Widget build(BuildContext context) => ScreenUtilInit(
-    designSize: const Size(390, 844),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => app(
+      // Phone layouts scale from the 390pt design; wide web windows render 1:1.
+      constraints.maxWidth < 600
+          ? const Size(390, 844)
+          : Size(constraints.maxWidth, constraints.maxHeight),
+    ),
+  );
+
+  Widget app(Size designSize) => ScreenUtilInit(
+    designSize: designSize,
     minTextAdapt: true,
     splitScreenMode: true,
     builder: (context, child) => BlocBuilder<SettingsCubit, ThemeMode>(

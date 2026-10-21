@@ -15,7 +15,7 @@ A Flutter owner/staff app with a Supabase-hosted API for one organization operat
 - Elevated Home / Calendar / Bookings / Payments / Profile navigation with preserved tab state.
 - Server-enforced owner operations and staff visibility. No passwords or service keys are stored in the application database.
 
-Bookings, daily Calendar and manual payment collections are implemented, including split payments and atomic rescheduling. Home shows live booking and collection figures. No payment gateway, email-delivery provider, public booking website, plan-attendance deduction is included.
+Bookings, daily Calendar and manual payment collections are implemented, including split payments and atomic rescheduling. Home shows live booking and collection figures. Admissions and coaching now support fixed weekly reservations, flexible attendance, expiry/completion and renewals. No payment gateway, email-delivery provider or public booking website is included.
 
 ## Current Supabase setup
 
@@ -144,7 +144,7 @@ Profile → Business settings → Turf opens a direct editor with section cards.
 
 ## Swimming pool setup
 
-Home → Configure or Profile → Business settings → your pool opens direct section editing. Configure pool capacities/depths, timing/pricing, group offers, coaching and swimming plans. Swimming plans default to 25 attendance days or a custom count with separate expiry; purchases and attendance recording remain future modules. See [pool configuration](docs/pool-configuration.md).
+Home → Configure or Profile → Business settings → your pool opens direct section editing. Configure pool capacities/depths, timing/pricing, group offers, coaching and swimming plans. Swimming plans default to 25 attendance days or a custom count with separate expiry; purchases and attendance are managed in Profile → Admissions & Coaching. See [pool configuration](docs/pool-configuration.md) and [admissions, migration and recovery](docs/admissions-coaching.md).
 
 ## Court setup
 

@@ -30,8 +30,19 @@ export class CourtService {
           "Setup changed on another device. Reload before saving.",
         );
       if (b.status === "ready") {
+        const location = (
+          await db.query<Row>("SELECT timezone FROM locations WHERE id=$1", [
+            b.location_id,
+          ])
+        ).rows[0];
+        const today = new Intl.DateTimeFormat("en-CA", {
+          timeZone: location.timezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date());
         try {
-          assertCourtComplete(v.configuration);
+          assertCourtComplete(v.configuration, today);
         } catch (error) {
           throw new BadRequestException(
             error instanceof Error

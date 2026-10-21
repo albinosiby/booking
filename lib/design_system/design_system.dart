@@ -22,3 +22,4 @@ export 'components/app_weekday_picker.dart';
 export 'components/app_pricing_time_range.dart';
 
 export 'animations/app_loading_animation.dart';
+export 'layouts/auth_split_layout.dart';

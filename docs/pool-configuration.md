@@ -23,7 +23,7 @@ Swimming plans default to **25 attendance days**, with an editable positive coun
 
 Coaching plans have class count, price, duration, seats, pool eligibility, class windows and separate expiry. The optional coach selector lists active organization owners and staff assigned to this business. Resource-restricted coaches must cover every selected pool. Access and coaching definitions use separate screen models.
 
-These screens configure product definitions. Plan purchases, member entitlements, attendance deduction, class sessions, admissions, payment collection and concurrency-safe bookings are future modules. Pricing helpers validate configuration quotes but do not reserve capacity.
+These screens configure product definitions. Customer purchases, attendance, reservations and renewals are managed through Profile → Admissions & Coaching. See [admissions, migration and recovery](admissions-coaching.md). Ordinary admissions and plan visits share the same concurrency-safe booking inventory.
 
 ## Architecture and persistence
 

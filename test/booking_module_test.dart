@@ -263,7 +263,16 @@ class FakeBookingRepository implements BookingRepository {
           _payment(r, Map<String, dynamic>.from(p), data['kind']);
         }
       } else if (c.endpoint.endsWith('/status')) {
-        r['status'] = data['status'];
+        if (data['status'] == 'checked_in') {
+          (r['history'] as List).add({
+            'action': 'checked_in',
+            'actor_name': 'Owner',
+            'local_created': '2030-06-04T09:00',
+            'details': {'reason': data['reason']},
+          });
+        } else {
+          r['status'] = data['status'];
+        }
       } else {
         r['customer_snapshot'] = data['customer'];
         r['notes'] = data['notes'];

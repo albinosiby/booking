@@ -11,7 +11,7 @@ class ResponsiveBuilder extends StatelessWidget {
       context,
       c.maxWidth < 600
           ? ScreenType.mobile
-          : c.maxWidth < 1200
+          : c.maxWidth < 1080
           ? ScreenType.tablet
           : ScreenType.desktop,
     ),

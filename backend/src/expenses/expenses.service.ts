@@ -185,35 +185,33 @@ export class ExpensesService {
  WHERE ${where})`;
   }
   async overview(actor: Actor, input: unknown) {
-    return this.db.transaction(async (db) => {
-      await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-      const { f, c, values, where } = await this.context(actor, input, db),
-        cte = this.cte(where, values.indexOf(c.timezone) + 1);
-      const [total, days, categories] = await Promise.all([
-        db.query(
-          ` ${cte} SELECT COALESCE(SUM(amount_minor),0) AS total_minor,COUNT(*)::int AS count FROM expense_rows`,
-          values,
-        ),
-        db.query(
-          ` ${cte} SELECT local_date AS day,SUM(amount_minor) AS total_minor FROM expense_rows GROUP BY local_date ORDER BY local_date`,
-          values,
-        ),
-        db.query(
-          ` ${cte} SELECT category_id,category_name,SUM(amount_minor) AS total_minor FROM expense_rows GROUP BY category_id,category_name ORDER BY SUM(amount_minor) DESC`,
-          values,
-        ),
-      ]);
-      return {
-        name: c.name,
-        currency: c.currency,
-        timezone: c.timezone,
-        from: f.from,
-        until: f.until,
-        ...total.rows[0],
-        days: days.rows,
-        categories: categories.rows,
-      };
-    });
+    const { f, c, values, where } = await this.context(actor, input),
+      cte = this.cte(where, values.indexOf(c.timezone) + 1);
+    // One statement (one consistent snapshot, one round trip) computes the
+    // total, the daily bars and the category breakdown from a single scan.
+    const r = (
+      await this.db.query<Row>(
+        `${cte},
+ days AS (SELECT local_date AS day,SUM(amount_minor) AS total_minor FROM expense_rows GROUP BY local_date),
+ categories AS (SELECT category_id,category_name,SUM(amount_minor) AS total_minor FROM expense_rows GROUP BY category_id,category_name)
+ SELECT COALESCE(SUM(amount_minor),0) AS total_minor,COUNT(*)::int AS count,
+ (SELECT COALESCE(jsonb_agg(d ORDER BY d.day),'[]') FROM days d) AS days,
+ (SELECT COALESCE(jsonb_agg(x ORDER BY x.total_minor DESC),'[]') FROM categories x) AS categories
+ FROM expense_rows`,
+        values,
+      )
+    ).rows[0];
+    return {
+      name: c.name,
+      currency: c.currency,
+      timezone: c.timezone,
+      from: f.from,
+      until: f.until,
+      total_minor: r.total_minor,
+      count: r.count,
+      days: r.days,
+      categories: r.categories,
+    };
   }
   async list(actor: Actor, input: unknown, all = false) {
     const { f, c, values, where } = await this.context(actor, input),

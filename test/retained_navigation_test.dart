@@ -14,68 +14,76 @@ import 'booking_module_test.dart' show BookingSource;
 import 'retained_page_state_test.dart' show DeferredBookings;
 
 void main() {
-  testWidgets('tab navigation retains nested pages and entered filters', (
-    tester,
-  ) async {
-    final router = GoRouter(
-      initialLocation: '/home/details',
-      routes: [
-        StatefulShellRoute.indexedStack(
-          builder: (context, state, shell) => AdaptiveScaffold(shell: shell),
-          branches: [
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: '/home',
-                  builder: (_, _) => const Text('Home content'),
+  for (final size in const [Size(390, 844), Size(1280, 800)]) {
+    testWidgets('tab navigation retains nested pages and entered filters at '
+        '${size.width}px', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final router = GoRouter(
+        initialLocation: '/home/details',
+        routes: [
+          StatefulShellRoute.indexedStack(
+            builder: (context, state, shell) => AdaptiveScaffold(shell: shell),
+            branches: [
+              StatefulShellBranch(
+                routes: [
+                  GoRoute(
+                    path: '/home',
+                    builder: (_, _) => const Text('Home content'),
+                    routes: [
+                      GoRoute(
+                        path: 'details',
+                        builder: (_, _) => const Text('Retained details'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              StatefulShellBranch(
+                routes: [
+                  GoRoute(
+                    path: '/calendar',
+                    builder: (_, _) =>
+                        const TextField(key: ValueKey('retained-filter')),
+                  ),
+                ],
+              ),
+              for (final path in ['/bookings', '/accounts', '/profile'])
+                StatefulShellBranch(
                   routes: [
                     GoRoute(
-                      path: 'details',
-                      builder: (_, _) => const Text('Retained details'),
+                      path: path,
+                      builder: (_, _) => Text('$path content'),
                     ),
                   ],
                 ),
-              ],
-            ),
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: '/calendar',
-                  builder: (_, _) =>
-                      const TextField(key: ValueKey('retained-filter')),
-                ),
-              ],
-            ),
-            for (final path in ['/bookings', '/accounts', '/profile'])
-              StatefulShellBranch(
-                routes: [
-                  GoRoute(path: path, builder: (_, _) => Text('$path content')),
-                ],
-              ),
-          ],
-        ),
-      ],
-    );
-    addTearDown(router.dispose);
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Home'));
-    await tester.pumpAndSettle();
-    expect(find.text('Retained details'), findsOneWidget);
-    await tester.tap(find.text('Calendar'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('retained-filter')),
-      'Court 2',
-    );
-    await tester.tap(find.text('Home'));
-    await tester.pumpAndSettle();
-    expect(find.text('Retained details'), findsOneWidget);
-    await tester.tap(find.text('Calendar'));
-    await tester.pumpAndSettle();
-    expect(find.text('Court 2'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+            ],
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Home'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retained details'), findsOneWidget);
+      await tester.tap(find.text('Calendar'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('retained-filter')),
+        'Court 2',
+      );
+      await tester.tap(find.text('Home'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retained details'), findsOneWidget);
+      await tester.tap(find.text('Calendar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Court 2'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('booking cards stay visible while a refresh request is pending', (
     tester,

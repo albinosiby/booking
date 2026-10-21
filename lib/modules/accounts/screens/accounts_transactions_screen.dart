@@ -1,3 +1,4 @@
+import '../widgets/transaction_details_content.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +8,7 @@ import '../../workspace/cubit/workspace_cubit.dart';
 import '../cubit/accounts_cubits.dart';
 import '../models/accounts_models.dart';
 import '../models/accounts_screen_models.dart';
+import '../widgets/accounts_overview_widgets.dart';
 import '../widgets/accounts_widgets.dart';
 
 class AccountsTransactionsScreen extends StatefulWidget {
@@ -78,6 +80,8 @@ class _AccountsTransactionsScreenState
                 ...[
                   'booking_collection',
                   'booking_refund',
+                  'admission_collection',
+                  'admission_refund',
                   'income',
                   'expense',
                   'transfer',
@@ -101,9 +105,9 @@ class _AccountsTransactionsScreenState
                 padding: EdgeInsets.symmetric(vertical: 60),
                 child: Center(child: Text('No matching transactions.')),
               ),
-            for (final e in s.items)
-              FinanceTransactionTile(
-                entry: e,
+            if (s.items.isNotEmpty)
+              FinanceTransactionGroups(
+                entries: s.items,
                 currency:
                     c
                         .read<WorkspaceCubit>()
@@ -112,7 +116,7 @@ class _AccountsTransactionsScreenState
                         .organization
                         ?.currency ??
                     'INR',
-                onTap: () async {
+                onTap: (e) async {
                   await c.push('/accounts/transaction', extra: e);
                   if (mounted) cubit.load();
                 },
@@ -149,131 +153,73 @@ class _AccountsTransactionScreenState extends State<AccountsTransactionScreen> {
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) => BlocBuilder<TransactionDetailsCubit, TransactionDetailsModel>(
-    bloc: cubit,
-    builder: (c, s) {
-      final e = s.transaction, w = c.watch<WorkspaceCubit>().state.data;
-      if (!cubit.authorized) {
-        return AppPage(
-          title: 'Transaction details',
-          back: true,
-          children: [
-            AppErrorWidget(message: s.error ?? 'Your access changed.'),
-          ],
-        );
-      }
-      String money(int n) => financeMoney(n, w.organization?.currency ?? 'INR');
-      return AppPage(
-        title: 'Transaction details',
-        back: true,
-        showAppBar: true,
-        compactHeader: true,
-        children: [
-          Text(money(e.amount), style: Theme.of(c).textTheme.headlineLarge),
-          const SizedBox(height: 8),
-          Text(financeLabel(e.kind)),
-          const SizedBox(height: 20),
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) =>
+      BlocBuilder<TransactionDetailsCubit, TransactionDetailsModel>(
+        bloc: cubit,
+        builder: (c, s) {
+          final w = c.watch<WorkspaceCubit>().state.data;
+          if (!cubit.authorized) {
+            return AppPage(
+              title: 'Transaction details',
+              back: true,
               children: [
-                Text(e.reason, style: Theme.of(c).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                Text(
-                  'Category: ${e.category.isEmpty ? 'Booking' : e.category}',
-                ),
-                Text(
-                  'Scope: ${e.business ?? 'Shared / organization'}${e.space == null ? '' : ' / ${e.space}'}',
-                ),
-                Text('Date: ${financeStamp(e.date)}'),
-                Text('Recorded by: ${e.staff}'),
-                if (e.reference.isNotEmpty) Text('Reference: ${e.reference}'),
+                AppErrorWidget(message: s.error ?? 'Your access changed.'),
               ],
-            ),
-          ),
-          if (e.bookingId != null) ...[
-            const FinanceSection('Booking'),
-            AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(e.bookingReference ?? ''),
-                  if (e.customer != null) Text(e.customer!),
-                  if (e.tariff != null) Text('Tariff: ${money(e.tariff!)}'),
-                  TextButton(
-                    onPressed: () => c.push('/booking/${e.bookingId}'),
-                    child: const Text('Open booking'),
-                  ),
-                ],
+            );
+          }
+          return AppPage(
+            title: 'Transaction details',
+            back: true,
+            showAppBar: true,
+            compactHeader: true,
+            maxWidth: 760,
+            children: [
+              TransactionDetailsContent(
+                model: s,
+                currency: w.organization?.currency ?? 'INR',
               ),
-            ),
-          ],
-          const FinanceSection('Account movements'),
-          for (final l in e.lines)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      l.accountName,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    Text('${financeLabel(l.method)} · ${money(l.amount)}'),
-                  ],
+              const SizedBox(height: 20),
+              if (s.error != null) AppErrorWidget(message: s.error!),
+              if (w.isOwner && s.reversibleKind && !s.reversed)
+                AppButton(
+                  label: 'Reverse entry',
+                  secondary: true,
+                  busy: s.busy,
+                  onPressed: () async {
+                    final input = TextEditingController();
+                    final reason = await showDialog<String>(
+                      context: c,
+                      builder: (d) => AlertDialog(
+                        title: const Text('Reverse this entry?'),
+                        content: TextField(
+                          controller: input,
+                          maxLength: 500,
+                          decoration: const InputDecoration(
+                            labelText: 'Reason for correction',
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(d),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () {
+                              if (input.text.trim().length >= 2) {
+                                Navigator.pop(d, input.text.trim());
+                              }
+                            },
+                            child: const Text('Record reversal'),
+                          ),
+                        ],
+                      ),
+                    );
+                    input.dispose();
+                    if (reason != null) cubit.reverse(reason);
+                  },
                 ),
-              ),
-            ),
-          if (s.error != null) AppErrorWidget(message: s.error!),
-          if (s.reversed)
-            const Text(
-              'Reversal recorded. The original entry remains in history.',
-            ),
-          if (w.isOwner &&
-              ['income', 'expense', 'transfer'].contains(e.kind) &&
-              !s.reversed)
-            AppButton(
-              label: 'Reverse entry',
-              secondary: true,
-              busy: s.busy,
-              onPressed: () async {
-                final input = TextEditingController();
-                final reason = await showDialog<String>(
-                  context: c,
-                  builder: (d) => AlertDialog(
-                    title: const Text('Reverse this entry?'),
-                    content: TextField(
-                      controller: input,
-                      maxLength: 500,
-                      decoration: const InputDecoration(
-                        labelText: 'Reason for correction',
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(d),
-                        child: const Text('Cancel'),
-                      ),
-                      FilledButton(
-                        onPressed: () {
-                          if (input.text.trim().length >= 2) {
-                            Navigator.pop(d, input.text.trim());
-                          }
-                        },
-                        child: const Text('Record reversal'),
-                      ),
-                    ],
-                  ),
-                );
-                input.dispose();
-                if (reason != null) cubit.reverse(reason);
-              },
-            ),
-        ],
+            ],
+          );
+        },
       );
-    },
-  );
 }

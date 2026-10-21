@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   UnauthorizedException,
   ServiceUnavailableException,
@@ -94,5 +95,26 @@ export async function supabaseActor(
       typeof user.user_metadata?.full_name === "string"
         ? user.user_metadata.full_name
         : email.split("@")[0],
+  };
+}
+
+/** Share only simultaneous checks for the exact same bearer token. No verified
+ * identity is retained after completion; every later request rechecks Auth.
+ * Authorization remains the responsibility of each service/database read. */
+export function coalesceActorChecks(verify: (token: string) => Promise<Actor>) {
+  const pending = new Map<string, Promise<Actor>>();
+  return async (token: string): Promise<Actor> => {
+    const key = createHash("sha256").update(token).digest("hex");
+    let result = pending.get(key);
+    if (!result) {
+      if (pending.size >= 128) pending.delete(pending.keys().next().value!);
+      result = Promise.resolve().then(() => verify(token));
+      pending.set(key, result);
+    }
+    try {
+      return { ...(await result) };
+    } finally {
+      if (pending.get(key) === result) pending.delete(key);
+    }
   };
 }

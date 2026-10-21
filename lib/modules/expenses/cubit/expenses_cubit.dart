@@ -42,10 +42,14 @@ class ExpensesCubit extends FinanceCubit<ExpensesState> {
     emit(
       filter == null
           ? state.copy(loading: true)
+          // Keep the previous figures visible (faded) until the new period
+          // arrives, instead of collapsing the page to a loader.
           : ExpensesState(
               filter: filter,
               catalog: state.catalog,
               categories: state.categories,
+              summary: state.summary,
+              items: state.items,
               loading: true,
               exporting: state.exporting,
             ),
@@ -88,9 +92,40 @@ class ExpensesCubit extends FinanceCubit<ExpensesState> {
             exporting: state.exporting,
           ),
         );
+        unawaited(prefetch(f));
       }
     } catch (e) {
-      if (current(g)) emit(state.copy(loading: false, error: financeError(e)));
+      if (current(g)) {
+        // Figures from another period must not stay under the new title.
+        emit(
+          filter == null
+              ? state.copy(loading: false, error: financeError(e))
+              : ExpensesState(
+                  filter: state.filter,
+                  catalog: state.catalog,
+                  categories: state.categories,
+                  exporting: state.exporting,
+                  error: financeError(e),
+                ),
+        );
+      }
+    }
+  }
+
+  /// Warms the cache for the previous period so stepping back is instant.
+  Future<void> prefetch(ExpenseFilter f) async {
+    final previous = f.copy(
+      anchor: f.yearly
+          ? DateTime(f.anchor.year - 1)
+          : DateTime(f.anchor.year, f.anchor.month - 1),
+    );
+    try {
+      await Future.wait([
+        repository.overview(previous),
+        repository.list(previous),
+      ]);
+    } catch (_) {
+      // Only a cache warm-up; the real load reports its own errors.
     }
   }
 

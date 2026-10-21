@@ -116,6 +116,11 @@ class BookingDraft extends Equatable {
   ];
 }
 
+enum PoolBookingMode { singleVisit, swimming, coaching }
+
+/// Business types whose bookings can also enroll a plan or coaching admission.
+const admissionBusinessTypes = {'pool', 'badminton', 'tennis', 'basketball'};
+
 class BookingFormModel extends Equatable {
   BookingFormModel({
     this.catalog = const BookingCatalog(),
@@ -134,11 +139,13 @@ class BookingFormModel extends Equatable {
     this.saving = false,
     this.review = false,
     this.choosingEnd = false,
+    this.open24Hours = false,
     this.rangeComplete = false,
     this.error,
     this.resultId,
     this.pending,
     this.activeSection = 0,
+    this.poolMode = PoolBookingMode.singleVisit,
   }) : draft = draft ?? BookingDraft(),
        slots = List.unmodifiable(slots),
        endSlots = List.unmodifiable(endSlots),
@@ -151,11 +158,13 @@ class BookingFormModel extends Equatable {
   final List<BookingCustomer> customers;
   final bool loading, checking, searching, saving, review;
   final bool choosingEnd, rangeComplete;
+  final bool open24Hours;
   final bool slotsLoading, slotsLoaded;
   final String? slotsError;
   final String? error, resultId;
   final BookingCommand? pending;
   final int activeSection;
+  final PoolBookingMode poolMode;
 
   /// Immediate preview from the already loaded start-time tariff. The server
   /// quote remains authoritative for review, payments and confirmation.
@@ -304,6 +313,8 @@ class BookingFormModel extends Equatable {
                       : finish?.past == true ||
                             (finish == null && base?.past == true)
                       ? 'Past'
+                      : finish?.status == 'blocked' || base?.status == 'blocked'
+                      ? 'Blocked'
                       : finish?.status == 'booked'
                       ? (business?.type == 'pool' ? 'Unavailable' : 'Booked')
                       : 'Not a valid end'
@@ -348,12 +359,14 @@ class BookingFormModel extends Equatable {
     bool? saving,
     bool? review,
     bool? choosingEnd,
+    bool? open24Hours,
     bool? rangeComplete,
     String? error,
     String? resultId,
     BookingCommand? pending,
     bool clearPending = false,
     int? activeSection,
+    PoolBookingMode? poolMode,
   }) => BookingFormModel(
     catalog: catalog ?? this.catalog,
     draft: draft ?? this.draft,
@@ -371,11 +384,13 @@ class BookingFormModel extends Equatable {
     saving: saving ?? this.saving,
     review: review ?? this.review,
     choosingEnd: choosingEnd ?? this.choosingEnd,
+    open24Hours: open24Hours ?? this.open24Hours,
     rangeComplete: rangeComplete ?? this.rangeComplete,
     error: error,
     resultId: resultId ?? this.resultId,
     pending: clearPending ? null : pending ?? this.pending,
     activeSection: activeSection ?? this.activeSection,
+    poolMode: poolMode ?? this.poolMode,
   );
   @override
   List<Object?> get props => [
@@ -395,10 +410,12 @@ class BookingFormModel extends Equatable {
     saving,
     review,
     choosingEnd,
+    open24Hours,
     rangeComplete,
     error,
     resultId,
     pending,
     activeSection,
+    poolMode,
   ];
 }

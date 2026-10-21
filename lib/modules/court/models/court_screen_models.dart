@@ -1,6 +1,6 @@
 import 'court_configuration.dart';
 
-enum CourtSection { overview, courts, pricing, review }
+enum CourtSection { overview, courts, pricing, coaching, review }
 
 class CourtOverviewModel {
   const CourtOverviewModel(this.configuration, this.ready);
@@ -29,6 +29,25 @@ class CourtPricingModel {
   final List<CourtResource> courts;
   final CourtResource? selected;
   final String currency;
+}
+
+class CourtCoachingModel {
+  const CourtCoachingModel(
+    this.courts,
+    this.plans,
+    this.coaches,
+    this.selected,
+    this.currency,
+  );
+  final List<CourtResource> courts;
+  final List<CourtPlan> plans;
+  final List<CourtCoach> coaches;
+  final CourtPlan? selected;
+  final String currency;
+  String coachName(CourtPlan plan) => plan.coachId == null
+      ? 'Unassigned'
+      : coaches.where((c) => c.id == plan.coachId).firstOrNull?.name ??
+            'Assigned coach';
 }
 
 class CourtReviewModel {

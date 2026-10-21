@@ -168,10 +168,41 @@ class CourtSetupCubit extends ConfigurationSetupCubit<CourtSetupState> {
       );
   void removeCourt(String id) {
     if (state.disabled) return;
-    _edit(
-      state.draft.copyWith(courts: state.draft.courts.where((p) => p.id != id)),
-    );
+    _edit(state.draft.withoutCourt(id));
     open(CourtSection.courts);
+  }
+
+  void addPlan({bool coaching = true}) {
+    final courts = state.draft.courts.where((c) => c.enabled).toList();
+    if (state.disabled || courts.isEmpty || state.draft.plans.length >= 50) {
+      return;
+    }
+    final first = courts.first;
+    final plan = CourtPlan(
+      id: const Uuid().v4(),
+      kind: coaching ? 'coaching' : 'play',
+      name:
+          '${coaching ? 'Coaching plan' : 'Court plan'} ${state.draft.plans.where((p) => p.coaching == coaching).length + 1}',
+      allowance: coaching ? '12' : '20',
+      courtIds: [first.id],
+      hours: first.hours,
+      classDuration: first.defaultDuration,
+    );
+    _edit(state.draft.copyWith(plans: [...state.draft.plans, plan]));
+    open(CourtSection.coaching, id: plan.id);
+  }
+
+  void updatePlan(String id, CourtPlan Function(CourtPlan) update) => _edit(
+    state.draft.copyWith(
+      plans: state.draft.plans.map((p) => p.id == id ? update(p) : p),
+    ),
+  );
+  void removePlan(String id) {
+    if (state.disabled) return;
+    _edit(
+      state.draft.copyWith(plans: state.draft.plans.where((p) => p.id != id)),
+    );
+    open(CourtSection.coaching);
   }
 
   void duration(String id, int minutes, bool selected) => updateCourt(id, (p) {

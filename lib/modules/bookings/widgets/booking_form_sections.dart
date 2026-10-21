@@ -470,6 +470,7 @@ class BookingTimeGrid extends StatelessWidget {
     this.choosingEnd = false,
     this.minimumDuration,
     this.selectedDate,
+    this.showDayOffset = true,
     this.cells,
   });
   final List<BookingSlot> slots;
@@ -478,6 +479,7 @@ class BookingTimeGrid extends StatelessWidget {
   final bool pool, enabled, choosingEnd;
   final int? minimumDuration;
   final String? selectedDate;
+  final bool showDayOffset;
   final ValueChanged<BookingSlot> onSelected;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -510,7 +512,9 @@ class BookingTimeGrid extends StatelessWidget {
                     enabled && (cell?.enabled ?? slot.selectable);
                 final status =
                     cell?.label ??
-                    (slot.status == 'minimum'
+                    (slot.status == 'blocked'
+                        ? 'Blocked'
+                        : slot.status == 'minimum'
                         ? 'Minimum $minimumDuration min'
                         : slot.past
                         ? 'Past'
@@ -564,7 +568,7 @@ class BookingTimeGrid extends StatelessWidget {
                           child: Column(
                             children: [
                               Text(
-                                '${TimeFormat.display(slot.time)}${(cell?.date ?? slot.date) != null && (cell?.date ?? slot.date) != selectedDate ? ' +1 day' : ''}',
+                                '${TimeFormat.display(slot.time)}${showDayOffset && (cell?.date ?? slot.date) != null && (cell?.date ?? slot.date) != selectedDate ? ' +1 day' : ''}',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 14,

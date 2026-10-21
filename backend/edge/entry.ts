@@ -1,3 +1,5 @@
+import { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
+import { AdmissionService } from "../src/admissions/admission.service";
 import { MessagesService } from "../src/messages/messages.service";
 import { projectUrl, publishableKey } from "./project";
 import process from "node:process";
@@ -6,12 +8,16 @@ import { EdgeDatabase } from "./database";
 import { WorkspaceService } from "../src/workspace/workspace.service";
 import { BookingService } from "../src/bookings/booking.service";
 import { ExpensesService } from "../src/expenses/expenses.service";
+import { IncomeService } from "../src/income/income.service";
 import { AccountsService } from "../src/accounts/accounts.service";
 import { TurfService } from "../src/turf/turf.service";
 import { CourtService } from "../src/court/court.service";
 import { PoolService } from "../src/pool/pool.service";
 import { HallService } from "../src/hall/hall.service";
-import { supabaseActor } from "../src/common/supabase-auth";
+import {
+  supabaseActor,
+  coalesceActorChecks,
+} from "../src/common/supabase-auth";
 import { createHandler } from "./handler";
 // The runtime provides Node compatibility; application secrets are server-only.
 Object.assign(globalThis, { Buffer, process });
@@ -20,8 +26,11 @@ const workspace = new WorkspaceService(db as never);
 workspace.publicAppUrl = `${projectUrl}/functions/v1/booking-api`;
 const accounts = new AccountsService(db as never, workspace);
 export const services = {
+  blocks: new SlotBlocksService(db as never),
+  admissions: new AdmissionService(db as never),
   messages: new MessagesService(db as never, workspace),
   expenses: new ExpensesService(db as never, workspace, accounts),
+  income: new IncomeService(db as never, workspace, accounts),
   workspace,
   bookings: new BookingService(db as never, workspace),
   accounts,
@@ -33,8 +42,9 @@ export const services = {
 export { createHandler };
 export const handler = createHandler(
   services,
-  (token) =>
+  coalesceActorChecks((token) =>
     supabaseActor(token, db, fetch, { url: projectUrl, key: publishableKey }),
+  ),
   () => db.query("SELECT 1"),
 );
 if (Deno.env.get("BOOKING_EDGE_TEST") !== "true") Deno.serve(handler);

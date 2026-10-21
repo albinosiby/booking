@@ -179,22 +179,27 @@ void main() {
     },
   );
 
-  test('Accounts clears a summary when the date range changes', () async {
-    final repository = FakeAccountsRepository();
-    final cubit = AccountsOverviewCubit(workspace, repository, bookings);
-    await cubit.load();
-    repository.delayed = Completer();
-    final gate = repository.delayed!;
-    final pending = cubit.load(
-      filter: const FinanceFilter(from: '2026-09-01', until: '2026-09-30'),
-    );
-    expect(cubit.state.overview, isNull);
-    await Future<void>.delayed(Duration.zero);
-    gate.complete(repository.overviewValue);
-    await pending;
-    await cubit.close();
-    await repository.events.close();
-  });
+  test(
+    'Accounts keeps the summary visible while a new date range loads',
+    () async {
+      final repository = FakeAccountsRepository();
+      final cubit = AccountsOverviewCubit(workspace, repository, bookings);
+      await cubit.load();
+      repository.delayed = Completer();
+      final gate = repository.delayed!;
+      final pending = cubit.load(
+        filter: const FinanceFilter(from: '2026-09-01', until: '2026-09-30'),
+      );
+      // Shown faded and not tappable until the new range arrives.
+      expect(cubit.state.overview, isNotNull);
+      expect(cubit.state.loading, isTrue);
+      await Future<void>.delayed(Duration.zero);
+      gate.complete(repository.overviewValue);
+      await pending;
+      await cubit.close();
+      await repository.events.close();
+    },
+  );
 
   test(
     'unchanged workspace refresh does not blank Home or reload its dashboard',

@@ -519,9 +519,41 @@ export class AccountsService {
           throw new BadRequestException("Choose an active expense category.");
         expenseCategory = category.name;
       }
+      let incomeCategoryId = v.income_category_id ?? null;
+      if (v.income_category_id) {
+        if (v.kind !== "income")
+          throw new BadRequestException(
+            "Income categories apply to income only.",
+          );
+        const category = (
+          await db.query<Row>(
+            "SELECT name FROM income_categories WHERE id=$1 AND organization_id=$2 AND active=true",
+            [v.income_category_id, m.organization_id],
+          )
+        ).rows[0];
+        if (!category)
+          throw new BadRequestException("Choose an active income category.");
+        expenseCategory = category.name;
+      } else if (v.kind === "income") {
+        // Older installed clients send a typed category name; keep it as a managed category.
+        await db.query(
+          "INSERT INTO income_categories(organization_id,name) VALUES($1,$2) ON CONFLICT DO NOTHING",
+          [m.organization_id, v.category],
+        );
+        const category = (
+          await db.query<Row>(
+            "SELECT id,name,active FROM income_categories WHERE organization_id=$1 AND lower(name)=lower($2)",
+            [m.organization_id, v.category],
+          )
+        ).rows[0];
+        if (!category?.active)
+          throw new BadRequestException("Choose an active income category.");
+        incomeCategoryId = category.id;
+        expenseCategory = category.name;
+      }
       const id = randomUUID();
       await db.query(
-        "INSERT INTO finance_events(id,organization_id,kind,business_id,resource_id,category,reason,reference,occurred_at,recorded_by,command_key,request_hash,expense_category_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+        "INSERT INTO finance_events(id,organization_id,kind,business_id,resource_id,category,reason,reference,occurred_at,recorded_by,command_key,request_hash,expense_category_id,income_category_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
         [
           id,
           m.organization_id,
@@ -536,6 +568,7 @@ export class AccountsService {
           v.command_key,
           hash,
           expenseCategoryId,
+          incomeCategoryId,
         ],
       );
       const lines = v.lines.map((l) => ({
@@ -582,9 +615,13 @@ export class AccountsService {
           [id, m.organization_id],
         )
       ).rows[0];
-      if (!e || !["income", "expense", "transfer"].includes(e.kind))
+      if (
+        !e ||
+        e.admission_payment_id ||
+        !["income", "expense", "transfer"].includes(e.kind)
+      )
         throw new BadRequestException(
-          "Only manual entries can be reversed here. Use the booking refund flow for booking payments.",
+          "Only manual entries can be reversed here. Use the admission or booking refund flow for customer payments.",
         );
       const old = (
         await db.query<Row>(
@@ -628,7 +665,8 @@ export class AccountsService {
   private periodWhere(m: Row, f: FinanceFilter, c: Row, values: unknown[]) {
     let where = this.where(m, f, values);
     values.push(c.timezone, f.from, f.until);
-    where += ` AND (e.occurred_at AT TIME ZONE $${values.length - 2})::date BETWEEN $${values.length - 1}::date AND $${values.length}::date`;
+    // Same local-date range, expressed on occurred_at so the date index applies.
+    where += ` AND e.occurred_at >= ($${values.length - 1}::date::timestamp AT TIME ZONE $${values.length - 2}) AND e.occurred_at < (($${values.length}::date+1)::timestamp AT TIME ZONE $${values.length - 2})`;
     if (f.kind) {
       values.push(f.kind);
       where += ` AND e.kind=$${values.length}`;
@@ -652,9 +690,9 @@ export class AccountsService {
     values.push(all ? 0 : f.cursor);
     const rows = (
       await this.store.query<Row>(
-        `SELECT e.*,COALESCE(o.kind,e.kind) AS effective_kind,b.id AS booking_id,b.reference AS booking_reference,b.customer_snapshot->>'name' AS customer_name,b.total_minor AS tariff_minor,bs.name AS business_name,r.name AS space_name,COALESCE(mm.display_name,e.recorded_by) AS staff_name,(e.occurred_at AT TIME ZONE $${timezoneIndex})::text AS local_time,
+        `SELECT e.*,COALESCE(o.kind,e.kind) AS effective_kind,b.id AS booking_id,ad.id AS admission_id,COALESCE(b.reference,ad.reference) AS booking_reference,COALESCE(b.customer_snapshot->>'name',ad.customer_snapshot->>'name') AS customer_name,COALESCE(b.total_minor,ad.total_minor) AS tariff_minor,bs.name AS business_name,r.name AS space_name,COALESCE(mm.display_name,e.recorded_by) AS staff_name,(e.occurred_at AT TIME ZONE $${timezoneIndex})::text AS local_time,
    (SELECT jsonb_agg(jsonb_build_object('account_id',l.account_id,'account_name',a.name,'method',l.method,'amount_minor',l.amount_minor) ORDER BY l.id) FROM finance_lines l JOIN money_accounts a ON a.id=l.account_id WHERE l.event_id=e.id) AS lines
-   FROM finance_events e LEFT JOIN finance_events o ON o.id=e.reverses_id LEFT JOIN booking_payments p ON p.id=e.booking_payment_id LEFT JOIN bookings b ON b.id=p.booking_id LEFT JOIN businesses bs ON bs.id=e.business_id LEFT JOIN resources r ON r.id=e.resource_id LEFT JOIN memberships mm ON mm.user_id=e.recorded_by
+   FROM finance_events e LEFT JOIN finance_events o ON o.id=e.reverses_id LEFT JOIN booking_payments p ON p.id=e.booking_payment_id LEFT JOIN bookings b ON b.id=p.booking_id LEFT JOIN admission_payments ap ON ap.id=e.admission_payment_id LEFT JOIN admissions ad ON ad.id=ap.admission_id LEFT JOIN businesses bs ON bs.id=e.business_id LEFT JOIN resources r ON r.id=e.resource_id LEFT JOIN memberships mm ON mm.user_id=e.recorded_by
    WHERE ${where} ORDER BY e.occurred_at DESC,e.id DESC LIMIT ${limit} OFFSET $${values.length}`,
         values,
       )
@@ -674,22 +712,16 @@ export class AccountsService {
   }
   private async overviewData(actor: Actor, input: unknown) {
     const { m, f, c } = await this.readContext(actor, input);
-    const aggregate = async (from: string, until: string) => {
-      const values: unknown[] = [m.organization_id],
-        where = this.periodWhere(m, { ...f, from, until }, c, values);
-      const rows = (
-        await this.store.query<Row>(
-          `SELECT COALESCE(o.kind,e.kind) AS kind,l.method,COALESCE(sum(l.amount_minor),0) AS total FROM finance_events e JOIN finance_lines l ON l.event_id=e.id LEFT JOIN finance_events o ON o.id=e.reverses_id LEFT JOIN booking_payments p ON p.id=e.booking_payment_id LEFT JOIN bookings b ON b.id=p.booking_id WHERE ${where} GROUP BY COALESCE(o.kind,e.kind),l.method`,
-          values,
-        )
-      ).rows;
+    // Totals for one window (selected, previous or today) of the grouped rows.
+    const summarize = (rows: Row[], key: string) => {
       const sum = (kind: string) =>
         rows
           .filter((r) => r.kind === kind)
-          .reduce((n, r) => n + Number(r.total), 0);
-      const collection = sum("booking_collection"),
+          .reduce((n, r) => n + Number(r[key]), 0);
+      const collection =
+          sum("booking_collection") + sum("admission_collection"),
         extra = sum("income"),
-        refund = -sum("booking_refund"),
+        refund = -sum("booking_refund") - sum("admission_refund"),
         expense = -sum("expense");
       return {
         collections_minor: collection,
@@ -705,9 +737,13 @@ export class AccountsService {
               .filter(
                 (r) =>
                   r.method === method &&
-                  ["booking_collection", "income"].includes(r.kind),
+                  [
+                    "booking_collection",
+                    "admission_collection",
+                    "income",
+                  ].includes(r.kind),
               )
-              .reduce((n, r) => n + Number(r.total), 0),
+              .reduce((n, r) => n + Number(r[key]), 0),
           ]),
         ),
         methods: Object.fromEntries(
@@ -715,9 +751,13 @@ export class AccountsService {
             method,
             rows
               .filter(
-                (r) => r.method === method && r.kind === "booking_collection",
+                (r) =>
+                  r.method === method &&
+                  ["booking_collection", "admission_collection"].includes(
+                    r.kind,
+                  ),
               )
-              .reduce((n, r) => n + Number(r.total), 0),
+              .reduce((n, r) => n + Number(r[key]), 0),
           ]),
         ),
       };
@@ -784,15 +824,41 @@ export class AccountsService {
         .toISOString()
         .slice(0, 10);
     }
-    const selected = await aggregate(f.from, f.until),
-      previous = await aggregate(previousFrom, previousUntil),
-      today = await aggregate(day, day);
+    // One scan covering all three windows instead of three queries.
+    const windows = [f.from, f.until, previousFrom, previousUntil, day, day];
+    const aggregateValues: unknown[] = [m.organization_id],
+      aggregateWhere = this.periodWhere(
+        m,
+        {
+          ...f,
+          from: [...windows].sort()[0],
+          until: [...windows].sort().at(-1)!,
+        },
+        c,
+        aggregateValues,
+      );
+    const local = `(e.occurred_at AT TIME ZONE $${aggregateValues.indexOf(c.timezone) + 1})::date`;
+    const sumIn = (from: string, until: string) => {
+      aggregateValues.push(from, until);
+      return `COALESCE(sum(l.amount_minor) FILTER (WHERE ${local} BETWEEN $${aggregateValues.length - 1}::date AND $${aggregateValues.length}::date),0)`;
+    };
+    const columns = `${sumIn(f.from, f.until)} AS selected,${sumIn(previousFrom, previousUntil)} AS previous,${sumIn(day, day)} AS today`;
+    const grouped = (
+      await this.store.query<Row>(
+        `SELECT COALESCE(o.kind,e.kind) AS kind,l.method,${columns} FROM finance_events e JOIN finance_lines l ON l.event_id=e.id LEFT JOIN finance_events o ON o.id=e.reverses_id LEFT JOIN booking_payments p ON p.id=e.booking_payment_id LEFT JOIN bookings b ON b.id=p.booking_id WHERE ${aggregateWhere} GROUP BY COALESCE(o.kind,e.kind),l.method`,
+        aggregateValues,
+      )
+    ).rows;
+    const selected = summarize(grouped, "selected"),
+      previous = summarize(grouped, "previous"),
+      today = summarize(grouped, "today");
     const values: unknown[] = [m.organization_id],
       base = this.where(m, f, values, "b");
     values.push(c.timezone, f.until);
+    // Booking and admission dues in one round trip.
     const dues = (
       await this.store.query<Row>(
-        `SELECT COALESCE(sum(GREATEST(0,b.total_minor-COALESCE((SELECT sum(CASE WHEN p.kind='collection' THEN p.amount_minor ELSE -p.amount_minor END) FROM booking_payments p WHERE p.booking_id=b.id AND (p.received_at AT TIME ZONE $${values.length - 1})::date<=$${values.length}::date),0))),0) AS total FROM bookings b WHERE ${base} AND b.status<>'cancelled' AND (b.created_at AT TIME ZONE $${values.length - 1})::date<=$${values.length}::date`,
+        `SELECT (SELECT COALESCE(sum(GREATEST(0,b.total_minor-COALESCE((SELECT sum(CASE WHEN p.kind='collection' THEN p.amount_minor ELSE -p.amount_minor END) FROM booking_payments p WHERE p.booking_id=b.id AND (p.received_at AT TIME ZONE $${values.length - 1})::date<=$${values.length}::date),0))),0) FROM bookings b WHERE ${base} AND b.status<>'cancelled' AND (b.created_at AT TIME ZONE $${values.length - 1})::date<=$${values.length}::date) AS bookings,(SELECT COALESCE(sum(GREATEST(0,b.total_minor-COALESCE((SELECT sum(CASE WHEN p.kind='collection' THEN p.amount_minor ELSE -p.amount_minor END) FROM admission_payments p WHERE p.admission_id=b.id AND (p.received_at AT TIME ZONE $${values.length - 1})::date<=$${values.length}::date),0))),0) FROM admissions b WHERE ${base} AND (b.created_at AT TIME ZONE $${values.length - 1})::date<=$${values.length}::date) AS admissions`,
         values,
       )
     ).rows[0];
@@ -801,10 +867,58 @@ export class AccountsService {
     const timezoneIndex = trendValues.indexOf(c.timezone) + 1;
     const trend = (
       await this.store.query<Row>(
-        `SELECT to_char(e.occurred_at AT TIME ZONE $${timezoneIndex},'YYYY-MM') AS month,COALESCE(sum(CASE WHEN COALESCE(o.kind,e.kind) IN ('income','booking_collection') THEN l.amount_minor ELSE 0 END),0) AS income_minor,COALESCE(-sum(CASE WHEN COALESCE(o.kind,e.kind)='expense' THEN l.amount_minor ELSE 0 END),0) AS expenses_minor FROM finance_events e JOIN finance_lines l ON l.event_id=e.id LEFT JOIN finance_events o ON o.id=e.reverses_id LEFT JOIN booking_payments p ON p.id=e.booking_payment_id LEFT JOIN bookings b ON b.id=p.booking_id WHERE ${trendWhere} GROUP BY month ORDER BY month`,
+        `SELECT to_char(e.occurred_at AT TIME ZONE $${timezoneIndex},'YYYY-MM') AS month,COALESCE(sum(CASE WHEN COALESCE(o.kind,e.kind) IN ('income','booking_collection','admission_collection') THEN l.amount_minor ELSE 0 END),0) AS income_minor,COALESCE(-sum(CASE WHEN COALESCE(o.kind,e.kind)='expense' THEN l.amount_minor ELSE 0 END),0) AS expenses_minor FROM finance_events e JOIN finance_lines l ON l.event_id=e.id LEFT JOIN finance_events o ON o.id=e.reverses_id LEFT JOIN booking_payments p ON p.id=e.booking_payment_id LEFT JOIN bookings b ON b.id=p.booking_id WHERE ${trendWhere} GROUP BY month ORDER BY month`,
         trendValues,
       )
     ).rows;
+    // One grouped read supplies every month/space: month taps need no request.
+    const analysisYear = f.until.slice(0, 4);
+    const analysisValues: unknown[] = [m.organization_id];
+    const analysisWhere = this.periodWhere(
+      m,
+      { ...f, from: `${analysisYear}-01-01`, until: `${analysisYear}-12-31` },
+      c,
+      analysisValues,
+    );
+    const analysisTimezone = analysisValues.indexOf(c.timezone) + 1;
+    const analysisRows = (
+      await this.store.query<Row>(
+        `SELECT to_char(e.occurred_at AT TIME ZONE $${analysisTimezone},'YYYY-MM') AS month,
+       e.business_id,e.resource_id,bs.name AS business_name,r.name AS space_name,
+       COALESCE(sum(CASE WHEN COALESCE(o.kind,e.kind) IN ('income','booking_collection','admission_collection') THEN l.amount_minor ELSE 0 END),0) AS income_minor,
+       COALESCE(-sum(CASE WHEN COALESCE(o.kind,e.kind)='expense' THEN l.amount_minor ELSE 0 END),0) AS expenses_minor,
+       COALESCE(-sum(CASE WHEN COALESCE(o.kind,e.kind) IN ('booking_refund','admission_refund') THEN l.amount_minor ELSE 0 END),0) AS refunds_minor
+       FROM finance_events e JOIN finance_lines l ON l.event_id=e.id
+       LEFT JOIN finance_events o ON o.id=e.reverses_id
+       LEFT JOIN booking_payments p ON p.id=e.booking_payment_id LEFT JOIN bookings b ON b.id=p.booking_id
+       LEFT JOIN businesses bs ON bs.id=e.business_id AND bs.organization_id=e.organization_id
+       LEFT JOIN resources r ON r.id=e.resource_id AND r.organization_id=e.organization_id
+       WHERE ${analysisWhere} AND COALESCE(o.kind,e.kind) IN ('income','booking_collection','admission_collection','expense','booking_refund','admission_refund')
+       GROUP BY month,e.business_id,e.resource_id,bs.name,r.name ORDER BY month,bs.name NULLS LAST,r.name NULLS LAST`,
+        analysisValues,
+      )
+    ).rows;
+    const monthlyAnalysis = Array.from({ length: 12 }, (_, index) => {
+      const month = `${analysisYear}-${String(index + 1).padStart(2, "0")}`;
+      const spaces = analysisRows
+        .filter((r) => r.month === month)
+        .map((r) => ({
+          business_id: r.business_id,
+          resource_id: r.resource_id,
+          business_name: r.business_name,
+          space_name: r.space_name,
+          income_minor: Number(r.income_minor),
+          expenses_minor: Number(r.expenses_minor),
+          refunds_minor: Number(r.refunds_minor),
+        }));
+      return {
+        month,
+        income_minor: spaces.reduce((n, r) => n + r.income_minor, 0),
+        expenses_minor: spaces.reduce((n, r) => n + r.expenses_minor, 0),
+        refunds_minor: spaces.reduce((n, r) => n + r.refunds_minor, 0),
+        spaces,
+      };
+    });
     return {
       ...c,
       from: f.from,
@@ -814,7 +928,8 @@ export class AccountsService {
       selected,
       previous,
       today,
-      outstanding_minor: Number(dues.total),
+      outstanding_minor: Number(dues.bookings) + Number(dues.admissions),
+      monthly_analysis: monthlyAnalysis,
       growth_percent:
         previous.income_minor > 0
           ? ((selected.income_minor - previous.income_minor) * 100) /

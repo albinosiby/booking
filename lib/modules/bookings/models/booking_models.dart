@@ -589,6 +589,8 @@ class BookingRecord extends Equatable {
     required this.spaceName,
     required this.optionName,
     this.cleanupMinutes = 5,
+    this.admissionId,
+    this.admissionAttendance,
     this.subtotal,
     this.discountMinor = 0,
     this.payments = const [],
@@ -607,6 +609,7 @@ class BookingRecord extends Equatable {
       businessName,
       spaceName,
       optionName;
+  final String? admissionId, admissionAttendance;
   final int version, total, netPaid, balance, refundDue;
   final int cleanupMinutes;
   final int? subtotal;
@@ -615,7 +618,10 @@ class BookingRecord extends Equatable {
   final BookingCustomer customer;
   final List<BookingPayment> payments;
   final List<BookingEvent> history;
+  bool get checkedIn => history.any((event) => event.action == 'checked_in');
   factory BookingRecord.fromJson(Map<String, dynamic> j) => BookingRecord(
+    admissionId: j['admission_id'],
+    admissionAttendance: j['admission_attendance'],
     id: j['id'],
     reference: j['reference'],
     status: j['status'],
@@ -678,6 +684,8 @@ class BookingRecord extends Equatable {
     businessName,
     spaceName,
     optionName,
+    admissionId,
+    admissionAttendance,
     cleanupMinutes,
     subtotal,
     discountMinor,
@@ -793,15 +801,26 @@ class BookingOutstanding extends Equatable {
     required this.localStart,
     required this.balance,
     required this.refund,
+    this.phone = '',
+    this.localEnd,
+    this.total,
+    this.option,
   });
   final String id, reference, status, customer, business, space, localStart;
   final int balance, refund;
+  final String phone;
+  final String? localEnd, option;
+  final int? total;
   factory BookingOutstanding.fromJson(Map<String, dynamic> j) =>
       BookingOutstanding(
         id: j['id'],
         reference: j['reference'],
         status: j['status'],
         customer: j['customer_name'],
+        phone: j['customer_phone'] ?? '',
+        localEnd: j['local_end'],
+        total: j['total_minor'],
+        option: j['option_name'],
         business: j['business_name'],
         space: j['space_name'],
         localStart: j['local_start'],
@@ -814,6 +833,10 @@ class BookingOutstanding extends Equatable {
     reference,
     status,
     customer,
+    phone,
+    localEnd,
+    total,
+    option,
     business,
     space,
     localStart,

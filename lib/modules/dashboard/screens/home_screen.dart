@@ -1,3 +1,5 @@
+import '../../bookings/widgets/compact_booking_card.dart';
+import '../../bookings/models/compact_booking_model.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../auth/cubit/auth_cubit.dart';
 import '../widgets/home_greeting_card.dart';
@@ -228,7 +230,11 @@ class _HomeScreenState extends State<HomeScreen> {
           for (final booking in bookings.where(
             (b) => b.selection.resourceId == id,
           ))
-            BookingCard(booking: booking, currency: currency),
+            BookingCard(
+              booking: booking,
+              currency: currency,
+              canCollect: s.data.hasPermission('collect_payments'),
+            ),
         ],
       ],
     );
@@ -268,49 +274,10 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icons.task_alt_outlined,
           ),
         for (final booking in s.dueBookings)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    booking.customer,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text('${booking.business} · ${booking.space}'),
-                  const SizedBox(height: 6),
-                  Text(
-                    bookingLocal(booking.localStart),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  Text(
-                    booking.reference,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Amount due',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    bookingMoney(booking.balance, currency),
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  if (canCollect) ...[
-                    const SizedBox(height: 14),
-                    AppButton(
-                      label: 'Collect',
-                      icon: Icons.payments_outlined,
-                      onPressed: () =>
-                          context.push('/booking/${booking.id}?action=collect'),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+          CompactBookingCard(
+            model: CompactBookingModel.outstanding(booking),
+            currency: currency,
+            canCollect: canCollect,
           ),
         if (s.dueNext != null)
           TextButton(

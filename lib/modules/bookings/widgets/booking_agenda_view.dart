@@ -1,3 +1,4 @@
+import '../../booking_blocks/models/slot_block_models.dart';
 import '../../workspace/widgets/workspace_business_order.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -64,6 +65,19 @@ class BookingAgendaView extends StatelessWidget {
       showAppBar: true,
       compactHeader: true,
       actions: [
+        if (s.catalog.canManage)
+          IconButton(
+            tooltip: 'Block slots',
+            icon: const Icon(Icons.lock_clock_outlined),
+            onPressed: () => context.push(
+              '/bookings/blocks',
+              extra: BlockLaunch(
+                businessId: s.businessId,
+                spaceId: s.spaceId,
+                date: s.date,
+              ),
+            ),
+          ),
         IconButton(
           tooltip: 'Filter bookings',
           onPressed: () => filters(context),
@@ -155,21 +169,36 @@ class BookingAgendaView extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                for (final status in [
-                  null,
-                  'confirmed',
-                  'completed',
-                  'cancelled',
-                  'no_show',
-                ])
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: const Text('All spaces'),
+                    selected: s.businessId == null && s.spaceId == null,
+                    onSelected: (selected) {
+                      if (selected) cubit.filters();
+                    },
+                  ),
+                ),
+                for (final space in orderedWorkspaceBusinesses(
+                  context,
+                  s.spaceFilters,
+                  (f) => f.businessId,
+                ))
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
-                      label: Text(
-                        status == null ? 'All bookings' : paymentLabel(status),
-                      ),
-                      selected: s.status == status,
-                      onSelected: (_) => cubit.status(status),
+                      label: Text(space.label),
+                      selected:
+                          s.businessId == space.businessId &&
+                          s.spaceId == space.spaceId,
+                      onSelected: (selected) {
+                        if (selected) {
+                          cubit.filters(
+                            businessId: space.businessId,
+                            spaceId: space.spaceId,
+                          );
+                        }
+                      },
                     ),
                   ),
               ],
@@ -250,12 +279,20 @@ class BookingAgendaView extends StatelessWidget {
             ...([
               ...s.bookings.where((b) => b.selection.resourceId == space),
             ]..sort((a, b) => a.localStart.compareTo(b.localStart))).map(
-              (b) => BookingCard(booking: b, currency: s.catalog.currency),
+              (b) => BookingCard(
+                booking: b,
+                currency: s.catalog.currency,
+                canCollect: s.catalog.canCollect,
+              ),
             ),
           ]
         else
           ...s.bookings.map(
-            (b) => BookingCard(booking: b, currency: s.catalog.currency),
+            (b) => BookingCard(
+              booking: b,
+              currency: s.catalog.currency,
+              canCollect: s.catalog.canCollect,
+            ),
           ),
         if (s.next != null)
           AppButton(

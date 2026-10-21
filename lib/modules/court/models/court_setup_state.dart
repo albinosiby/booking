@@ -64,6 +64,15 @@ class CourtSetupState extends WorkspaceState {
       CourtResourcesModel(draft.courts, selectedCourt);
   CourtPricingModel get pricingModel =>
       CourtPricingModel(draft.courts, selectedCourt, currency);
+  CourtPlan? get selectedPlan =>
+      draft.plans.where((p) => p.id == selectedId).firstOrNull;
+  CourtCoachingModel get coachingModel => CourtCoachingModel(
+    draft.courts,
+    draft.plans,
+    draft.coaches,
+    selectedPlan,
+    currency,
+  );
   CourtReviewModel get reviewModel => CourtReviewModel(draft, currency);
   CourtSetupState copyWith({
     WorkspaceState? snapshot,

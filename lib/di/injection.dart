@@ -45,7 +45,13 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton<LogoPickerService>(() => LogoPickerService());
   getIt.registerFactory<AuthCubit>(() => AuthCubit(getIt()));
   getIt.registerLazySingleton<WorkspacePreloader>(
-    () => WorkspacePreloader(getIt(), getIt(), getIt(), getIt()),
+    () => WorkspacePreloader(
+      getIt(),
+      getIt(),
+      getIt(),
+      getIt(),
+      admissions: getIt(),
+    ),
   );
   getIt.registerFactory<WorkspaceCubit>(
     () => WorkspaceCubit(getIt(), preloader: getIt()),

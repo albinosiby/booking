@@ -1,3 +1,12 @@
+import '../modules/booking_blocks/models/slot_block_models.dart';
+import '../modules/booking_blocks/repositories/slot_block_repository.dart';
+import '../modules/booking_blocks/repositories/rest_slot_block_repository.dart';
+import '../modules/booking_blocks/cubit/slot_block_cubits.dart';
+import '../modules/admissions/cubit/admission_cubit.dart';
+import '../modules/admissions/repositories/admission_repository.dart';
+import '../modules/admissions/repositories/rest_admission_repository.dart';
+import '../modules/bookings/repositories/booking_feedback_repository.dart';
+import '../modules/bookings/repositories/device_booking_feedback_repository.dart';
 import '../modules/messages/cubit/message_cubits.dart';
 import '../modules/messages/models/message_template.dart';
 import '../modules/messages/repositories/message_repository.dart';
@@ -16,6 +25,9 @@ import '../modules/expenses/cubit/expense_detail_cubit.dart';
 import '../modules/expenses/repositories/expenses_repository.dart';
 import '../modules/expenses/repositories/rest_expenses_repository.dart';
 import '../modules/expenses/repositories/device_invoice_picker.dart';
+import '../modules/income/cubit/income_cubit.dart';
+import '../modules/income/repositories/income_repository.dart';
+import '../modules/income/repositories/rest_income_repository.dart';
 import '../modules/businesses/cubit/business_management_cubit.dart';
 import 'package:app_links/app_links.dart';
 import '../modules/team/repositories/invitation_link_repository.dart';
@@ -68,6 +80,24 @@ import '../modules/dashboard/cubit/home_cubit.dart';
 
 /// Composition root: swap persistence implementations here, never in screens.
 void registerFeatureDependencies(GetIt di) {
+  di.registerLazySingleton<SlotBlockRepository>(
+    () => RestSlotBlockRepository(di(), di()),
+  );
+  di.registerFactoryParam<BlockListCubit, WorkspaceSession, BlockLaunch>(
+    (s, l) => BlockListCubit(s, di(), l),
+  );
+  di.registerFactoryParam<BlockFormCubit, WorkspaceSession, BlockLaunch>(
+    (s, l) => BlockFormCubit(s, di(), l),
+  );
+  di.registerLazySingleton<AdmissionRepository>(
+    () => RestAdmissionRepository(di(), di()),
+  );
+  di.registerFactoryParam<AdmissionCubit, WorkspaceSession, void>(
+    (s, _) => AdmissionCubit(s, di()),
+  );
+  di.registerLazySingleton<BookingFeedbackRepository>(
+    () => DeviceBookingFeedbackRepository(),
+  );
   di.registerLazySingleton<MessageRepository>(
     () => RestMessageRepository(di()),
   );
@@ -102,6 +132,10 @@ void registerFeatureDependencies(GetIt di) {
   di.registerFactoryParam<ExpenseDetailCubit, WorkspaceSession, String>(
     (s, id) => ExpenseDetailCubit(s, di(), di(), id),
   );
+  di.registerLazySingleton<IncomeRepository>(() => RestIncomeRepository(di()));
+  di.registerFactoryParam<IncomeCubit, WorkspaceSession, void>(
+    (s, _) => IncomeCubit(s, di(), di()),
+  );
   di.registerLazySingleton<InvitationLinkRepository>(
     () => DeviceInvitationLinkRepository(AppLinks()),
   );
@@ -125,7 +159,7 @@ void registerFeatureDependencies(GetIt di) {
     (s, cash) => BankAccountCubit(s, di(), cash: cash),
   );
   di.registerFactoryParam<FinanceEntryCubit, WorkspaceSession, String>(
-    (s, k) => FinanceEntryCubit(s, di(), k),
+    (s, k) => FinanceEntryCubit(s, di(), k, income: di()),
   );
   di.registerFactoryParam<TransactionsCubit, WorkspaceSession, FinanceFilter>(
     (s, f) => TransactionsCubit(s, di(), f),
@@ -142,7 +176,8 @@ void registerFeatureDependencies(GetIt di) {
     () => RestBookingRepository(di()),
   );
   di.registerFactoryParam<BookingFormCubit, WorkspaceSession, BookingLaunch>(
-    (session, launch) => BookingFormCubit(session, di(), launch),
+    (session, launch) =>
+        BookingFormCubit(session, di(), launch, feedback: di()),
   );
   di.registerFactoryParam<BookingDetailCubit, WorkspaceSession, String>(
     (session, id) => BookingDetailCubit(session, di(), id),
@@ -186,7 +221,7 @@ void registerFeatureDependencies(GetIt di) {
   di.registerFactory<LocationCatalogCubit>(() => LocationCatalogCubit(di()));
   di.registerFactory<TeamCubit>(() => TeamCubit(di()));
   di.registerLazySingleton<TeamCoachesRepository>(
-    () => ConfigurationTeamCoachesRepository(di(), di()),
+    () => ConfigurationTeamCoachesRepository(di(), di(), di()),
   );
   di.registerFactoryParam<TeamCoachesCubit, WorkspaceSession, void>(
     (session, _) => TeamCoachesCubit(di(), session),

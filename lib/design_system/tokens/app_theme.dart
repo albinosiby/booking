@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -33,6 +34,52 @@ class AppTheme {
       fontFamily: 'Roboto',
     );
     return base.copyWith(
+      visualDensity: VisualDensity.standard,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          // Web and desktop use a quiet fade instead of a mobile slide.
+          TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+        },
+      ),
+      scrollbarTheme: ScrollbarThemeData(
+        radius: const Radius.circular(8),
+        thickness: WidgetStateProperty.all(6),
+        thumbColor: WidgetStateProperty.all(
+          scheme.onSurface.withValues(alpha: .22),
+        ),
+      ),
+      tooltipTheme: TooltipThemeData(
+        waitDuration: const Duration(milliseconds: 400),
+        textStyle: TextStyle(
+          fontSize: 12,
+          color: dark ? AppColors.ink : AppColors.white,
+        ),
+        decoration: BoxDecoration(
+          color: dark ? AppColors.white : AppColors.ink,
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        surfaceTintColor: Colors.transparent,
+        constraints: BoxConstraints(maxWidth: 640),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      dividerTheme: DividerThemeData(
+        color: scheme.outline.withValues(alpha: .5),
+        thickness: 1,
+      ),
       textTheme: base.textTheme.copyWith(
         headlineLarge: TextStyle(
           fontSize: 32.sp.clamp(28, 36),

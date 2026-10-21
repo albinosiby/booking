@@ -78,40 +78,28 @@ export class WorkspaceService {
         locations: [],
         membership: null,
       };
-    // These reads depend only on the already-authorized membership, not on
-    // one another. Avoid a network round trip per sequential workspace field.
-    const [organizationRows, businessRows, assignmentRows, locationRows] =
-      await Promise.all([
-        this.db.query<Row>("SELECT * FROM organizations WHERE id=$1", [
-          member.organization_id,
-        ]),
-        this.db.query<Row>(
-          "SELECT * FROM businesses WHERE organization_id=$1 ORDER BY display_order,id",
-          [member.organization_id],
-        ),
-        this.db.query<Row>(
-          "SELECT * FROM staff_assignments WHERE membership_id=$1",
-          [member.id],
-        ),
-        this.db.query<Row>("SELECT * FROM locations WHERE organization_id=$1", [
-          member.organization_id,
-        ]),
-      ]);
-    const org = organizationRows.rows[0];
-    let businesses = businessRows.rows;
-    const assignments = assignmentRows.rows;
-    if (member.role !== "owner")
-      businesses = businesses.filter((b) =>
-        assignments.some((a) => a.business_id === b.id),
-      );
-    const resourceRows = businesses.length
-      ? (
-          await this.db.query<Row>(
-            "SELECT business_id,id,name,capacity FROM resources WHERE business_id=ANY($1::uuid[]) AND organization_id=$2 ORDER BY business_id,name,id",
-            [businesses.map((business) => business.id), member.organization_id],
-          )
-        ).rows
-      : [];
+    // One snapshot round trip after membership verification. Keep staff scope
+    // inside SQL and retain the existing resource/configuration redaction below.
+    const snapshot = (
+      await this.db.query<Row>(
+        `
+      WITH visible AS (
+        SELECT b.* FROM businesses b WHERE b.organization_id=$1
+        AND ($3::boolean OR EXISTS (SELECT 1 FROM staff_assignments a WHERE a.membership_id=$2 AND a.business_id=b.id))
+      )
+      SELECT (SELECT to_jsonb(o) FROM organizations o WHERE o.id=$1) AS organization,
+        COALESCE((SELECT jsonb_agg(to_jsonb(b) ORDER BY b.display_order,b.id) FROM visible b),'[]'::jsonb) AS businesses,
+        COALESCE((SELECT jsonb_agg(to_jsonb(a)) FROM staff_assignments a WHERE a.membership_id=$2),'[]'::jsonb) AS assignments,
+        COALESCE((SELECT jsonb_agg(to_jsonb(l)) FROM locations l WHERE l.organization_id=$1),'[]'::jsonb) AS locations,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('business_id',r.business_id,'id',r.id,'name',r.name,'capacity',r.capacity) ORDER BY r.business_id,r.name,r.id) FROM resources r JOIN visible b ON b.id=r.business_id WHERE r.organization_id=$1),'[]'::jsonb) AS resources
+    `,
+        [member.organization_id, member.id, member.role === "owner"],
+      )
+    ).rows[0];
+    const org = snapshot.organization;
+    const businesses: Row[] = snapshot.businesses,
+      assignments: Row[] = snapshot.assignments,
+      resourceRows: Row[] = snapshot.resources;
     const resourcesByBusiness = new Map<string, Row[]>();
     for (const resource of resourceRows) {
       const items = resourcesByBusiness.get(resource.business_id) ?? [];
@@ -169,11 +157,34 @@ export class WorkspaceService {
         assignment?.resource_ids.length
       ) {
         const ids = new Set(resources.map((r) => r.id));
+        const config = business.configuration;
         business.configuration = {
-          ...business.configuration,
-          courts: business.configuration.courts.filter((p: Row) =>
-            ids.has(p.id),
-          ),
+          ...config,
+          courts: config.courts.filter((p: Row) => ids.has(p.id)),
+          ...(config.plans
+            ? {
+                plans: config.plans
+                  .filter((p: Row) =>
+                    p.court_ids.some((id: string) => ids.has(id)),
+                  )
+                  .map((p: Row) => ({
+                    ...p,
+                    court_ids: p.court_ids.filter((id: string) => ids.has(id)),
+                  })),
+              }
+            : {}),
+          ...(config.coaches
+            ? {
+                coaches: config.coaches
+                  .filter((c: Row) =>
+                    c.court_ids.some((id: string) => ids.has(id)),
+                  )
+                  .map((c: Row) => ({
+                    ...c,
+                    court_ids: c.court_ids.filter((id: string) => ids.has(id)),
+                  })),
+              }
+            : {}),
         };
       }
       if (
@@ -220,7 +231,7 @@ export class WorkspaceService {
     }
     return {
       organization: org,
-      locations: locationRows.rows,
+      locations: snapshot.locations,
       businesses,
       membership: member,
     };
@@ -667,7 +678,20 @@ export class WorkspaceService {
         }
       } else if (b.configuration.kind === "court_v1") {
         try {
-          const config = assertCourtComplete(b.configuration);
+          const location = (
+            await db.query<Row>("SELECT timezone FROM locations WHERE id=$1", [
+              b.location_id,
+            ])
+          ).rows[0];
+          const config = assertCourtComplete(
+            b.configuration,
+            new Intl.DateTimeFormat("en-CA", {
+              timeZone: location.timezone,
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            }).format(new Date()),
+          );
           const resources = (
             await db.query<Row>(
               "SELECT id,capacity FROM resources WHERE business_id=$1",
@@ -895,7 +919,7 @@ export class WorkspaceService {
     const m = await this.member(actor, true);
     const members = (
       await this.db.query<Row>(
-        "SELECT * FROM memberships WHERE organization_id=$1 ORDER BY display_name",
+        "SELECT * FROM memberships WHERE organization_id=$1 AND user_id NOT LIKE 'sarvam:%' ORDER BY display_name",
         [m.organization_id],
       )
     ).rows;
@@ -920,7 +944,7 @@ export class WorkspaceService {
       const result = await db.query(
         invitation
           ? "UPDATE invitations SET revoked_at=now() WHERE id=$1 AND organization_id=$2 AND accepted_at IS NULL RETURNING id"
-          : "UPDATE memberships SET active=false WHERE id=$1 AND organization_id=$2 AND role!='owner' RETURNING id",
+          : "UPDATE memberships SET active=false WHERE id=$1 AND organization_id=$2 AND role!='owner' AND user_id NOT LIKE 'sarvam:%' RETURNING id",
         [id, m.organization_id],
       );
       if (!result.rows.length)
@@ -935,7 +959,7 @@ export class WorkspaceService {
       const m = await this.member(actor, true, db);
       const member = (
         await db.query<Row>(
-          "SELECT * FROM memberships WHERE id=$1 AND organization_id=$2 AND role!='owner' FOR UPDATE",
+          "SELECT * FROM memberships WHERE id=$1 AND organization_id=$2 AND role!='owner' AND user_id NOT LIKE 'sarvam:%' FOR UPDATE",
           [id, m.organization_id],
         )
       ).rows[0];

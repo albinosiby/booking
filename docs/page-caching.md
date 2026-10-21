@@ -8,7 +8,7 @@ Screens bind models and invoke Cubits. Cubits depend on feature repository contr
 
 The five primary tabs remain in GoRouter's indexed stateful shell. Selecting the current tab no longer resets its branch. Filters, selected calendar dates, navigation stacks and scroll positions survive tab changes. Configuration forms continue using their existing encrypted local draft repositories; final Save/Activate still publishes to Supabase.
 
-Loaded bookings, booking details, Home metrics, Accounts summaries, transactions, bank settings, team lists and location choices remain visible during refresh. A new date/filter clears the previous result rather than mislabeling it. Network errors retain valid content and expose retry; authorization failures clear sensitive retained content.
+Loaded bookings, booking details, Home metrics, Accounts summaries, transactions, bank settings, team lists and location choices remain visible during refresh. On Accounts, Income and Expenses, a new date/filter keeps the previous figures visible but faded and not tappable, under a thin progress line, until the new result arrives; if that load fails, the previous figures are cleared rather than left under the new period. Other screens clear the previous result rather than mislabeling it. Network errors retain valid content and expose retry; authorization failures clear sensitive retained content.
 
 ## Read policy
 

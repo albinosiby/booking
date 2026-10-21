@@ -1,3 +1,4 @@
+import 'admissions_test.dart' show AdmissionsFake;
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
@@ -57,7 +58,64 @@ class WarmBookings extends FakeBookingRepository {
   }) => gate(() => super.list(date: date, overlap: overlap));
 }
 
+class WarmAdmissions extends AdmissionsFake {
+  WarmAdmissions(this.queue);
+  final WarmBookings queue;
+  int reads = 0;
+  @override
+  Future<void> warmPlans() => queue.gate(() async {
+    reads++;
+  });
+}
+
 void main() {
+  test(
+    'pool plan metadata warms after booking priority reads within the two-request budget',
+    () async {
+      final w = WorkspaceCubit(BookingSource());
+      await w.load();
+      final b = WarmBookings(), a = WarmAdmissions(b);
+      final pool = Workspace(
+        organization: w.state.data.organization,
+        membership: w.state.data.membership,
+        businesses: const [
+          Business(
+            id: 'pool',
+            resources: [],
+            name: 'Pool',
+            type: BusinessType.pool,
+            status: 'ready',
+            locationId: 'location',
+            version: 1,
+          ),
+        ],
+      );
+      final preload = WorkspacePreloader(
+        b,
+        NoAccounts(),
+        NoExpenses(),
+        NoTeam(),
+        admissions: a,
+      );
+      await preload.warm(pool, () => true);
+      expect(a.reads, 1);
+      expect(b.maximum, lessThanOrEqualTo(2));
+      await preload.warm(pool, () => true);
+      expect(a.reads, 1);
+      preload.reset();
+      await preload.warm(
+        Workspace(
+          organization: pool.organization,
+          membership: const {'role': 'staff', 'permissions': <String>[]},
+          businesses: pool.businesses,
+        ),
+        () => true,
+      );
+      expect(a.reads, 1);
+      await w.close();
+    },
+  );
+
   test(
     'phone suggestions debounce, allow same-number names and reject late results',
     () async {

@@ -74,6 +74,48 @@ const court = z
     tariffs: z.array(tariff).max(40),
   })
   .strict();
+// Play plans sell court visits; coaching batches share one court reservation.
+const plan = z
+  .object({
+    id,
+    name,
+    kind: z.enum(["play", "coaching"]),
+    court_ids: z.array(id).max(50),
+    allowance: z.number().int().min(1).max(10000),
+    expiry_mode: z.enum([
+      "after_start",
+      "after_months",
+      "after_years",
+      "fixed_date",
+    ]),
+    expiry_days: z.number().int().min(1).max(3650).nullable(),
+    expiry_months: z.number().int().min(1).max(120).nullable().optional(),
+    expiry_years: z.number().int().min(1).max(10).nullable().optional(),
+    expiry_date: date.nullable(),
+    price_minor: price,
+    enabled: z.boolean(),
+    availability: courtHoursSchema,
+    class_duration_minutes: duration.nullable(),
+    class_seats: z.number().int().min(1).max(500).nullable(),
+    coach_id: id.nullable(),
+    renewal: z.literal("none"),
+  })
+  .strict();
+const coach = z
+  .object({
+    id,
+    name,
+    court_ids: z.array(id).max(50),
+    phone: z
+      .string()
+      .trim()
+      .regex(/^\+?[0-9 ()-]{6,30}$/)
+      .refine((v) => {
+        const digits = v.replace(/[^0-9]/g, "");
+        return digits.length >= 6 && digits.length <= 15;
+      }, "Enter a valid phone number with 6–15 digits."),
+  })
+  .strict();
 const minute = (v: string) => Number(v.slice(0, 2)) * 60 + Number(v.slice(3));
 const span = (v: z.infer<typeof courtHoursSchema>) => hoursSpan(v);
 function within(
@@ -87,6 +129,8 @@ export const courtConfigurationSchema = z
     kind: z.literal("court_v1"),
     schema_version: z.literal(1),
     courts: z.array(court).max(50),
+    plans: z.array(plan).max(50).optional(),
+    coaches: z.array(coach).max(100).optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -94,11 +138,67 @@ export const courtConfigurationSchema = z
       ctx.addIssue({ code: "custom", message });
     const unique = (values: unknown[]) =>
       new Set(values).size === values.length;
+    const plans = v.plans ?? [],
+      coaches = v.coaches ?? [];
     if (
-      !unique(v.courts.map((x) => x.id)) ||
+      !unique([...v.courts, ...plans, ...coaches].map((x) => x.id)) ||
       !unique(v.courts.map((p) => p.name.toLowerCase()))
     )
       issue("Use unique identifiers and court names.");
+    if (!unique(coaches.map((c) => c.phone.replace(/[^0-9]/g, ""))))
+      issue("Coach contacts must have unique phone numbers.");
+    const known = (ids: string[]) =>
+      unique(ids) && ids.every((id) => v.courts.some((p) => p.id === id));
+    for (const c of coaches)
+      if (!known(c.court_ids))
+        issue("Assign coaches to distinct courts in this business.");
+    for (const p of plans) {
+      const amounts = [
+        p.expiry_days,
+        p.expiry_months ?? null,
+        p.expiry_years ?? null,
+      ];
+      const active = ["after_start", "after_months", "after_years"].indexOf(
+        p.expiry_mode,
+      );
+      if (
+        active === -1
+          ? amounts.some((v) => v !== null)
+          : amounts.some((v, i) => (i === active ? v === null : v !== null)) ||
+            p.expiry_date !== null
+      )
+        issue(
+          "Choose one validity unit and enter its positive period, or select a fixed expiry date.",
+        );
+      if (!known(p.court_ids))
+        issue("Use existing, distinct courts for plans.");
+      if (
+        p.kind === "coaching"
+          ? p.class_duration_minutes === null || p.class_seats === null
+          : p.class_duration_minutes !== null ||
+            p.class_seats !== null ||
+            p.coach_id !== null
+      )
+        issue("Class duration, seats and coach belong only to coaching plans.");
+      if (p.coach_id !== null) {
+        const contact = coaches.find((c) => c.id === p.coach_id);
+        if (!contact) issue("Choose a coach contact from this business.");
+        else if (p.court_ids.some((id) => !contact.court_ids.includes(id)))
+          issue("The coach must be assigned to every court of their plans.");
+      }
+      if (!p.enabled) continue;
+      for (const c of v.courts.filter((c) => p.court_ids.includes(c.id)))
+        if (
+          !c.enabled ||
+          !within(p.availability, c.operating) ||
+          (!p.availability.all_day &&
+            (p.class_duration_minutes ?? c.default_duration_minutes) >
+              span(p.availability))
+        )
+          issue(
+            "Keep plans on enabled courts, within court hours and long enough for a visit.",
+          );
+    }
     for (const p of v.courts) {
       if (
         p.operating.date_from !== null ||
@@ -153,7 +253,10 @@ export const courtSaveSchema = z
     configuration: courtConfigurationSchema,
   })
   .strict();
-export function assertCourtComplete(input: unknown) {
+export function assertCourtComplete(
+  input: unknown,
+  today = new Date().toISOString().slice(0, 10),
+) {
   const v = courtConfigurationSchema.parse(input);
   if (!v.courts.some((p) => p.enabled))
     throw Error("Enable at least one court.");
@@ -173,6 +276,17 @@ export function assertCourtComplete(input: unknown) {
     )
       throw Error("Complete court prices and valid durations.");
   }
+  if (
+    (v.plans ?? []).some(
+      (p) =>
+        p.enabled &&
+        (!p.court_ids.length ||
+          p.price_minor === null ||
+          (p.expiry_mode === "fixed_date" &&
+            (!p.expiry_date || p.expiry_date < today))),
+    )
+  )
+    throw Error("Complete plan courts, prices and nonexpired expiry dates.");
   return v;
 }
 function applies(

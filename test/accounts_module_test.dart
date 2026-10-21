@@ -1,5 +1,5 @@
-import 'package:eden_booking/modules/accounts/widgets/accounts_widgets.dart'
-    show FinanceStat;
+import 'package:eden_booking/modules/accounts/widgets/accounts_overview_widgets.dart'
+    show FinanceNetCard, FinanceQuickActions;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -21,6 +21,8 @@ import 'package:eden_booking/modules/bookings/repositories/booking_repository.da
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/utils/exceptions/app_exception.dart';
 import 'booking_module_test.dart' show BookingSource, FakeBookingRepository;
+import 'income_module_test.dart' show IncomeRepo;
+import 'package:eden_booking/modules/income/repositories/income_repository.dart';
 
 final qaCatalog = FinanceCatalog(
   name: 'Eden',
@@ -251,6 +253,26 @@ void main() {
     await c.close();
     await w.close();
   });
+  test('changing the period keeps figures visible while loading', () async {
+    final w = await session(),
+        r = FakeAccountsRepository(),
+        b = FakeBookingRepository(),
+        c = AccountsOverviewCubit(w, r, b);
+    await c.load();
+    final delayed = Completer<FinanceOverview>();
+    r.delayed = delayed;
+    final f = const FinanceFilter(from: '2026-09-01', until: '2026-09-30');
+    final pending = c.load(filter: f);
+    await Future<void>.delayed(Duration.zero);
+    expect(c.state.loading, isTrue);
+    expect(c.state.filter, f);
+    expect(c.state.overview, isNotNull);
+    delayed.complete(r.overviewValue);
+    await pending;
+    expect(c.state.loading, isFalse);
+    await c.close();
+    await w.close();
+  });
   test('late overview response cannot overwrite a newer date filter', () async {
     final w = await session(),
         r = FakeAccountsRepository(),
@@ -324,6 +346,8 @@ void main() {
       getIt.registerSingleton<AccountsRepository>(r);
       getIt.unregister<BookingRepository>();
       getIt.registerSingleton<BookingRepository>(FakeBookingRepository());
+      getIt.unregister<IncomeRepository>();
+      getIt.registerSingleton<IncomeRepository>(IncomeRepo());
       final page = switch (screen) {
         'overview' => const AccountsScreen(),
         'settings' => const AccountSettingsScreen(),
@@ -393,21 +417,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         if (screen == 'overview') {
-          final stats = find.byType(FinanceStat);
-          expect(
-            tester.getSize(stats.at(0)).height,
-            tester.getSize(stats.at(1)).height,
-          );
-          expect(
-            tester.getSize(stats.at(2)).height,
-            tester.getSize(stats.at(3)).height,
-          );
-          expect(
-            tester
-                .widget<FloatingActionButton>(find.byType(FloatingActionButton))
-                .backgroundColor,
-            AppColors.lime,
-          );
+          expect(find.byType(FinanceNetCard), findsOneWidget);
+          expect(find.byType(FinanceQuickActions), findsOneWidget);
+          expect(find.byType(FloatingActionButton), findsNothing);
         }
       }
       await tester.pumpWidget(const SizedBox());

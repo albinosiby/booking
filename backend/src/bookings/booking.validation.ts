@@ -89,7 +89,7 @@ export const statusSchema = z
   .object({
     command_key: z.uuid(),
     version: z.number().int().positive(),
-    status: z.enum(["cancelled", "completed", "no_show"]),
+    status: z.enum(["cancelled", "completed", "no_show", "checked_in"]),
     reason: z.string().trim().min(2).max(500),
   })
   .strict();

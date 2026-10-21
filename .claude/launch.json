@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-release",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8088", "--directory", "build/web"],
+      "port": 8088
+    }
+  ]
+}

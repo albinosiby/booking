@@ -3,6 +3,13 @@ import 'booking_models.dart';
 
 enum BookingListMode { bookings, calendar, payments }
 
+class BookingSpaceFilter extends Equatable {
+  const BookingSpaceFilter(this.businessId, this.spaceId, this.label);
+  final String businessId, spaceId, label;
+  @override
+  List<Object?> get props => [businessId, spaceId, label];
+}
+
 class BookingListModel extends Equatable {
   BookingListModel({
     this.catalog = const BookingCatalog(),
@@ -33,6 +40,26 @@ class BookingListModel extends Equatable {
        collections = List.unmodifiable(collections),
        totals = List.unmodifiable(totals);
   final BookingCatalog catalog;
+  List<BookingSpaceFilter> get spaceFilters {
+    final counts = <String, int>{};
+    for (final business in catalog.filters) {
+      for (final space in business.spaces) {
+        counts.update(space.name, (n) => n + 1, ifAbsent: () => 1);
+      }
+    }
+    return List.unmodifiable([
+      for (final business in catalog.filters)
+        for (final space in business.spaces)
+          BookingSpaceFilter(
+            business.id,
+            space.id,
+            counts[space.name]! > 1
+                ? '${business.name} · ${space.name}'
+                : space.name,
+          ),
+    ]);
+  }
+
   final Map<String, int> dateCounts;
   final bool countsLoading;
   final String? countsError;

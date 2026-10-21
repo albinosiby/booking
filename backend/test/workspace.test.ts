@@ -430,7 +430,7 @@ test("workspace batches resource reads across businesses while preserving the pu
     statements.filter((sql) => sql.includes("FROM resources")).length,
     1,
   );
-  assert.equal(statements.length, 6);
+  assert.equal(statements.length, 2);
   for (const business of result.businesses)
     for (const resource of business.resources)
       assert.deepEqual(Object.keys(resource).sort(), [

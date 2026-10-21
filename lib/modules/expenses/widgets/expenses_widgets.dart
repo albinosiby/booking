@@ -1,7 +1,7 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../accounts/models/accounts_models.dart';
 import '../models/expense_models.dart';
+import '../../accounts/widgets/finance_period_widgets.dart';
 
 const expenseMonths = [
   'Jan',
@@ -44,77 +44,15 @@ class ExpenseChart extends StatelessWidget {
   final String currency;
   final ValueChanged<int> onMonth;
   @override
-  Widget build(BuildContext context) {
-    final max = values.fold<int>(1, (n, v) => math.max(n, v.abs()));
-    final colors = Theme.of(context).colorScheme;
-    Widget bar(int i) => Semantics(
-      button: filter.yearly,
-      label:
-          '${filter.yearly ? expenseMonths[i] : 'Day ${i + 1}'}: ${financeMoney(values[i], currency)}',
-      child: Tooltip(
-        message: financeMoney(values[i], currency),
-        child: InkWell(
-          onTap: filter.yearly ? () => onMonth(i + 1) : null,
-          borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            width: filter.yearly ? 48 : 32,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Container(
-                  width: filter.yearly ? 24 : 14,
-                  height: values[i] == 0
-                      ? 3
-                      : math.max(4, 112 * values[i].abs() / max),
-                  decoration: BoxDecoration(
-                    color: values[i] == 0
-                        ? colors.outlineVariant
-                        : values[i] < 0
-                        ? colors.error
-                        : colors.primary.withValues(alpha: .75),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  filter.yearly ? expenseMonths[i] : '${i + 1}',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          filter.yearly
-              ? 'Monthly expenses · tap a month to explore'
-              : 'Daily expenses',
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 168,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [for (var i = 0; i < values.length; i++) bar(i)],
-            ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Reversals reduce the total on the date they were recorded.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => FinancePeriodChart(
+    values: values,
+    yearly: filter.yearly,
+    currency: currency,
+    onMonth: onMonth,
+    yearlyTitle: 'Monthly expenses · tap a month to explore',
+    monthlyTitle: 'Daily expenses',
+    note: 'Reversals reduce the total on the date they were recorded.',
+  );
 }
 
 class ExpenseTile extends StatelessWidget {
@@ -128,24 +66,62 @@ class ExpenseTile extends StatelessWidget {
   final String currency;
   final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => ListTile(
-    contentPadding: const EdgeInsets.symmetric(vertical: 8),
-    leading: CircleAvatar(
-      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-      child: Icon(
-        expenseCategoryIcon(item.category),
-        color: Theme.of(context).colorScheme.onPrimaryContainer,
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final reversal = item.originalId != null;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: scheme.error.withValues(alpha: .12),
+              child: Icon(
+                reversal ? Icons.undo : expenseCategoryIcon(item.category),
+                color: scheme.error,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.reason,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      reversal ? 'Reversal · ${item.category}' : item.category,
+                      '${item.business ?? 'Organization'}${item.space == null ? '' : ' / ${item.space}'}',
+                      if (item.invoicesCount > 0)
+                        '${item.invoicesCount} invoice${item.invoicesCount == 1 ? '' : 's'}',
+                    ].join(' · '),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                '${reversal || item.amount < 0 ? '+' : '−'}${financeMoney(item.amount.abs(), currency)}',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: reversal ? scheme.primary : null,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-    title: Text(item.reason, maxLines: 2, overflow: TextOverflow.ellipsis),
-    subtitle: Text(
-      '${item.category} · ${item.date.substring(0, 10)}\n${item.business ?? 'Organization'}${item.space == null ? '' : ' / ${item.space}'}${item.invoicesCount > 0 ? ' · ${item.invoicesCount} invoices' : ''}',
-    ),
-    isThreeLine: true,
-    trailing: Text(
-      '${item.originalId != null ? '−' : ''}${financeMoney(item.amount.abs(), currency)}',
-      style: const TextStyle(fontWeight: FontWeight.w700),
-    ),
-    onTap: onTap,
-  );
+    );
+  }
 }

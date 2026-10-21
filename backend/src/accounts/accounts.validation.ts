@@ -12,6 +12,8 @@ export const filterSchema = z
       .enum([
         "booking_collection",
         "booking_refund",
+        "admission_collection",
+        "admission_refund",
         "income",
         "expense",
         "transfer",
@@ -80,5 +82,6 @@ export const entrySchema = z
       .max(20),
     to_account_id: z.uuid().optional(),
     expense_category_id: z.uuid().optional(),
+    income_category_id: z.uuid().optional(),
   })
   .strict();

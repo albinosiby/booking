@@ -105,7 +105,17 @@ class RestApiService {
           'user': auth.currentUser?.id,
           'organization': workspace['organization']?['id'],
           'membership': workspace['membership'],
-          'businesses': workspace['businesses'],
+          'businesses': {
+            for (final business in workspace['businesses'] as List? ?? [])
+              business['id']: {
+                'status': business['status'],
+                'resources':
+                    (business['resources'] as List? ?? [])
+                        .map((r) => r['id'].toString())
+                        .toList()
+                      ..sort(),
+              },
+          },
         }),
       ),
     );
@@ -138,10 +148,22 @@ class RestApiService {
 
   void revalidateReads() => readCache?.revalidate();
 
-  void invalidateReads({bool notify = true}) {
+  void invalidateReads({bool notify = true, bool preserveSetup = false}) {
     _requestEpoch++;
     _readsInFlight.clear();
-    readCache?.invalidate(notify: notify);
+    readCache?.invalidate(
+      notify: notify,
+      keep: preserveSetup
+          ? (key) {
+              final path = Uri.parse(key).path;
+              return path == '/catalog' ||
+                  path.startsWith('/catalog/states/') ||
+                  path == '/bookings/catalog' ||
+                  path == '/admissions/catalog' ||
+                  path == '/organization/logo';
+            }
+          : null,
+    );
     unawaited(_httpStore.clean());
   }
 
@@ -185,12 +207,24 @@ class RestApiService {
   }) async {
     final requestUser = auth.currentUser?.id;
     final write = method != 'GET' && !readOnly;
-    if (write) invalidateReads(notify: false);
+    final endpoint = Uri.parse(path).path;
+    final preserveSetup =
+        RegExp(
+          r'^/(bookings|booking-blocks|admissions|expenses)(/|$)',
+        ).hasMatch(endpoint) ||
+        endpoint == '/accounts/entries';
+    if (write) invalidateReads(notify: false, preserveSetup: preserveSetup);
     try {
+      final emptyJson =
+          data == null &&
+          const ['POST', 'PATCH', 'PUT'].contains(method.toUpperCase());
       final response = await _dio.request<dynamic>(
         path,
-        data: data,
-        options: Options(method: method),
+        data: emptyJson ? const <String, Object?>{} : data,
+        options: Options(
+          method: method,
+          contentType: emptyJson ? Headers.jsonContentType : null,
+        ),
       );
       if (requestUser != auth.currentUser?.id) {
         throw const AppException(
@@ -198,7 +232,7 @@ class RestApiService {
           code: 'CANCELLED',
         );
       }
-      if (write) invalidateReads();
+      if (write) invalidateReads(preserveSetup: preserveSetup);
       return response.data;
     } on DioException catch (e) {
       if (requestUser != auth.currentUser?.id) {

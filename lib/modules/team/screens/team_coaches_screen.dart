@@ -79,9 +79,9 @@ class _TeamCoachesScreenState extends State<TeamCoachesScreen> {
           if (!s.loading && s.businesses.isEmpty)
             const AppEmptyState(
               showCard: false,
-              title: 'Set up a pool first',
+              title: 'Set up a pool or court first',
               message:
-                  'Save a swimming pool configuration, then add coaches here.',
+                  'Save a pool or court configuration, then add coaches here.',
             ),
           for (final business in s.businesses) ...[
             Text(business.name, style: Theme.of(context).textTheme.titleMedium),
@@ -126,7 +126,7 @@ class _TeamCoachesScreenState extends State<TeamCoachesScreen> {
                       ),
                       const SizedBox(height: 12),
                       if (coach.poolIds.isEmpty)
-                        const Text('No pool spaces assigned')
+                        Text('No ${business.spacesLabel} assigned')
                       else
                         Wrap(
                           spacing: 8,
@@ -145,8 +145,12 @@ class _TeamCoachesScreenState extends State<TeamCoachesScreen> {
                                 cubit.beginSpaces(business.id, coach.id);
                                 editor();
                               },
-                        icon: const Icon(Icons.pool_outlined),
-                        label: const Text('Assign pool spaces'),
+                        icon: Icon(
+                          business.court
+                              ? Icons.sports_tennis
+                              : Icons.pool_outlined,
+                        ),
+                        label: Text('Assign ${business.spacesLabel}'),
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -173,10 +177,10 @@ class _TeamCoachesScreenState extends State<TeamCoachesScreen> {
                 ),
               ),
             if (business.plans.isEmpty)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 20),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20),
                 child: Text(
-                  'Add a coaching plan in pool settings to assign a coach.',
+                  'Add a coaching plan in ${business.court ? 'court' : 'pool'} settings to assign a coach.',
                 ),
               ),
           ],
@@ -219,7 +223,7 @@ class _CoachEditor extends StatelessWidget {
                         adding
                             ? 'Add coach'
                             : spaces
-                            ? 'Assign pool spaces'
+                            ? 'Assign ${business?.spacesLabel ?? 'pool spaces'}'
                             : 'Assign coaching plans',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
@@ -235,7 +239,7 @@ class _CoachEditor extends StatelessWidget {
                 if (adding) ...[
                   if (s.businesses.length > 1) ...[
                     AppPicker(
-                      label: 'Pool business',
+                      label: 'Business',
                       value: s.businessId,
                       enabled: !s.busy,
                       items: s.businesses
@@ -267,8 +271,8 @@ class _CoachEditor extends StatelessWidget {
                     onChanged: cubit.phone,
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'This adds a coach contact without a login. Assign pool spaces, then coaching plans after saving.',
+                  Text(
+                    'This adds a coach contact without a login. Assign ${business?.spacesLabel ?? 'pool spaces'}, then coaching plans after saving.',
                   ),
                 ] else ...[
                   Text(
@@ -280,8 +284,8 @@ class _CoachEditor extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   if (spaces) ...[
-                    const Text(
-                      'Choose one or more pool spaces. Clear all to leave this coach Unassigned.',
+                    Text(
+                      'Choose one or more ${business?.spacesLabel ?? 'pool spaces'}. Clear all to leave this coach Unassigned.',
                     ),
                     for (final space in business?.spaces ?? <CoachSpace>[])
                       CheckboxListTile(
@@ -300,13 +304,13 @@ class _CoachEditor extends StatelessWidget {
                       ),
                     ],
                   ] else ...[
-                    const Text(
-                      'Choose plans for this coach. Only plans covered by their assigned pool spaces are shown. Selecting a plan assigned to another coach replaces that assignment.',
+                    Text(
+                      'Choose plans for this coach. Only plans covered by their assigned ${business?.spacesLabel ?? 'pool spaces'} are shown. Selecting a plan assigned to another coach replaces that assignment.',
                     ),
                     const SizedBox(height: 12),
                     if (s.eligiblePlans.isEmpty)
-                      const Text(
-                        'Assign the required pool spaces first to make coaching plans available.',
+                      Text(
+                        'Assign the required ${business?.spacesLabel ?? 'pool spaces'} first to make coaching plans available.',
                       ),
                     for (final plan in s.eligiblePlans)
                       CheckboxListTile(
@@ -339,7 +343,7 @@ class _CoachEditor extends StatelessWidget {
                             confirmed = await confirmAction(
                               context,
                               'Remove affected plan assignments?',
-                              'The following plans will become Unassigned: ${cubit.state.affectedPlans.map((p) => p.name).join(', ')}. The coach’s pool-space assignments will be saved at the same time.',
+                              'The following plans will become Unassigned: ${cubit.state.affectedPlans.map((p) => p.name).join(', ')}. The coach’s ${business?.court == true ? 'court' : 'pool-space'} assignments will be saved at the same time.',
                             );
                             if (!confirmed || !context.mounted) return;
                           }

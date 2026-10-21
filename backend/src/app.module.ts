@@ -1,7 +1,19 @@
+import { SlotBlocksService } from "./slot-blocks/slot-blocks.service";
+import { SlotBlocksController } from "./slot-blocks/slot-blocks.controller";
+import { AdmissionService } from "./admissions/admission.service";
+import { AdmissionController } from "./admissions/admission.controller";
 import { MessagesService } from "./messages/messages.service";
+import { SarvamService } from "./sarvam/sarvam.service";
+import { VoiceService } from "./sarvam/voice.service";
+import {
+  SarvamController,
+  VoiceController,
+} from "./sarvam/sarvam.controller";
 import { MessagesController } from "./messages/messages.controller";
 import { ExpensesService } from "./expenses/expenses.service";
 import { ExpensesController } from "./expenses/expenses.controller";
+import { IncomeService } from "./income/income.service";
+import { IncomeController } from "./income/income.controller";
 import { AccountsService } from "./accounts/accounts.service";
 import { AccountsController } from "./accounts/accounts.controller";
 import { BookingService } from "./bookings/booking.service";
@@ -29,8 +41,13 @@ import {
 @Module({
   imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }])],
   controllers: [
+    SlotBlocksController,
+    AdmissionController,
     MessagesController,
+    SarvamController,
+    VoiceController,
     ExpensesController,
+    IncomeController,
     AccountsController,
     BookingController,
     WorkspaceController,
@@ -42,8 +59,13 @@ import {
     PoolController,
   ],
   providers: [
+    SlotBlocksService,
+    AdmissionService,
     MessagesService,
+    SarvamService,
+    VoiceService,
     ExpensesService,
+    IncomeService,
     AccountsService,
     BookingService,
     Database,

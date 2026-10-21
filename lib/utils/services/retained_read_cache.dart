@@ -117,7 +117,6 @@ class RetainedReadCache {
     final failure = _failures[key];
     final coolingDown =
         failure != null && now().difference(failure.$2).inSeconds < 10;
-    if (!coolingDown) _failures.remove(key);
     final value = _entries.remove(key);
     if (value != null &&
         _usable(value) &&
@@ -153,17 +152,15 @@ class RetainedReadCache {
             code: 'CANCELLED',
           );
         }
-        final wasRetained = _entries.containsKey(key);
-        _failures.remove(key);
-        _entries[key] = _Snapshot(
-          jsonEncode(value),
-          now(),
-          freshFor,
-          retainFor,
-        );
+        final previous = _entries[key];
+        final recovered = _failures.remove(key) != null;
+        final encoded = jsonEncode(value);
+        _entries[key] = _Snapshot(encoded, now(), freshFor, retainFor);
         _trim();
         _schedulePersist();
-        if (wasRetained) _updates.add(key);
+        if (previous != null && (previous.json != encoded || recovered)) {
+          _updates.add(key);
+        }
         return value;
       } catch (e) {
         if (epoch == _epoch && _authorized) {
@@ -203,13 +200,16 @@ class RetainedReadCache {
 
   void revalidate() => _updates.add('*');
 
-  void invalidate({bool notify = true}) {
+  void invalidate({bool notify = true, bool Function(String key)? keep}) {
     _epoch++;
     _pending.clear();
-    _entries.clear();
+    _entries.removeWhere(
+      (key, value) => keep == null || !keep(key) || !_usable(value),
+    );
     _failures.clear();
     _timer?.cancel();
     _queue(() => store.clear());
+    if (_entries.isNotEmpty) _schedulePersist();
     if (notify) _updates.add('*');
   }
 

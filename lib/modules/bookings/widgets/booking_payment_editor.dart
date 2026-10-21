@@ -19,6 +19,7 @@ class BookingPaymentEditor extends StatelessWidget {
     this.onPayBalance,
     this.entrySummary,
     this.refund = false,
+    this.addLabel = 'Add other payment',
     required this.onRemove,
     required this.onUpdate,
   });
@@ -30,6 +31,7 @@ class BookingPaymentEditor extends StatelessWidget {
   final VoidCallback onAdd;
   final BookingPaymentEntryModel? entrySummary;
   final bool refund;
+  final String addLabel;
   final int? Function(String)? remainingFor;
   final String? Function(BookingPaymentDraft)? paymentError;
   final ValueChanged<String>? onPayBalance;
@@ -227,7 +229,7 @@ class BookingPaymentEditor extends StatelessWidget {
           ),
         ),
       AppButton(
-        label: 'Add other payment',
+        label: addLabel,
         secondary: true,
         icon: Icons.add,
         onPressed: enabled && payments.length < 20 ? onAdd : null,

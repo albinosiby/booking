@@ -1,5 +1,3 @@
-import PDFDocument from "pdfkit";
-import ExcelJS from "exceljs";
 import { reportFont } from "../accounts/report-font";
 type Row = Record<string, any>;
 export async function renderExpenseReport(
@@ -34,6 +32,7 @@ export async function renderExpenseReport(
     ]),
   );
   if (format === "xlsx") {
+    const { default: ExcelJS } = await import("exceljs");
     const wb = new ExcelJS.Workbook();
     wb.creator = "Booking OS";
     const sheet = (name: string, headers: string[], rows: unknown[][]) => {
@@ -116,6 +115,7 @@ export async function renderExpenseReport(
     );
     return Buffer.from(await wb.xlsx.writeBuffer());
   }
+  const { default: PDFDocument } = await import("pdfkit");
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
         size: "A4",

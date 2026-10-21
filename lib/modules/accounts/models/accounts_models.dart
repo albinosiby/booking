@@ -267,6 +267,60 @@ class FinanceTrend {
   final int income, expenses;
 }
 
+class FinanceSpaceMonth {
+  const FinanceSpaceMonth({
+    this.businessId,
+    this.spaceId,
+    this.business,
+    this.space,
+    this.income = 0,
+    this.expenses = 0,
+    this.refunds = 0,
+  });
+  final String? businessId, spaceId, business, space;
+  final int income, expenses, refunds;
+  int get net => income - expenses - refunds;
+  String get label => spaceId != null
+      ? '${business ?? 'Business'} · ${space ?? 'Archived space'}'
+      : businessId != null
+      ? '${business ?? 'Business'} · Shared'
+      : 'Organization · Shared';
+  factory FinanceSpaceMonth.fromJson(Map<String, dynamic> j) =>
+      FinanceSpaceMonth(
+        businessId: j['business_id'],
+        spaceId: j['resource_id'],
+        business: j['business_name'],
+        space: j['space_name'],
+        income: (j['income_minor'] as num).toInt(),
+        expenses: (j['expenses_minor'] as num).toInt(),
+        refunds: (j['refunds_minor'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class FinanceMonthAnalysis {
+  FinanceMonthAnalysis({
+    required this.month,
+    this.income = 0,
+    this.expenses = 0,
+    this.refunds = 0,
+    Iterable<FinanceSpaceMonth> spaces = const [],
+  }) : spaces = List.unmodifiable(spaces);
+  final String month;
+  final int income, expenses, refunds;
+  int get net => income - expenses - refunds;
+  final List<FinanceSpaceMonth> spaces;
+  factory FinanceMonthAnalysis.fromJson(Map<String, dynamic> j) =>
+      FinanceMonthAnalysis(
+        month: j['month'],
+        income: (j['income_minor'] as num).toInt(),
+        expenses: (j['expenses_minor'] as num).toInt(),
+        refunds: (j['refunds_minor'] as num?)?.toInt() ?? 0,
+        spaces: (j['spaces'] as List).map(
+          (v) => FinanceSpaceMonth.fromJson(financeMap(v)),
+        ),
+      );
+}
+
 class FinanceOverview {
   FinanceOverview({
     required this.selected,
@@ -278,14 +332,17 @@ class FinanceOverview {
     this.previousUntil = '',
     Iterable<MoneyAccount> accounts = const [],
     Iterable<FinanceTrend> trend = const [],
+    Iterable<FinanceMonthAnalysis> monthlyAnalysis = const [],
   }) : accounts = List.unmodifiable(accounts),
-       trend = List.unmodifiable(trend);
+       trend = List.unmodifiable(trend),
+       monthlyAnalysis = List.unmodifiable(monthlyAnalysis);
   final FinanceTotals selected, today, previous;
   final double? growth;
   final int outstanding;
   final String previousFrom, previousUntil;
   final List<MoneyAccount> accounts;
   final List<FinanceTrend> trend;
+  final List<FinanceMonthAnalysis> monthlyAnalysis;
   factory FinanceOverview.fromJson(Map<String, dynamic> j) => FinanceOverview(
     selected: FinanceTotals.fromJson(financeMap(j['selected'])),
     today: FinanceTotals.fromJson(financeMap(j['today'])),
@@ -296,6 +353,9 @@ class FinanceOverview {
     previousUntil: j['previous_until'],
     accounts: (j['accounts'] as List).map(
       (a) => MoneyAccount.fromJson(financeMap(a)),
+    ),
+    monthlyAnalysis: (j['monthly_analysis'] as List? ?? []).map(
+      (v) => FinanceMonthAnalysis.fromJson(financeMap(v)),
     ),
     trend: (j['trend'] as List).map(
       (r) => FinanceTrend(r['month'], r['income_minor'], r['expenses_minor']),
@@ -327,6 +387,7 @@ class FinanceTransaction {
     this.business,
     this.space,
     this.bookingId,
+    this.admissionId,
     this.bookingReference,
     this.customer,
     this.tariff,
@@ -337,6 +398,7 @@ class FinanceTransaction {
   final String? business,
       space,
       bookingId,
+      admissionId,
       bookingReference,
       customer,
       reversesId;
@@ -357,6 +419,7 @@ class FinanceTransaction {
         reference: j['reference'],
         business: j['business_name'],
         space: j['space_name'],
+        admissionId: j['admission_id'],
         bookingId: j['booking_id'],
         bookingReference: j['booking_reference'],
         customer: j['customer_name'],

@@ -1,3 +1,7 @@
+import {
+  inventoryAllocations,
+  SlotBlockedException,
+} from "../slot-blocks/inventory-blocks";
 import { postBookingPayment, systemAccounts } from "../accounts/ledger";
 import {
   Injectable,
@@ -41,9 +45,12 @@ export class BookingService {
     return m.role === "owner" || m.permissions.includes(permission);
   }
   private canRead(m: Row) {
-    return ["view_bookings", "manage_bookings", "collect_payments"].some((p) =>
-      this.allowed(m, p),
-    );
+    return [
+      "view_bookings",
+      "manage_bookings",
+      "collect_payments",
+      "manage_attendance",
+    ].some((p) => this.allowed(m, p));
   }
   private async member(actor: Actor, db: Queryable = this.db) {
     const m = (
@@ -171,16 +178,9 @@ export class BookingService {
     until = "2101-01-01T00:00:00Z",
     inventoryKeys?: string[],
   ) {
-    return (
-      await db.query<Row>(
-        "SELECT a.booking_id,a.inventory_key,a.quantity,b.starts_at,b.ends_at FROM booking_allocations a JOIN bookings b ON b.id=a.booking_id WHERE b.business_id=$1 AND b.status<>'cancelled' AND b.ends_at>$2 AND b.starts_at<$3" +
-          (inventoryKeys ? " AND a.inventory_key=ANY($4::text[])" : ""),
-        inventoryKeys
-          ? [businessId, from, until, inventoryKeys]
-          : [businessId, from, until],
-      )
-    ).rows;
+    return inventoryAllocations(db, businessId, from, until, inventoryKeys);
   }
+
   async quote(actor: Actor, input: unknown) {
     const v = z
       .object({
@@ -338,7 +338,11 @@ export class BookingService {
             });
           } catch (e) {
             if (!(e instanceof ConflictException)) throw e;
-            slots.push({ ...base, available: false, status: "booked" });
+            slots.push({
+              ...base,
+              available: false,
+              status: e instanceof SlotBlockedException ? "blocked" : "booked",
+            });
           }
         }
         return { slots };
@@ -429,7 +433,7 @@ export class BookingService {
           slots.push({
             time,
             available: false,
-            status: "booked",
+            status: e instanceof SlotBlockedException ? "blocked" : "booked",
             total_minor: q.total_minor,
           });
         }
@@ -739,6 +743,10 @@ export class BookingService {
       "manage_bookings",
       async (db, m, b) => {
         const old = await this.find(m, id, db, true);
+        if (old.admission_id)
+          throw new BadRequestException(
+            "Manage this visit from Admissions & Coaching.",
+          );
         if (old.version !== v.version)
           throw new ConflictException(
             "Booking changed. Reload before rescheduling.",
@@ -795,6 +803,10 @@ export class BookingService {
       "collect_payments",
       async (db, m) => {
         const b = await this.find(m, id, db, true);
+        if (b.admission_id)
+          throw new BadRequestException(
+            "Manage this visit from Admissions & Coaching.",
+          );
         if (b.version !== v.version)
           throw new ConflictException(
             "Booking changed. Reload before recording payment.",
@@ -852,6 +864,10 @@ export class BookingService {
       "manage_bookings",
       async (db, m) => {
         const b = await this.find(m, id, db, true);
+        if (b.admission_id)
+          throw new BadRequestException(
+            "Manage this visit from Admissions & Coaching.",
+          );
         if (b.version !== v.version)
           throw new ConflictException(
             "Booking changed. Reload before updating.",
@@ -860,6 +876,26 @@ export class BookingService {
           throw new BadRequestException(
             "This booking already has a final status.",
           );
+        const checkedIn =
+          (
+            await db.query(
+              "SELECT 1 FROM booking_history WHERE booking_id=$1 AND action='checked_in' LIMIT 1",
+              [id],
+            )
+          ).rows.length > 0;
+        if (v.status === "checked_in" && checkedIn)
+          throw new BadRequestException("This customer is already checked in.");
+        if (v.status === "no_show" && checkedIn)
+          throw new BadRequestException(
+            "A checked-in customer cannot be marked no-show.",
+          );
+        if (v.status === "checked_in") {
+          await db.query("UPDATE bookings SET version=version+1 WHERE id=$1", [
+            id,
+          ]);
+          await this.history(db, id, actor, "checked_in", { reason: v.reason });
+          return { id };
+        }
         if (
           (v.status === "completed" && Date.parse(b.ends_at) > Date.now()) ||
           (v.status === "no_show" && Date.parse(b.starts_at) > Date.now())
@@ -893,6 +929,10 @@ export class BookingService {
       "manage_bookings",
       async (db, m) => {
         const b = await this.find(m, id, db, true);
+        if (b.admission_id)
+          throw new BadRequestException(
+            "Manage this visit from Admissions & Coaching.",
+          );
         if (b.version !== v.version)
           throw new ConflictException(
             "Booking changed. Reload before editing.",
@@ -1359,7 +1399,7 @@ export class BookingService {
       where += ` AND (b.starts_at AT TIME ZONE (b.price_snapshot->>'timezone'))::date=$${values.length}::date`;
     }
     where += await this.scopeCondition(m, values);
-    const base = `SELECT b.id,b.reference,b.status,b.price_snapshot,b.customer_snapshot,b.starts_at,GREATEST(0,(CASE WHEN b.status='cancelled' THEN 0 ELSE b.total_minor END)-COALESCE(p.net,0)) AS balance_minor,GREATEST(0,COALESCE(p.net,0)-(CASE WHEN b.status='cancelled' THEN 0 ELSE b.total_minor END)) AS refund_due_minor FROM bookings b LEFT JOIN LATERAL(SELECT sum(CASE WHEN kind='collection' THEN amount_minor ELSE -amount_minor END) AS net FROM booking_payments WHERE booking_id=b.id) p ON true WHERE ${where}`;
+    const base = `SELECT b.id,b.reference,b.status,b.price_snapshot,b.customer_snapshot,b.starts_at,b.ends_at,b.total_minor,GREATEST(0,(CASE WHEN b.status='cancelled' THEN 0 ELSE b.total_minor END)-COALESCE(p.net,0)) AS balance_minor,GREATEST(0,COALESCE(p.net,0)-(CASE WHEN b.status='cancelled' THEN 0 ELSE b.total_minor END)) AS refund_due_minor FROM bookings b LEFT JOIN LATERAL(SELECT sum(CASE WHEN kind='collection' THEN amount_minor ELSE -amount_minor END) AS net FROM booking_payments WHERE booking_id=b.id) p ON true WHERE ${where}`;
     const totals = (
       await this.db.query<Row>(
         `SELECT COALESCE(sum(balance_minor),0) AS balance_total_minor,COALESCE(sum(refund_due_minor),0) AS refund_total_minor FROM (${base}) due`,
@@ -1379,6 +1419,10 @@ export class BookingService {
         reference: b.reference,
         status: b.status,
         customer_name: b.customer_snapshot.name,
+        customer_phone: b.customer_snapshot.phone ?? "",
+        local_end: localStamp(Date.parse(b.ends_at), b.price_snapshot.timezone),
+        total_minor: Number(b.total_minor),
+        option_name: b.price_snapshot.option_name ?? null,
         business_name: b.price_snapshot.business_name,
         space_name: b.price_snapshot.space_name,
         local_start: localStamp(

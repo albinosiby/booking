@@ -1,3 +1,4 @@
+import '../../admissions/repositories/admission_repository.dart';
 import 'dart:async';
 import '../models/workspace.dart';
 import '../models/workspace_access.dart';
@@ -12,7 +13,14 @@ import '../../team/repositories/team_repository.dart';
 /// Warms the exact first-page repository reads used by screens. Never fetches
 /// quotes, attachments, reports, or an unbounded history.
 class WorkspacePreloader {
-  WorkspacePreloader(this.bookings, this.accounts, this.expenses, this.team);
+  WorkspacePreloader(
+    this.bookings,
+    this.accounts,
+    this.expenses,
+    this.team, {
+    this.admissions,
+  });
+  final AdmissionRepository? admissions;
   final BookingRepository bookings;
   final AccountsRepository accounts;
   final ExpensesRepository expenses;
@@ -61,6 +69,13 @@ class WorkspacePreloader {
           ),
         );
       }
+    }
+    if (admissions != null &&
+        workspace.hasPermission('manage_bookings') &&
+        workspace.businesses.any(
+          (b) => b.type == BusinessType.pool && b.status == 'ready',
+        )) {
+      add(admissions!.warmPlans);
     }
     // Catalog permissions are authoritative and determine which financial
     // reads may be added. Each queue job performs only one network operation.

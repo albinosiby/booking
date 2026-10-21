@@ -13,6 +13,7 @@ import 'court_overview_screen.dart';
 import 'court_resources_screen.dart';
 import 'court_pricing_screen.dart';
 import 'court_review_screen.dart';
+import 'court_coaching_screen.dart';
 
 class CourtSetupScreen extends StatefulWidget {
   const CourtSetupScreen({super.key, required this.businessId});
@@ -54,6 +55,11 @@ class _CourtSetupScreenState extends State<CourtSetupScreen> {
       cubit: cubit,
       disabled: s.disabled,
     ),
+    CourtSection.coaching => CourtCoachingScreen(
+      model: s.coachingModel,
+      cubit: cubit,
+      disabled: s.disabled,
+    ),
     CourtSection.review => CourtReviewScreen(
       model: s.reviewModel,
       businessName: s.business?.name ?? 'Your courts',
@@ -92,6 +98,7 @@ class _CourtSetupScreenState extends State<CourtSetupScreen> {
         CourtSection.overview => 'Court settings',
         CourtSection.courts => s.selectedCourt?.name ?? 'Your courts',
         CourtSection.pricing => s.selectedCourt?.name ?? 'Timing & pricing',
+        CourtSection.coaching => s.selectedPlan?.name ?? 'Plans & coaching',
         CourtSection.review => 'Review your courts',
       };
       return PopScope(

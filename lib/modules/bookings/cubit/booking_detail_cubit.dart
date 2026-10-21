@@ -68,6 +68,7 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
   void begin(BookingDetailAction a) {
     if (state.locked || state.record == null) return;
     final b = state.record!;
+    if (a == BookingDetailAction.checkedIn && !state.canCheckIn) return;
     if (a == BookingDetailAction.collection && !state.canCollectPending) return;
     if ((a == BookingDetailAction.collection ||
             a == BookingDetailAction.refund) &&
@@ -228,14 +229,24 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
         'notes': state.notes,
       });
     } else {
-      if (state.reason.trim().length < 2) {
+      if (a == BookingDetailAction.checkedIn && !state.canCheckIn) return;
+      if ((a != BookingDetailAction.checkedIn ||
+              state.reason.trim().isNotEmpty) &&
+          state.reason.trim().length < 2) {
         emit(state.copyWith(error: 'Enter a reason for this change.'));
         return;
       }
       command = BookingCommand(key, '/bookings/$id/status', {
         'version': b.version,
-        'status': a == BookingDetailAction.noShow ? 'no_show' : a.name,
-        'reason': state.reason.trim(),
+        'status': a == BookingDetailAction.checkedIn
+            ? 'checked_in'
+            : a == BookingDetailAction.noShow
+            ? 'no_show'
+            : a.name,
+        'reason':
+            a == BookingDetailAction.checkedIn && state.reason.trim().isEmpty
+            ? 'Customer checked in'
+            : state.reason.trim(),
       });
     }
     await _send(command);

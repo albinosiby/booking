@@ -107,7 +107,8 @@ class BookingSpaceSelection extends StatelessWidget {
             ],
           ),
         ],
-        if (s.visibleOptions.length > 1) ...[
+        if (s.poolMode == PoolBookingMode.singleVisit &&
+            s.visibleOptions.length > 1) ...[
           heading('Booking option'),
           _ChoiceLayout(
             children: [

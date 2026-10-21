@@ -425,6 +425,13 @@ test("staff finance is restricted to assigned spaces and does not reveal bank ba
     resource_id: spaceB,
   });
   assert.equal((await s.overview(staff, filter)).selected.expenses_minor, 1000);
+  const analysis = (await s.overview(staff, filter)).monthly_analysis;
+  assert.equal(analysis.length, 12);
+  assert.ok(
+    analysis
+      .flatMap((month: any) => month.spaces)
+      .every((row: any) => row.resource_id === spaceB),
+  );
 });
 
 test("opening balances are excluded before their date; cash opening is set once and does not create income", async () => {
@@ -569,4 +576,71 @@ test("empty-period PDF and Excel exports remain valid with no booking or transac
   await wb.xlsx.load((await renderReport(data, "xlsx", "yearly")) as any);
   assert.equal(wb.getWorksheet("Bookings")!.rowCount, 1);
   assert.equal(wb.getWorksheet("Account movements")!.rowCount, 1);
+});
+
+test("monthly chart totals reconcile, keep shared entries separate and exclude transfers", async () => {
+  const year = day.slice(0, 4),
+    range = { from: `${year}-01-01`, until: `${year}-12-31` };
+  const before = await s.overview(owner, range);
+  const beforeMonth = before.monthly_analysis.find(
+    (m: any) => m.month === day.slice(0, 7),
+  )!;
+  const income = await s.createEntry(owner, entry("income", 10000));
+  await s.createEntry(owner, entry("expense", 3000));
+  await s.createEntry(owner, {
+    ...entry("expense", 2000),
+    business_id: null,
+    resource_id: null,
+  });
+  const after = await s.overview(owner, range);
+  const selected = after.monthly_analysis.find(
+    (m: any) => m.month === day.slice(0, 7),
+  )!;
+  assert.equal(after.monthly_analysis.length, 12);
+  assert.equal(selected.income_minor - beforeMonth.income_minor, 10000);
+  assert.equal(selected.expenses_minor - beforeMonth.expenses_minor, 5000);
+  assert.ok(selected.spaces.some((r: any) => r.resource_id === space));
+  assert.ok(
+    selected.spaces.some(
+      (r: any) => r.business_id === null && r.resource_id === null,
+    ),
+  );
+  for (const month of after.monthly_analysis) {
+    assert.equal(
+      month.income_minor,
+      month.spaces.reduce((n: number, r: any) => n + r.income_minor, 0),
+    );
+    assert.equal(
+      month.expenses_minor,
+      month.spaces.reduce((n: number, r: any) => n + r.expenses_minor, 0),
+    );
+  }
+  assert.equal(
+    after.monthly_analysis.reduce((n: number, m: any) => n + m.income_minor, 0),
+    after.selected.income_minor,
+  );
+  assert.equal(
+    after.monthly_analysis.reduce(
+      (n: number, m: any) => n + m.expenses_minor,
+      0,
+    ),
+    after.selected.expenses_minor,
+  );
+  await s.reverse(owner, income.id, {
+    command_key: randomUUID(),
+    reason: "Correct duplicated income",
+  });
+  const corrected = await s.overview(owner, range);
+  assert.equal(corrected.selected.income_minor, before.selected.income_minor);
+  assert.equal(
+    corrected.monthly_analysis.find((m: any) => m.month === day.slice(0, 7))!
+      .income_minor,
+    beforeMonth.income_minor,
+  );
+  const unrelated = await s.overview(other, range);
+  assert.ok(
+    unrelated.monthly_analysis
+      .flatMap((m: any) => m.spaces)
+      .every((r: any) => r.business_id !== business),
+  );
 });

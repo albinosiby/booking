@@ -90,6 +90,33 @@ void main() {
   );
 
   test(
+    'unchanged background response refreshes freshness without rebuilding subscribers',
+    () async {
+      await read(
+        '/same',
+        () async => {
+          'items': [1],
+        },
+      );
+      final events = <String>[];
+      final listener = cache.updates.listen(events.add);
+      now = now.add(const Duration(seconds: 21));
+      await read(
+        '/same',
+        () async => {
+          'items': [1],
+        },
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(events, isEmpty);
+      expect(await read('/same', () async => fail('must be fresh')), {
+        'items': [1],
+      });
+      await listener.cancel();
+    },
+  );
+
+  test(
     'expired reads wait for the server rather than showing old balances',
     () async {
       await read('/accounts', () async => 500);
@@ -214,6 +241,24 @@ void main() {
       expect(await read('/accounts', () async => 900), 500);
       await recovered;
       expect(await read('/accounts', () async => fail('fresh hit')), 900);
+    },
+  );
+
+  test(
+    'successful recovery clears refresh errors even when the data did not change',
+    () async {
+      await read('/recover', () async => 500);
+      now = now.add(const Duration(seconds: 21));
+      final failed = cache.updates.first;
+      await read(
+        '/recover',
+        () async => throw const AppException('Offline', code: 'NETWORK'),
+      );
+      await failed;
+      now = now.add(const Duration(seconds: 11));
+      final recovered = cache.updates.first;
+      await read('/recover', () async => 500);
+      expect(await recovered, '/recover');
     },
   );
 

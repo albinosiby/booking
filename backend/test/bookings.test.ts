@@ -776,6 +776,9 @@ test("outstanding view separates unpaid balances from cancellation refunds and r
   assert.equal(due.balance_total_minor, 20000);
   assert.equal(due.refund_total_minor, 50000);
   assert.equal(due.items.length, 2);
+  assert.equal(due.items[0].customer_phone, "9876543210");
+  assert.ok(due.items[0].local_end);
+  assert.equal(typeof due.items[0].total_minor, "number");
   const staff = actor(),
     invite = await workspace.invite(f.owner, {
       email: staff.email,
@@ -1409,4 +1412,74 @@ test("discounts are signed, persisted and bounded for all business types", async
       );
     }
   }
+});
+
+test("check-in is idempotent arrival metadata and keeps balances and inventory unchanged", async () => {
+  const f = await fixture(),
+    { id } = await create(f),
+    before = await service.detail(f.owner, id);
+  const input = {
+    command_key: randomUUID(),
+    version: before.version,
+    status: "checked_in",
+    reason: "Customer checked in",
+  };
+  const outsider = await fixture();
+  await assert.rejects(() => service.status(outsider.owner, id, input));
+  await service.status(f.owner, id, input);
+  await service.status(f.owner, id, input);
+  const after = await service.detail(f.owner, id);
+  assert.equal(after.status, "confirmed");
+  assert.equal(after.total_minor, before.total_minor);
+  assert.equal(after.balance_minor, before.balance_minor);
+  assert.equal(after.net_paid_minor, before.net_paid_minor);
+  assert.equal(after.version, before.version + 1);
+  assert.equal(
+    after.history.filter((e: any) => e.action === "checked_in").length,
+    1,
+  );
+  assert.equal(
+    (
+      await service.availability(f.owner, {
+        selection: f.selection,
+        exclude_booking_id: null,
+      })
+    ).slots.find((s: any) => s.time === f.selection.time)?.available,
+    false,
+  );
+  await assert.rejects(
+    () =>
+      service.status(f.owner, id, {
+        ...input,
+        command_key: randomUUID(),
+        version: after.version,
+      }),
+    /already checked in/,
+  );
+  await assert.rejects(
+    () =>
+      service.status(f.owner, id, {
+        ...input,
+        command_key: randomUUID(),
+        version: after.version,
+        status: "no_show",
+      }),
+    /cannot be marked no-show/,
+  );
+  const cancelled = await create(f, { ...f.selection, time: "12:00" });
+  await service.status(f.owner, cancelled.id, {
+    command_key: randomUUID(),
+    version: 1,
+    status: "cancelled",
+    reason: "Customer cancelled",
+  });
+  await assert.rejects(
+    () =>
+      service.status(f.owner, cancelled.id, {
+        ...input,
+        command_key: randomUUID(),
+        version: 2,
+      }),
+    /final status/,
+  );
 });
