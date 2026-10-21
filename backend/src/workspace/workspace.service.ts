@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   organizationEditSchema,
   organizationSnapshot,
@@ -6,7 +7,11 @@ import {
 } from "./organization-edit";
 import { assertHallComplete } from "../hall/hall.validation";
 import { assertCourtComplete } from "../court/court.validation";
-import { assertPoolCoaches } from "../pool/pool.access";
+import {
+  assertPlanCoaches,
+  coachingConfiguration,
+  releaseCoachPlans,
+} from "./coach.access";
 import { assertPoolComplete } from "../pool/pool.validation";
 import {
   BadRequestException,
@@ -173,18 +178,6 @@ export class WorkspaceService {
                   })),
               }
             : {}),
-          ...(config.coaches
-            ? {
-                coaches: config.coaches
-                  .filter((c: Row) =>
-                    c.court_ids.some((id: string) => ids.has(id)),
-                  )
-                  .map((c: Row) => ({
-                    ...c,
-                    court_ids: c.court_ids.filter((id: string) => ids.has(id)),
-                  })),
-              }
-            : {}),
         };
       }
       if (
@@ -202,22 +195,6 @@ export class WorkspaceService {
             .map((o: Row) => ({
               ...o,
               pool_ids: o.pool_ids.filter((id: string) => ids.has(id)),
-            })),
-          coaches: (config.coaches ?? [])
-            .filter(
-              (c: Row) =>
-                (c.pool_ids ?? []).some((id: string) => ids.has(id)) ||
-                config.plans.some(
-                  (p: Row) =>
-                    p.coach_id === c.id &&
-                    p.pool_ids.some((id: string) => ids.has(id)),
-                ),
-            )
-            .map((c: Row) => ({
-              ...c,
-              ...(c.pool_ids
-                ? { pool_ids: c.pool_ids.filter((id: string) => ids.has(id)) }
-                : {}),
             })),
           plans: config.plans
             .filter((p: Row) => p.pool_ids.some((id: string) => ids.has(id)))
@@ -705,6 +682,7 @@ export class WorkspaceService {
             )
           )
             throw Error("Save court resources again before activation.");
+          await assertPlanCoaches(db, b.organization_id, id, config);
         } catch (error) {
           throw new BadRequestException(
             error instanceof Error
@@ -726,7 +704,7 @@ export class WorkspaceService {
             day: "2-digit",
           }).format(new Date());
           const config = assertPoolComplete(b.configuration, today);
-          await assertPoolCoaches(db, b.organization_id, id, config);
+          await assertPlanCoaches(db, b.organization_id, id, config);
           const resources = (
             await db.query<Row>(
               "SELECT id,capacity FROM resources WHERE business_id=$1",
@@ -950,7 +928,7 @@ export class WorkspaceService {
       if (!result.rows.length)
         throw new NotFoundException("Staff access or invitation not found.");
       await this.audit(db, actor, m.organization_id, "staff.revoked", id);
-      return { id };
+      return { id, released: await releaseCoachPlans(db, m.organization_id) };
     });
   }
   async updateMember(actor: Actor, id: string, input: unknown) {
@@ -985,7 +963,70 @@ export class WorkspaceService {
           ],
         );
       await this.audit(db, actor, m.organization_id, "staff.updated", id);
-      return { id };
+      return { id, released: await releaseCoachPlans(db, m.organization_id) };
+    });
+  }
+  /** The owner opts in or out of coaching; their plans are released when out. */
+  async ownerCoach(actor: Actor, input: unknown) {
+    const v = z.object({ coach: z.boolean() }).strict().parse(input);
+    return this.db.transaction(async (db) => {
+      const m = await this.member(actor, true, db);
+      const permissions = (m.permissions as string[]).filter(
+        (p) => p !== "coach",
+      );
+      if (v.coach) permissions.push("coach");
+      await db.query("UPDATE memberships SET permissions=$1 WHERE id=$2", [
+        JSON.stringify(permissions),
+        m.id,
+      ]);
+      await this.audit(db, actor, m.organization_id, "staff.updated", m.id);
+      return {
+        id: m.id,
+        released: await releaseCoachPlans(db, m.organization_id),
+      };
+    });
+  }
+  /**
+   * Assigns coaches to coaching plans without touching the rest of the
+   * configuration, so a ready business stays ready.
+   */
+  async planCoaches(actor: Actor, id: string, input: unknown) {
+    const v = z
+      .object({
+        version: z.number().int().positive(),
+        coaches: z.record(z.string().min(1).max(100), z.uuid().nullable()),
+      })
+      .strict()
+      .parse(input);
+    return this.db.transaction(async (db) => {
+      const b = await this.business(actor, id, db);
+      if (!coachingConfiguration(b.configuration))
+        throw new BadRequestException(
+          "Save the pool or court configuration before assigning coaches.",
+        );
+      if (b.version !== v.version)
+        throw new ConflictException(
+          "Settings changed. Refresh coaches and try again.",
+        );
+      const plans: Row[] = b.configuration.plans ?? [];
+      for (const planId of Object.keys(v.coaches))
+        if (!plans.some((p) => p.id === planId && p.kind === "coaching"))
+          throw new BadRequestException(
+            "Choose coaching plans in this business.",
+          );
+      const configuration = {
+        ...b.configuration,
+        plans: plans.map((p) =>
+          p.id in v.coaches ? { ...p, coach_id: v.coaches[p.id] } : p,
+        ),
+      };
+      await assertPlanCoaches(db, b.organization_id, id, configuration);
+      await db.query(
+        "UPDATE businesses SET configuration=$1,version=version+1 WHERE id=$2",
+        [JSON.stringify(configuration), id],
+      );
+      await this.audit(db, actor, b.organization_id, "coaches.assigned", id);
+      return { id, version: b.version + 1 };
     });
   }
   async logo(actor: Actor) {

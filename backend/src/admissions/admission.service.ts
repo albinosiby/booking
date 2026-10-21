@@ -14,7 +14,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Database, Queryable } from "../common/database";
 import { Actor } from "../common/auth.guard";
-import { localStamp, checkInventory } from "../bookings/booking.inventory";
+import {
+  addDate,
+  localStamp,
+  checkInventory,
+  zonedTime,
+} from "../bookings/booking.inventory";
+import { coachingConfiguration, isCoach } from "../workspace/coach.access";
 import {
   calendarDate,
   clock,
@@ -25,6 +31,7 @@ import { destination } from "../accounts/ledger";
 import {
   admissionSpaces,
   admissionTypes,
+  CoachNames,
   coachName,
   currentCoachId,
   currentCoachName,
@@ -38,13 +45,13 @@ import {
 } from "./admission.rules";
 type Row = Record<string, any>;
 /** Shows who coaches the admission's plan now, not who did when it was sold. */
-function withCurrentCoach(a: Row, config: Row | undefined) {
+function withCurrentCoach(a: Row, config: Row | undefined, names: CoachNames) {
   if (a.plan_snapshot?.kind !== "coaching") return a;
   return {
     ...a,
     plan_snapshot: {
       ...a.plan_snapshot,
-      coach_name: currentCoachName(config, a.plan_id, a.plan_snapshot),
+      coach_name: currentCoachName(config, a.plan_id, a.plan_snapshot, names),
     },
   };
 }
@@ -69,6 +76,7 @@ export class AdmissionService {
         "manage_bookings",
         "manage_attendance",
         "collect_payments",
+        "coach",
       ].some((p) => this.allowed(m, p))
     )
       throw new ForbiddenException("Admission access is required.");
@@ -126,12 +134,16 @@ export class AdmissionService {
     key: string,
     kind: string,
     input: unknown,
-    permission: string,
+    permission: string | ((m: Row) => boolean),
     work: (db: Queryable, m: Row, b: Row) => Promise<Row>,
   ) {
     return this.db.transaction(async (db) => {
       const m = await this.member(actor, db);
-      if (!this.allowed(m, permission))
+      if (
+        typeof permission === "string"
+          ? !this.allowed(m, permission)
+          : !permission(m)
+      )
         throw new ForbiddenException(
           "You do not have permission for this action.",
         );
@@ -206,8 +218,19 @@ export class AdmissionService {
     ).rows;
     return { items: rows };
   }
+  /** Team member names, which name plan coaches. */
+  private async coachNames(db: Queryable, organizationId: string) {
+    const rows = (
+      await db.query<Row>(
+        "SELECT id,display_name FROM memberships WHERE organization_id=$1",
+        [organizationId],
+      )
+    ).rows;
+    return new Map<string, string>(rows.map((r) => [r.id, r.display_name]));
+  }
   async catalog(actor: Actor) {
     const m = await this.member(actor);
+    const names = await this.coachNames(this.db, m.organization_id);
     const rows = (
       await this.db.query<Row>(
         "SELECT id FROM businesses WHERE organization_id=$1 AND type=ANY($2::text[]) ORDER BY display_order,id",
@@ -262,7 +285,7 @@ export class AdmissionService {
             pool_ids: planSpaceIds(p).filter((id: string) =>
               pools.some((r: Row) => r.id === id),
             ),
-            coach_name: coachName(c, p.coach_id ?? null),
+            coach_name: coachName(names, p.coach_id ?? null),
             active_count: counts.find((r) => r.plan_id === p.id)?.n ?? 0,
           })),
       });
@@ -341,6 +364,85 @@ export class AdmissionService {
       )
     )
       throw new ConflictException("The coach has another overlapping class.");
+  }
+  /** The caller's coaching classes on one local date, each with its students. */
+  async classes(actor: Actor, input: unknown) {
+    const v = z.object({ date: calendarDate }).strict().parse(input);
+    const m = await this.member(actor);
+    if (!isCoach(m))
+      throw new ForbiddenException("Only coaches have coaching classes.");
+    const businesses = (
+      await this.db.query<Row>(
+        "SELECT b.*,l.timezone FROM businesses b JOIN locations l ON l.id=b.location_id WHERE b.organization_id=$1 ORDER BY b.display_order,b.id",
+        [m.organization_id],
+      )
+    ).rows;
+    const now = Date.now();
+    const classes: Row[] = [];
+    for (const b of businesses) {
+      if (!coachingConfiguration(b.configuration)) continue;
+      const plans: Row[] = (b.configuration.plans ?? []).filter(
+        (p: Row) => p.kind === "coaching" && p.coach_id === m.id,
+      );
+      if (!plans.length) continue;
+      const from = new Date(zonedTime(v.date, "00:00", b.timezone)),
+        until = new Date(zonedTime(addDate(v.date, 1), "00:00", b.timezone));
+      const rows = (
+        await this.db.query<Row>(
+          "SELECT s.id visit_id,s.version,s.starts_at,s.ends_at,s.resource_id,s.admission_attendance,a.id admission_id,a.reference,a.mode,a.customer_snapshot,a.plan_id FROM bookings s JOIN admission_balances a ON a.id=s.admission_id WHERE s.business_id=$1 AND s.status<>'cancelled' AND NOT a.cancelled AND a.plan_id::text=ANY($2::text[]) AND s.starts_at>=$3 AND s.starts_at<$4 ORDER BY s.starts_at,s.resource_id,a.customer_snapshot->>'name',s.id",
+          [b.id, plans.map((p) => p.id), from, until],
+        )
+      ).rows;
+      const spaces = admissionSpaces(b.configuration);
+      // One class per plan, space and time; students of a batch share it.
+      const byKey = new Map<string, Row>();
+      for (const r of rows) {
+        const starts = Date.parse(new Date(r.starts_at).toISOString()),
+          ends = Date.parse(new Date(r.ends_at).toISOString());
+        const key = [b.id, r.plan_id, r.resource_id, starts, ends].join("|");
+        let c = byKey.get(key);
+        if (!c) {
+          c = {
+            key,
+            business_id: b.id,
+            business_name: b.name,
+            plan_id: r.plan_id,
+            plan_name: plans.find((p) => p.id === r.plan_id)?.name ?? "Class",
+            space_name:
+              spaces.find((p: Row) => p.id === r.resource_id)?.name ?? "Space",
+            starts_at: new Date(starts).toISOString(),
+            ends_at: new Date(ends).toISOString(),
+            local_start: localStamp(starts, b.timezone),
+            local_end: localStamp(ends, b.timezone),
+            students: [],
+          };
+          byKey.set(key, c);
+          classes.push(c);
+        }
+        c.students.push({
+          admission_id: r.admission_id,
+          reference: r.reference,
+          visit_id: r.visit_id,
+          version: r.version,
+          name: r.customer_snapshot?.name ?? "Student",
+          phone: r.customer_snapshot?.phone ?? null,
+          attendance: r.admission_attendance,
+          // Mirrors attendance(): first marks of fixed sessions, from the
+          // start until 24 hours after the end; owners correct the rest.
+          markable:
+            r.mode === "fixed" &&
+            r.admission_attendance === "unmarked" &&
+            starts <= now &&
+            ends >= now - 86400000,
+        });
+      }
+    }
+    classes.sort(
+      (x, y) =>
+        Date.parse(x.starts_at) - Date.parse(y.starts_at) ||
+        x.key.localeCompare(y.key),
+    );
+    return { date: v.date, classes };
   }
   /**
    * Upcoming classes that would overlap for a coach who coaches exactly
@@ -538,7 +640,10 @@ export class AdmissionService {
     }
     const snapshot = {
       ...plan,
-      coach_name: coachName(c, plan.coach_id ?? null),
+      coach_name: coachName(
+        await this.coachNames(db, b.organization_id),
+        plan.coach_id ?? null,
+      ),
     };
     const preview = {
       plan: snapshot,
@@ -876,9 +981,10 @@ export class AdmissionService {
         values,
       )
     ).rows;
+    const names = await this.coachNames(this.db, m.organization_id);
     return {
       items: rows.slice(0, 50).map(({ business_configuration, ...a }) => ({
-        ...withCurrentCoach(a, business_configuration),
+        ...withCurrentCoach(a, business_configuration, names),
         ...moneyStatus(a.total_minor, a.net),
       })),
       next_cursor: rows.length > 50 ? v.cursor + 50 : null,
@@ -918,7 +1024,11 @@ export class AdmissionService {
       this.db,
     );
     return {
-      ...withCurrentCoach(a, business.configuration),
+      ...withCurrentCoach(
+        a,
+        business.configuration,
+        await this.coachNames(this.db, m.organization_id),
+      ),
       business_name: business.name,
       space_name:
         admissionSpaces(business.configuration).find(
@@ -1046,7 +1156,20 @@ export class AdmissionService {
       })
       .strict()
       .parse(input);
-    const original = await this.find(await this.member(actor), id);
+    const member = await this.member(actor),
+      original = await this.find(member, id);
+    // Coaches mark attendance for classes of the plans they coach now.
+    const config = (
+      await this.db.query<Row>(
+        "SELECT configuration FROM businesses WHERE id=$1",
+        [original.business_id],
+      )
+    ).rows[0]?.configuration;
+    const coach = currentCoachId(
+      config,
+      original.plan_id,
+      original.plan_snapshot,
+    );
     return this.command(
       actor,
       original.business_id,
@@ -1054,7 +1177,8 @@ export class AdmissionService {
       v.command_key,
       "admission_attendance",
       { id, visitId, ...v },
-      "manage_attendance",
+      (m) =>
+        this.allowed(m, "manage_attendance") || (isCoach(m) && coach === m.id),
       async (db, m) => {
         const a = await this.find(m, id, db),
           s = (

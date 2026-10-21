@@ -114,6 +114,9 @@ export function createHandler(
   add("POST", "/v1/admissions/coach-conflicts", (i) =>
     services.admissions.coachConflicts(i.actor, i.body),
   );
+  add("GET", "/v1/admissions/classes", (i) =>
+    services.admissions.classes(i.actor, i.query),
+  );
   add("GET", "/v1/admissions", (i) =>
     services.admissions.list(i.actor, i.query),
   );
@@ -237,6 +240,10 @@ export function createHandler(
     w.revoke(i.actor, i.params.id, true),
   );
   add("DELETE", "/v1/team/:id", (i) => w.revoke(i.actor, i.params.id, false));
+  add("PUT", "/v1/team/me/coach", (i) => w.ownerCoach(i.actor, i.body));
+  add("PATCH", "/v1/businesses/:id/plan-coaches", (i) =>
+    w.planCoaches(i.actor, i.params.id, i.body),
+  );
   add("PATCH", "/v1/team/:id", (i) =>
     w.updateMember(i.actor, i.params.id, i.body),
   );

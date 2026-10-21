@@ -582,37 +582,21 @@ class PoolPlan extends Equatable {
   ];
 }
 
+/// A team member who coaches: the owner or staff with the coach flag.
+/// [poolIds] are the spaces of their staff assignment; empty means every
+/// space of the business.
 class PoolCoach extends Equatable {
   PoolCoach({
     required this.id,
     required this.name,
-    this.phone = '',
     this.owner = false,
     Iterable<String> poolIds = const [],
   }) : poolIds = List.unmodifiable(poolIds);
-  final String id, name, phone;
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name.trim(),
-    'phone': phone.trim(),
-    'pool_ids': poolIds,
-  };
-  factory PoolCoach.fromJson(Map<String, dynamic> v) => PoolCoach(
-    id: v['id'],
-    name: v['name'],
-    phone: v['phone'],
-    poolIds: List<String>.from(v['pool_ids'] ?? []),
-  );
+  final String id, name;
   final bool owner;
   final List<String> poolIds;
-  PoolCoach withPools(Iterable<String> ids) =>
-      PoolCoach(id: id, name: name, phone: phone, owner: owner, poolIds: ids);
-  bool eligible(Iterable<String> selected) =>
-      owner ||
-      (phone.isEmpty && poolIds.isEmpty) ||
-      selected.every(poolIds.contains);
   @override
-  List<Object?> get props => [id, name, phone, owner, poolIds];
+  List<Object?> get props => [id, name, owner, poolIds];
 }
 
 class PoolConfiguration extends Equatable {
@@ -758,38 +742,25 @@ class PoolConfiguration extends Equatable {
     Iterable<PoolResource> pools = const [],
     Iterable<PoolGroupOffer> offers = const [],
     Iterable<PoolPlan> plans = const [],
-    Iterable<PoolCoach> coaches = const [],
   }) : pools = List.unmodifiable(pools),
        offers = List.unmodifiable(offers),
-       plans = List.unmodifiable(plans),
-       coaches = List.unmodifiable(coaches);
+       plans = List.unmodifiable(plans);
   final List<PoolResource> pools;
   final List<PoolGroupOffer> offers;
   final List<PoolPlan> plans;
-  final List<PoolCoach> coaches;
-  String coachLabel(String? id) {
-    if (id == null) return 'Not assigned';
-    final contact = coaches.where((c) => c.id == id).firstOrNull;
-    return contact == null
-        ? 'Staff coach assigned'
-        : '${contact.name} · ${contact.phone}';
-  }
 
   PoolConfiguration copyWith({
     Iterable<PoolResource>? pools,
     Iterable<PoolGroupOffer>? offers,
     Iterable<PoolPlan>? plans,
-    Iterable<PoolCoach>? coaches,
   }) => PoolConfiguration(
     pools: pools ?? this.pools,
     offers: offers ?? this.offers,
     plans: plans ?? this.plans,
-    coaches: coaches ?? this.coaches,
   );
   Map<String, dynamic> toJson({bool localDraft = false}) => {
     'kind': 'pool_v1',
     'schema_version': 1,
-    if (coaches.isNotEmpty) 'coaches': coaches.map((c) => c.toJson()).toList(),
     'pools': pools.map((p) => p.toJson(localDraft: localDraft)).toList(),
     'group_offers': offers
         .map((o) => o.toJson(localDraft: localDraft))
@@ -800,26 +771,21 @@ class PoolConfiguration extends Equatable {
     final plans = (v['plans'] as List)
         .map((p) => PoolPlan.fromJson(Map<String, dynamic>.from(p)))
         .toList();
+    // Coach contacts were replaced by team coaches; their plans are
+    // Unassigned until a team coach takes them.
+    final contacts = {
+      for (final c in v['coaches'] as List? ?? const []) (c as Map)['id'],
+    };
     return PoolConfiguration(
-      coaches: (v['coaches'] as List? ?? []).map(
-        (c) => PoolCoach.fromJson({
-          ...Map<String, dynamic>.from(c),
-          'pool_ids':
-              c['pool_ids'] ??
-              plans
-                  .where((p) => p.coachId == c['id'])
-                  .expand((p) => p.poolIds)
-                  .toSet()
-                  .toList(),
-        }),
-      ),
       pools: (v['pools'] as List).map(
         (p) => PoolResource.fromJson(Map<String, dynamic>.from(p)),
       ),
       offers: (v['group_offers'] as List).map(
         (o) => PoolGroupOffer.fromJson(Map<String, dynamic>.from(o)),
       ),
-      plans: plans,
+      plans: plans.map(
+        (p) => contacts.contains(p.coachId) ? p.copyWith(clearCoach: true) : p,
+      ),
     );
   }
   factory PoolConfiguration.initial(Business? business) {
@@ -999,29 +965,6 @@ class PoolConfiguration extends Equatable {
         return 'Enter the total price for ${o.name}.';
       }
     }
-    if (coaches.length > 100 ||
-        coaches.map((c) => c.id).toSet().length != coaches.length ||
-        coaches
-                .map((c) => c.phone.replaceAll(RegExp(r'[^0-9]'), ''))
-                .toSet()
-                .length !=
-            coaches.length ||
-        coaches.any(
-          (c) =>
-              c.name.trim().length < 2 ||
-              c.name.trim().length > 100 ||
-              !poolCoachPhoneValid(c.phone) ||
-              c.poolIds.toSet().length != c.poolIds.length ||
-              c.poolIds.any((id) => !pools.any((p) => p.id == id)),
-        )) {
-      return 'Check coach names and phone numbers.';
-    }
-    for (final plan in plans.where((p) => p.coaching && p.coachId != null)) {
-      final coach = coaches.where((c) => c.id == plan.coachId).firstOrNull;
-      if (coach != null && !plan.poolIds.every(coach.poolIds.contains)) {
-        return '${plan.name}: ${coach.name} isn’t assigned to every pool of this plan. Unassign the coach here, or add the pools in Team management → Coaches.';
-      }
-    }
     for (final p in plans) {
       final allowance = int.tryParse(p.allowance),
           expiry = int.tryParse(p.validityCount),
@@ -1086,10 +1029,5 @@ class PoolConfiguration extends Equatable {
   }
 
   @override
-  List<Object?> get props => [pools, offers, plans, coaches];
+  List<Object?> get props => [pools, offers, plans];
 }
-
-bool poolCoachPhoneValid(String phone) =>
-    RegExp(r'^\+?[0-9 ()-]{6,30}$').hasMatch(phone.trim()) &&
-    phone.replaceAll(RegExp(r'[^0-9]'), '').length >= 6 &&
-    phone.replaceAll(RegExp(r'[^0-9]'), '').length <= 15;

@@ -1,30 +1,23 @@
 import '../../../utils/exceptions/app_exception.dart';
-import '../../../utils/services/rest_api_service.dart';
+import '../../coaching/repositories/coach_api.dart';
 import '../../court/models/court_configuration.dart';
-import '../../court/repositories/court_repository.dart';
 import '../../pool/models/pool_configuration.dart';
-import '../../pool/repositories/pool_repository.dart';
 import '../../workspace/models/workspace.dart';
 import '../../workspace/repositories/workspace_repository_interface.dart';
+import '../models/staff_coaches.dart';
 import '../models/team_coaches_model.dart';
-import 'package:uuid/uuid.dart';
 
 abstract interface class TeamCoachesRepository {
-  Future<List<CoachBusiness>> load();
-  Future<void> add(String businessId, int version, String name, String phone);
-  Future<void> assignSpaces(
-    String businessId,
-    int version,
-    String coachId,
-    Set<String> poolIds, {
-    bool removeAffectedPlans = false,
-  });
+  Future<CoachTeam> load();
   Future<void> assign(
     String businessId,
     int version,
     String coachId,
     Set<String> planIds,
   );
+
+  /// The owner opts in or out of coaching; opting out releases their plans.
+  Future<void> setOwnerCoach(bool coach);
 
   /// Upcoming classes that would overlap for [coachId] if they coached
   /// exactly [planIds]; one readable line per clash.
@@ -41,45 +34,12 @@ const _courtTypes = {
   BusinessType.basketball,
 };
 
-/// A pool or court configuration seen through the coach editor. Court coaches
-/// are presented as [PoolCoach] contacts whose `poolIds` hold court IDs.
-class _CoachTarget {
-  _CoachTarget({
-    required this.court,
-    required this.coaches,
-    required this.plans,
-    required this.spaceIds,
-    required this.write,
-  });
-  final bool court;
-  final List<PoolCoach> coaches;
-  final List<CoachPlan> plans;
-  final Set<String> spaceIds;
-
-  /// Saves [coaches] and applies plan coach changes (null clears the coach).
-  final Future<void> Function(
-    List<PoolCoach> coaches,
-    Map<String, String?> planCoaches,
-  )
-  write;
-  String get spaces => court ? 'courts' : 'pool spaces';
-}
-
-/// Reuses the version-checked pool or court configuration save; no separate
-/// coach database.
+/// Coaches are team members with the coach flag. Their spaces come from their
+/// staff assignment, and plans are assigned without other setting changes.
 class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
-  ConfigurationTeamCoachesRepository(
-    this.workspace,
-    this.pools, [
-    this.courts,
-    this.api,
-  ]);
+  ConfigurationTeamCoachesRepository(this.workspace, this.api);
   final WorkspaceRepository workspace;
-  final PoolRepository pools;
-  final CourtRepository? courts;
-
-  /// Checks class conflicts; without it no conflicts are reported.
-  final RestApiService? api;
+  final CoachApi api;
   Future<Workspace> _workspace() async {
     final data = await workspace.load();
     if (!data.isOwner) {
@@ -88,153 +48,59 @@ class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
     return data;
   }
 
-  bool _pool(Business b) =>
-      b.type == BusinessType.pool && b.configuration?['kind'] == 'pool_v1';
-  bool _court(Business b) =>
-      courts != null &&
-      _courtTypes.contains(b.type) &&
-      b.configuration?['kind'] == 'court_v1';
-
-  @override
-  Future<List<CoachBusiness>> load() async {
-    final data = await _workspace();
-    return List.unmodifiable(
-      data.businesses.where((b) => _pool(b) || _court(b)).map((b) {
-        if (_court(b)) {
-          final c = CourtConfiguration.fromJson(b.configuration!);
-          return CoachBusiness(
-            id: b.id,
-            name: b.name,
-            version: b.version,
-            court: true,
-            coaches: c.coaches.map(_poolCoach),
-            spaces: c.courts.map((p) => CoachSpace(p.id, p.name)),
-            plans: c.plans
-                .where((p) => p.coaching)
-                .map((p) => CoachPlan(p.id, p.name, p.coachId, p.courtIds)),
-          );
-        }
-        final c = PoolConfiguration.fromJson(b.configuration!);
-        return CoachBusiness(
-          id: b.id,
-          name: b.name,
-          version: b.version,
-          coaches: c.coaches,
-          spaces: c.pools.map((p) => CoachSpace(p.id, p.name)),
-          plans: c.plans
-              .where((p) => p.coaching)
-              .map((p) => CoachPlan(p.id, p.name, p.coachId, p.poolIds)),
-        );
-      }),
-    );
-  }
-
-  static PoolCoach _poolCoach(CourtCoach c) =>
-      PoolCoach(id: c.id, name: c.name, phone: c.phone, poolIds: c.courtIds);
-
-  Future<_CoachTarget> _target(String id, int version) async {
-    final data = await _workspace();
-    final b = data.businesses
-        .where((b) => b.id == id && (_pool(b) || _court(b)))
-        .firstOrNull;
-    if (b == null) {
-      throw const AppException(
-        'Save the pool or court configuration before adding a coach.',
-      );
-    }
-    if (b.version != version) {
-      throw AppException(
-        '${_court(b) ? 'Court' : 'Pool'} settings changed. Refresh coaches and try again.',
-        code: 'CONFLICT',
-      );
-    }
-    if (_court(b)) {
+  static CoachBusiness? _business(Business b, Map<String, dynamic> team) {
+    final kind = b.configuration?['kind'];
+    final List<CoachSpace> spaces;
+    final List<CoachPlan> plans;
+    if (_courtTypes.contains(b.type) && kind == 'court_v1') {
       final c = CourtConfiguration.fromJson(b.configuration!);
-      return _CoachTarget(
-        court: true,
-        coaches: c.coaches.map(_poolCoach).toList(),
-        plans: c.plans
-            .where((p) => p.coaching)
-            .map((p) => CoachPlan(p.id, p.name, p.coachId, p.courtIds))
-            .toList(),
-        spaceIds: c.courts.map((p) => p.id).toSet(),
-        write: (coaches, planCoaches) => courts!.save(
-          id,
-          version,
-          c.copyWith(
-            coaches: coaches.map(
-              (v) => CourtCoach(
-                id: v.id,
-                name: v.name,
-                phone: v.phone,
-                courtIds: v.poolIds,
-              ),
-            ),
-            plans: c.plans.map(
-              (p) => !planCoaches.containsKey(p.id)
-                  ? p
-                  : planCoaches[p.id] == null
-                  ? p.copyWith(clearCoach: true)
-                  : p.copyWith(coachId: planCoaches[p.id]),
-            ),
-          ),
-        ),
-      );
+      spaces = [for (final p in c.courts) CoachSpace(p.id, p.name)];
+      plans = [
+        for (final p in c.plans.where((p) => p.coaching))
+          CoachPlan(p.id, p.name, p.coachId, p.courtIds),
+      ];
+    } else if (b.type == BusinessType.pool && kind == 'pool_v1') {
+      final c = PoolConfiguration.fromJson(b.configuration!);
+      spaces = [for (final p in c.pools) CoachSpace(p.id, p.name)];
+      plans = [
+        for (final p in c.plans.where((p) => p.coaching))
+          CoachPlan(p.id, p.name, p.coachId, p.poolIds),
+      ];
+    } else {
+      return null;
     }
-    final c = PoolConfiguration.fromJson(b.configuration!);
-    return _CoachTarget(
-      court: false,
-      coaches: c.coaches,
-      plans: c.plans
-          .where((p) => p.coaching)
-          .map((p) => CoachPlan(p.id, p.name, p.coachId, p.poolIds))
-          .toList(),
-      spaceIds: c.pools.map((p) => p.id).toSet(),
-      write: (coaches, planCoaches) => pools.save(
-        id,
-        version,
-        c.copyWith(
-          coaches: coaches,
-          plans: c.plans.map(
-            (p) => !planCoaches.containsKey(p.id)
-                ? p
-                : planCoaches[p.id] == null
-                ? p.copyWith(clearCoach: true)
-                : p.copyWith(coachId: planCoaches[p.id]),
+    final all = spaces.map((s) => s.id);
+    return CoachBusiness(
+      id: b.id,
+      name: b.name,
+      version: b.version,
+      court: kind == 'court_v1',
+      spaces: spaces,
+      plans: plans,
+      // An empty staff assignment means every space of the business.
+      coaches: [
+        for (final c in staffCoaches(team, b.id))
+          PoolCoach(
+            id: c.id,
+            name: c.name,
+            owner: c.owner,
+            poolIds: c.poolIds.isEmpty ? all : c.poolIds.where(all.contains),
           ),
-        ),
-      ),
+      ],
     );
   }
 
   @override
-  Future<void> add(
-    String businessId,
-    int version,
-    String name,
-    String phone,
-  ) async {
-    final c = await _target(businessId, version);
-    if (name.trim().length < 2 ||
-        name.trim().length > 100 ||
-        !poolCoachPhoneValid(phone)) {
-      throw const AppException('Enter a coach name and a valid phone number.');
-    }
-    String digits(String v) => v.replaceAll(RegExp(r'[^0-9]'), '');
-    if (c.coaches.any((v) => digits(v.phone) == digits(phone))) {
-      throw const AppException(
-        'A coach with this phone number already exists in this business.',
-      );
-    }
-    if (c.coaches.length >= 100) {
-      throw AppException(
-        'A ${c.court ? 'court' : 'pool'} business can have up to 100 coaches.',
-      );
-    }
-    await c.write([
-      ...c.coaches,
-      PoolCoach(id: const Uuid().v4(), name: name.trim(), phone: phone.trim()),
-    ], const {});
+  Future<CoachTeam> load() async {
+    final data = await _workspace();
+    final team = await workspace.team();
+    return CoachTeam(
+      ownerCoach: data.isCoach,
+      members: [
+        for (final m in team['members'] as List) Map<String, dynamic>.from(m),
+      ],
+      businesses: [for (final b in data.businesses) ?_business(b, team)],
+    );
   }
 
   @override
@@ -244,8 +110,22 @@ class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
     String coachId,
     Set<String> planIds,
   ) async {
-    final c = await _target(businessId, version);
-    if (!c.coaches.any((v) => v.id == coachId)) {
+    final data = await _workspace();
+    final b = data.businesses.where((b) => b.id == businessId).firstOrNull;
+    final c = b == null ? null : _business(b, await workspace.team());
+    if (b == null || c == null) {
+      throw const AppException(
+        'Save the pool or court configuration before assigning a coach.',
+      );
+    }
+    if (b.version != version) {
+      throw const AppException(
+        'Settings changed. Refresh coaches and try again.',
+        code: 'CONFLICT',
+      );
+    }
+    final coach = c.coaches.where((v) => v.id == coachId).firstOrNull;
+    if (coach == null) {
       throw const AppException(
         'This coach is no longer available. Refresh and try again.',
       );
@@ -253,7 +133,6 @@ class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
     if (planIds.any((id) => !c.plans.any((p) => p.id == id))) {
       throw const AppException('Choose coaching plans in this business.');
     }
-    final coach = c.coaches.firstWhere((v) => v.id == coachId);
     if (c.plans.any(
       (p) =>
           planIds.contains(p.id) &&
@@ -262,12 +141,10 @@ class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
               : p.coveredBy(coach.poolIds)),
     )) {
       throw AppException(
-        c.court
-            ? 'Assign this coach to every court of that coaching plan first.'
-            : 'Assign this coach to every eligible pool before selecting that coaching plan.',
+        'Assign ${coach.name} to every ${c.court ? 'court' : 'pool'} of that coaching plan first, in their staff access.',
       );
     }
-    await c.write(c.coaches, {
+    await api.assignPlans(businessId, version, {
       for (final p in c.plans)
         if (planIds.contains(p.id))
           p.id: coachId
@@ -277,33 +154,9 @@ class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
   }
 
   @override
-  Future<void> assignSpaces(
-    String businessId,
-    int version,
-    String coachId,
-    Set<String> poolIds, {
-    bool removeAffectedPlans = false,
-  }) async {
-    final c = await _target(businessId, version);
-    if (!c.coaches.any((v) => v.id == coachId)) {
-      throw const AppException('This coach is no longer available.');
-    }
-    if (!c.spaceIds.containsAll(poolIds)) {
-      throw AppException('Choose ${c.spaces} in this business.');
-    }
-    final affected = c.plans
-        .where((p) => p.coachId == coachId && !p.keepsCoach(poolIds))
-        .map((p) => p.id)
-        .toSet();
-    if (affected.isNotEmpty && !removeAffectedPlans) {
-      throw const AppException(
-        'Confirm removal of affected coaching-plan assignments.',
-      );
-    }
-    await c.write(
-      c.coaches.map((v) => v.id == coachId ? v.withPools(poolIds) : v).toList(),
-      {for (final id in affected) id: null},
-    );
+  Future<void> setOwnerCoach(bool coach) async {
+    await _workspace();
+    await api.setOwnerCoach(coach);
   }
 
   @override
@@ -311,21 +164,5 @@ class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
     String businessId,
     String coachId,
     Set<String> planIds,
-  ) async {
-    if (api == null || planIds.isEmpty) return const [];
-    final j = await api!.request(
-      '/admissions/coach-conflicts',
-      method: 'POST',
-      data: {
-        'business_id': businessId,
-        'coach_id': coachId,
-        'plan_ids': planIds.toList(),
-      },
-    );
-    return List.unmodifiable(
-      (j['items'] as List).map(
-        (v) => '${v['plan_name']} and ${v['other_plan_name']} · ${v['label']}',
-      ),
-    );
-  }
+  ) => api.conflicts(businessId, coachId, planIds);
 }

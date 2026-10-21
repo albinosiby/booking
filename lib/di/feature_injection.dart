@@ -16,6 +16,8 @@ import '../modules/sarvam/cubit/sarvam_cubits.dart';
 import '../modules/sarvam/models/sarvam_models.dart';
 import '../modules/sarvam/repositories/sarvam_repository.dart';
 import '../modules/sarvam/repositories/rest_sarvam_repository.dart';
+import '../modules/coaching/cubit/coach_classes_cubit.dart';
+import '../modules/coaching/repositories/coach_api.dart';
 import '../modules/team/cubit/team_coaches_cubit.dart';
 import '../modules/team/repositories/team_coaches_repository.dart';
 import '../modules/profile/cubit/organization_edit_cubit.dart';
@@ -236,8 +238,10 @@ void registerFeatureDependencies(GetIt di) {
   di.registerFactory<LocationCatalogCubit>(() => LocationCatalogCubit(di()));
   di.registerFactory<TeamCubit>(() => TeamCubit(di()));
   di.registerLazySingleton<TeamCoachesRepository>(
-    () => ConfigurationTeamCoachesRepository(di(), di(), di(), di()),
+    () => ConfigurationTeamCoachesRepository(di(), di()),
   );
+  di.registerLazySingleton<CoachApi>(() => RestCoachApi(di()));
+  di.registerFactory<CoachClassesCubit>(() => CoachClassesCubit(di()));
   di.registerFactoryParam<TeamCoachesCubit, WorkspaceSession, void>(
     (session, _) => TeamCoachesCubit(di(), session),
   );

@@ -46,14 +46,8 @@ function plan(name: string, courtIds: string[], coachId: string | null) {
     renewal: "none",
   };
 }
-function configuration() {
+function configuration(coachId: string | null = null) {
   const ids = [randomUUID(), randomUUID()];
-  const coach = {
-    id: randomUUID(),
-    name: "Coach Asha",
-    phone: "9876500001",
-    court_ids: ids,
-  };
   return {
     kind: "court_v1",
     schema_version: 1,
@@ -78,8 +72,8 @@ function configuration() {
       ],
     })),
     plans: [
-      plan("Beginner batch", ids, coach.id),
-      plan("Advanced batch", ids, coach.id),
+      plan("Beginner batch", ids, coachId),
+      plan("Advanced batch", ids, coachId),
       {
         ...plan("Play pass", ids, null),
         kind: "play",
@@ -87,7 +81,6 @@ function configuration() {
         class_seats: null,
       },
     ],
-    coaches: [coach],
   };
 }
 async function fixture() {
@@ -111,13 +104,15 @@ async function fixture() {
       timezone: "UTC",
     },
   });
+  // The owner coaches both batches unless a test reassigns them.
+  await workspace.ownerCoach(owner, { coach: true });
   const w = await workspace.workspace(owner);
   const b = await workspace.createBusiness(owner, {
     name: "Badminton academy",
     type: "badminton",
     location_id: w.locations[0].id,
   });
-  const config = configuration();
+  const config = configuration(w.membership.id);
   await courts.configure(owner, b.id, { version: 1, configuration: config });
   await workspace.activate(owner, b.id);
   return { owner, config, businessId: b.id };
@@ -154,11 +149,14 @@ test("court configuration accepts optional coaching plans and validates coach co
     courtConfigurationSchema.safeParse({ ...config, plans: undefined }).success,
     true,
   );
-  const uncovered = structuredClone(config);
-  uncovered.coaches[0].court_ids = [config.courts[0].id];
   assert.match(
-    JSON.stringify(courtConfigurationSchema.safeParse(uncovered).error),
-    /every court/,
+    JSON.stringify(
+      courtConfigurationSchema.safeParse({
+        ...config,
+        coaches: [{ id: randomUUID(), name: "Asha", phone: "9876500001" }],
+      }).error,
+    ),
+    /staff coaches/,
   );
   const foreign = structuredClone(config);
   foreign.plans[0].court_ids = [randomUUID()];
@@ -188,7 +186,7 @@ test("catalog lists court businesses with their coaching plans", async () => {
     b.plans[0].pool_ids,
     f.config.courts.map((c: any) => c.id),
   );
-  assert.equal(b.plans[0].coach_name, "Coach Asha");
+  assert.equal(b.plans[0].coach_name, "Owner");
 });
 test("a coaching batch reserves its court once and later students join up to the seat limit", async () => {
   const f = await fixture();
@@ -285,7 +283,6 @@ test("courts with admission history cannot be deleted", async () => {
     ...p,
     court_ids: [next.courts[0].id],
   }));
-  next.coaches[0].court_ids = [next.courts[0].id];
   await assert.rejects(
     () =>
       courts.configure(f.owner, f.businessId, {
@@ -332,37 +329,58 @@ test("court play plans reserve the whole court per visit and reject coaching fie
   const list = await service.list(f.owner, { kind: "play" });
   assert.equal(list.items.length, 3);
 });
+async function coach(
+  f: Awaited<ReturnType<typeof fixture>>,
+  permissions: string[] = ["coach"],
+) {
+  const staff = {
+    uid: randomUUID(),
+    email: randomUUID() + "@example.com",
+    name: "Ravi",
+  };
+  const invite = await workspace.invite(f.owner, {
+    email: staff.email,
+    display_name: "Coach Ravi",
+    role: "staff",
+    permissions,
+    assignments: [{ business_id: f.businessId, resource_ids: [] }],
+  });
+  await workspace.accept(
+    staff,
+    new URL(invite.invitation_url).searchParams.get("token")!,
+  );
+  const member = (await workspace.team(f.owner)).members.find(
+    (m: any) => m.user_id === staff.uid,
+  );
+  return { staff, id: member.id as string };
+}
+async function assign(
+  f: Awaited<ReturnType<typeof fixture>>,
+  coaches: Record<string, string | null>,
+) {
+  const b = (await workspace.workspace(f.owner)).businesses.find(
+    (b: any) => b.id === f.businessId,
+  );
+  await workspace.planCoaches(f.owner, f.businessId, {
+    version: b.version,
+    coaches,
+  });
+}
 test("reassigned coaches are checked against the classes they now teach", async () => {
   const f = await fixture();
-  const ravi = {
-    id: randomUUID(),
-    name: "Coach Ravi",
-    phone: "9876500002",
-    court_ids: f.config.courts.map((c: any) => c.id),
-  };
-  const config = structuredClone(f.config);
-  config.coaches.push(ravi);
-  config.plans[1].coach_id = ravi.id;
-  const version = async () =>
-    (await workspace.workspace(f.owner)).businesses.find(
-      (b: any) => b.id === f.businessId,
-    ).version;
-  await courts.configure(f.owner, f.businessId, {
-    version: await version(),
-    configuration: config,
-  });
-  await workspace.activate(f.owner, f.businessId);
+  const ravi = await coach(f);
+  await assign(f, { [f.config.plans[1].id]: ravi.id });
   // Different coaches may teach at the same time on different courts.
   const beginner = await enroll(f);
   await enroll(
     f,
-    { plan_id: config.plans[1].id, resource_id: config.courts[1].id },
+    { plan_id: f.config.plans[1].id, resource_id: f.config.courts[1].id },
     "9000000002",
   );
   const conflicts = await service.coachConflicts(f.owner, {
     business_id: f.businessId,
     coach_id: ravi.id,
-    plan_ids: [config.plans[0].id, config.plans[1].id],
+    plan_ids: [f.config.plans[0].id, f.config.plans[1].id],
   });
   assert.ok(conflicts.items.length > 0);
   assert.deepEqual(
@@ -377,17 +395,12 @@ test("reassigned coaches are checked against the classes they now teach", async 
       await service.coachConflicts(f.owner, {
         business_id: f.businessId,
         coach_id: ravi.id,
-        plan_ids: [config.plans[1].id],
+        plan_ids: [f.config.plans[1].id],
       })
     ).items.length,
     0,
   );
-  config.plans[0].coach_id = ravi.id;
-  await courts.configure(f.owner, f.businessId, {
-    version: await version(),
-    configuration: config,
-  });
-  await workspace.activate(f.owner, f.businessId);
+  await assign(f, { [f.config.plans[0].id]: ravi.id });
   // The beginner classes now belong to Ravi, not to the coach in the snapshot.
   assert.equal(
     (await service.detail(f.owner, beginner.id)).plan_snapshot.coach_name,
@@ -397,9 +410,54 @@ test("reassigned coaches are checked against the classes they now teach", async 
     () =>
       enroll(
         f,
-        { plan_id: config.plans[1].id, resource_id: config.courts[1].id },
+        { plan_id: f.config.plans[1].id, resource_id: f.config.courts[1].id },
         "9000000003",
       ),
     /coach has another overlapping class/,
   );
+});
+test("coaches see their own classes and may mark attendance only for them", async () => {
+  const f = await fixture();
+  const ravi = await coach(f);
+  const helper = await coach(f, ["view_bookings"]);
+  await assign(f, { [f.config.plans[1].id]: ravi.id });
+  const mine = await enroll(f, {
+    plan_id: f.config.plans[1].id,
+    resource_id: f.config.courts[1].id,
+  });
+  await enroll(
+    f,
+    { plan_id: f.config.plans[1].id, resource_id: f.config.courts[1].id },
+    "9000000002",
+  );
+  const other = await enroll(f, {}, "9000000003");
+  const day = await service.classes(ravi.staff, { date: "2030-06-04" });
+  assert.equal(day.classes.length, 1);
+  assert.equal(day.classes[0].plan_name, "Advanced batch");
+  assert.equal(day.classes[0].space_name, "Court 2");
+  assert.equal(day.classes[0].local_start, "2030-06-04T17:00");
+  assert.equal(day.classes[0].students.length, 2);
+  assert.equal(day.classes[0].students[0].markable, false);
+  assert.equal(
+    (await service.classes(f.owner, { date: "2030-06-04" })).classes[0]
+      .plan_name,
+    "Beginner batch",
+  );
+  await assert.rejects(
+    () => service.classes(helper.staff, { date: "2030-06-04" }),
+    /Only coaches/,
+  );
+  const mark = async (actor: any, admission: string) => {
+    const a = await service.detail(f.owner, admission);
+    return service.attendance(actor, admission, a.sessions[0].id, {
+      command_key: randomUUID(),
+      version: a.sessions[0].version,
+      attendance: "present",
+      reason: "",
+    });
+  };
+  // Ravi passes the permission check for his class; the session is ahead.
+  await assert.rejects(() => mark(ravi.staff, mine.id), /before the session/);
+  await assert.rejects(() => mark(ravi.staff, other.id), /permission/);
+  await assert.rejects(() => mark(helper.staff, mine.id), /permission/);
 });

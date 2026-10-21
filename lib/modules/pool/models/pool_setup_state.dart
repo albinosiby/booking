@@ -82,15 +82,13 @@ class PoolSetupState extends WorkspaceState {
     draft.pools,
     selectedPlan,
     currency,
-    [
-      ...draft.coaches,
-      ...coaches.where((c) => !draft.coaches.any((d) => d.id == c.id)),
-    ],
+    coaches,
     coachesLoading,
     coachError,
     draft.plans.length,
   );
-  PoolReviewModel get reviewModel => PoolReviewModel(draft, currency);
+  PoolReviewModel get reviewModel =>
+      PoolReviewModel(draft, currency, coaches: coaches);
   PoolSetupState copyWith({
     WorkspaceState? snapshot,
     PoolConfiguration? draft,

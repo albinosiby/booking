@@ -131,6 +131,16 @@ export class WorkspaceController {
   ) {
     return this.service.revoke(r.actor, id, false);
   }
+  @Put("team/me/coach") ownerCoach(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.service.ownerCoach(r.actor, b);
+  }
+  @Patch("businesses/:id/plan-coaches") planCoaches(
+    @Req() r: AuthRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() b: unknown,
+  ) {
+    return this.service.planCoaches(r.actor, id, b);
+  }
   @Patch("team/:id") update(
     @Req() r: AuthRequest,
     @Param("id", ParseUUIDPipe) id: string,

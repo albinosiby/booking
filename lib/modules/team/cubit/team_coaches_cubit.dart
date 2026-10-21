@@ -1,4 +1,3 @@
-import '../../pool/models/pool_configuration.dart' show poolCoachPhoneValid;
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../utils/exceptions/app_exception.dart';
@@ -27,39 +26,27 @@ class TeamCoachesCubit extends Cubit<TeamCoachesModel> {
   String get _scope =>
       '${session.state.data.organization?.id}/${session.state.data.membership?['id']}/${session.state.data.isOwner}';
   bool get authorized => !isClosed && session.state.data.isOwner;
+  String? get ownerId => session.state.data.membership?['id'];
   Future<void> load() async {
     if (!authorized || state.busy) return;
     final g = ++generation;
     emit(state.copy(loading: true));
     try {
-      final businesses = await repository.load();
+      final team = await repository.load();
       if (!isClosed && g == generation && authorized) {
-        emit(state.copy(businesses: businesses, loading: false));
+        emit(state.copy(team: team, loading: false));
       }
     } catch (e) {
       if (!isClosed && g == generation) {
         emit(
           state.copy(
             loading: false,
-            businesses: accessFailure(e) ? [] : null,
+            team: accessFailure(e) ? CoachTeam() : null,
             error: e is AppException ? e.message : 'Could not load coaches.',
           ),
         );
       }
     }
-  }
-
-  void beginAdd() {
-    if (!authorized || state.busy || state.businesses.isEmpty) return;
-    emit(
-      state.copy(
-        editor: CoachEditor.add,
-        businessId: state.businesses.first.id,
-        name: '',
-        phone: '',
-        planIds: [],
-      ),
-    );
   }
 
   void beginAssign(String businessId, String coachId) {
@@ -72,7 +59,7 @@ class TeamCoachesCubit extends Cubit<TeamCoachesModel> {
     }
     emit(
       state.copy(
-        editor: CoachEditor.assign,
+        editing: true,
         businessId: businessId,
         coachId: coachId,
         planIds: business.plans
@@ -80,44 +67,6 @@ class TeamCoachesCubit extends Cubit<TeamCoachesModel> {
             .map((p) => p.id),
       ),
     );
-  }
-
-  void beginSpaces(String businessId, String coachId) {
-    if (!authorized || state.busy) return;
-    final b = state.businesses.where((b) => b.id == businessId).firstOrNull;
-    final coach = b?.coaches.where((c) => c.id == coachId).firstOrNull;
-    if (coach == null) return;
-    emit(
-      state.copy(
-        editor: CoachEditor.spaces,
-        businessId: businessId,
-        coachId: coachId,
-        spaceIds: coach.poolIds,
-      ),
-    );
-  }
-
-  void toggleSpace(String id, bool selected) {
-    if (state.busy || state.editor != CoachEditor.spaces) return;
-    final ids = {...state.spaceIds};
-    if (selected) {
-      ids.add(id);
-    } else {
-      ids.remove(id);
-    }
-    emit(state.copy(spaceIds: ids));
-  }
-
-  void business(String value) {
-    if (!state.busy) emit(state.copy(businessId: value));
-  }
-
-  void name(String value) {
-    if (!state.busy) emit(state.copy(name: value));
-  }
-
-  void phone(String value) {
-    if (!state.busy) emit(state.copy(phone: value));
   }
 
   void toggle(String id, bool selected) {
@@ -131,9 +80,9 @@ class TeamCoachesCubit extends Cubit<TeamCoachesModel> {
     emit(state.copy(planIds: ids));
   }
 
+  // Editor errors belong to the editor; don't leave them on the page.
   void closeEditor() {
-    // Editor errors belong to the editor; don't leave them on the page.
-    if (!isClosed && !state.busy) emit(state.copy(clearEditor: true));
+    if (!isClosed && !state.busy) emit(state.copy(editing: false));
   }
 
   /// Upcoming class clashes the plan assignment would create, or null when
@@ -142,7 +91,7 @@ class TeamCoachesCubit extends Cubit<TeamCoachesModel> {
     final b = state.selectedBusiness, coachId = state.coachId;
     if (!authorized ||
         state.busy ||
-        state.editor != CoachEditor.assign ||
+        !state.editing ||
         b == null ||
         coachId == null) {
       return null;
@@ -176,70 +125,37 @@ class TeamCoachesCubit extends Cubit<TeamCoachesModel> {
     }
   }
 
-  Future<bool> saveEditor({bool removeAffectedPlans = false}) async {
-    if (!authorized || state.busy || state.loading || state.editor == null) {
+  Future<bool> saveEditor() async {
+    if (!authorized || state.busy || state.loading || !state.editing) {
       return false;
     }
-    final b = state.selectedBusiness;
-    if (b == null) return false;
-    if (state.editor == CoachEditor.add &&
-        (state.name.trim().length < 2 ||
-            state.name.trim().length > 100 ||
-            !poolCoachPhoneValid(state.phone))) {
-      emit(
-        state.copy(error: 'Enter the coach’s name and a valid phone number.'),
-      );
-      return false;
-    }
-    if (state.editor == CoachEditor.spaces &&
-        state.affectedPlans.isNotEmpty &&
-        !removeAffectedPlans) {
-      emit(
-        state.copy(
-          error: 'Confirm removal of the affected coaching-plan assignments.',
-        ),
-      );
-      return false;
-    }
-    final g = ++generation;
-    final draft = state;
-    emit(state.copy(busy: true));
-    final ok = await session.change(
-      () => switch (draft.editor!) {
-        CoachEditor.add => repository.add(
-          b.id,
-          b.version,
-          draft.name,
-          draft.phone,
-        ),
-        CoachEditor.assign => repository.assign(
-          b.id,
-          b.version,
-          draft.coachId!,
-          draft.planIds,
-        ),
-        CoachEditor.spaces => repository.assignSpaces(
-          b.id,
-          b.version,
-          draft.coachId!,
-          draft.spaceIds,
-          removeAffectedPlans: removeAffectedPlans,
-        ),
-      },
+    final b = state.selectedBusiness, coachId = state.coachId;
+    if (b == null || coachId == null) return false;
+    return _change(
+      () => repository.assign(b.id, b.version, coachId, state.planIds),
+      'Could not save coaches. Refresh and retry.',
     );
+  }
+
+  /// The owner starts or stops coaching; stopping releases their plans.
+  Future<bool> setOwnerCoach(bool coach) => _change(
+    () => repository.setOwnerCoach(coach),
+    'Could not update your coaching. Retry.',
+  );
+
+  Future<bool> _change(Future<void> Function() action, String failure) async {
+    if (!authorized || state.busy) return false;
+    final g = ++generation;
+    emit(state.copy(busy: true));
+    final ok = await session.change(action);
     if (isClosed || g != generation || !authorized) return false;
     emit(
       state.copy(
         busy: false,
-        error: ok
-            ? null
-            : session.state.error ??
-                  'Could not save coaches. Refresh and retry.',
+        error: ok ? null : session.state.error ?? failure,
       ),
     );
-    if (ok) {
-      await load();
-    }
+    if (ok) await load();
     return ok;
   }
 

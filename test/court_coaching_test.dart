@@ -11,12 +11,55 @@ import 'package:eden_booking/modules/court/models/court_configuration.dart';
 import 'package:eden_booking/modules/court/models/court_screen_models.dart';
 import 'package:eden_booking/modules/court/repositories/court_repository.dart';
 import 'package:eden_booking/modules/court/screens/court_setup_screen.dart';
+import 'package:eden_booking/modules/coaching/repositories/coach_api.dart';
 import 'package:eden_booking/modules/team/repositories/team_coaches_repository.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_repository_interface.dart';
 import 'package:eden_booking/utils/exceptions/app_exception.dart';
 import 'court_setup_test.dart' show CourtSource, FakeCourtRepository;
-import 'pool_setup_test.dart' show PoolSource, FakePoolRepository;
+
+/// A court workspace whose team has one coach, Asha, on [courts].
+class CourtTeamSource extends CourtSource {
+  List<String> courts = ['c2'];
+  @override
+  Future<Map<String, dynamic>> team() async => {
+    'members': [
+      {
+        'id': 'asha',
+        'display_name': 'Asha',
+        'role': 'staff',
+        'active': true,
+        'permissions': ['coach'],
+        'assignments': [
+          {'business_id': 'courts', 'resource_ids': courts},
+        ],
+      },
+    ],
+    'invitations': [],
+  };
+}
+
+class CourtCoachApi extends Fake implements CoachApi {
+  CourtCoachApi(this.source);
+  final CourtSource source;
+  @override
+  Future<void> assignPlans(
+    String businessId,
+    int version,
+    Map<String, String?> coaches,
+  ) async {
+    source.configuration = {
+      ...source.configuration!,
+      'plans': [
+        for (final p in source.configuration!['plans'] as List)
+          coaches.containsKey(p['id'])
+              ? {...p, 'coach_id': coaches[p['id']]}
+              : p,
+      ],
+    };
+    source.version++;
+  }
+}
 
 CourtConfiguration courts() => CourtConfiguration(
   courts: [
@@ -38,40 +81,36 @@ void main() {
   tearDown(() => getIt.reset());
   test('court plans round-trip and are omitted when absent', () {
     expect(CourtConfiguration().toJson().containsKey('plans'), isFalse);
-    expect(CourtConfiguration().toJson().containsKey('coaches'), isFalse);
-    final c = courts().copyWith(
-      coaches: [
-        CourtCoach(
-          id: 'k',
-          name: 'Asha',
-          phone: '9876500001',
-          courtIds: ['c1'],
-        ),
-      ],
-    );
+    final c = courts();
     final json = c.toJson();
     expect(json['plans'][0]['court_ids'], ['c1']);
     expect(json['plans'][0]['kind'], 'coaching');
     expect(json['plans'][0]['price_minor'], 300000);
-    expect(json['coaches'][0]['court_ids'], ['c1']);
+    expect(json.containsKey('coaches'), isFalse);
     expect(CourtConfiguration.fromJson(json), c);
+    // Old coach contacts are dropped and their plans become Unassigned.
+    final legacy = c
+        .copyWith(plans: [c.plans.single.copyWith(coachId: 'k')])
+        .toJson();
+    legacy['coaches'] = [
+      {
+        'id': 'k',
+        'name': 'Asha',
+        'phone': '9876500001',
+        'court_ids': ['c1'],
+      },
+    ];
+    expect(CourtConfiguration.fromJson(legacy).plans.single.coachId, isNull);
   });
 
-  test('court plan validation requires coach coverage and court hours', () {
+  test('court plan validation checks court hours', () {
     final c = courts();
     expect(c.validate(), isNull);
-    final uncovered = c.copyWith(
-      coaches: [
-        CourtCoach(
-          id: 'k',
-          name: 'Asha',
-          phone: '9876500001',
-          courtIds: ['c2'],
-        ),
-      ],
-      plans: [c.plans.single.copyWith(coachId: 'k')],
+    // Coach coverage is checked by the server against staff access.
+    expect(
+      c.copyWith(plans: [c.plans.single.copyWith(coachId: 'k')]).validate(),
+      isNull,
     );
-    expect(uncovered.validate(), contains('coach'));
     final outside = c.copyWith(
       plans: [
         c.plans.single.copyWith(
@@ -85,26 +124,18 @@ void main() {
     expect(unpriced.validate(complete: true), contains('price'));
   });
 
-  test('removing a court strips it from plans and coaches', () {
-    final c = courts()
-        .copyWith(
-          coaches: [
-            CourtCoach(
-              id: 'k',
-              name: 'Asha',
-              phone: '9876500001',
-              courtIds: ['c1', 'c2'],
-            ),
-          ],
-          plans: [courts().plans.single.copyWith(coachId: 'k')],
-        )
-        .withoutCourt('c1');
-    expect(c.courts.map((v) => v.id), ['c2']);
-    expect(c.plans.single.courtIds, isEmpty);
-    // A plan left without courts no longer keeps its coach.
-    expect(c.plans.single.coachId, isNull);
-    expect(c.coaches.single.courtIds, ['c2']);
-  });
+  test(
+    'removing a court strips it from plans and clears empty plan coaches',
+    () {
+      final c = courts()
+          .copyWith(plans: [courts().plans.single.copyWith(coachId: 'k')])
+          .withoutCourt('c1');
+      expect(c.courts.map((v) => v.id), ['c2']);
+      expect(c.plans.single.courtIds, isEmpty);
+      // A plan left without courts no longer keeps its coach.
+      expect(c.plans.single.coachId, isNull);
+    },
+  );
 
   test('court setup cubit adds, edits and removes coaching plans', () async {
     final source = CourtSource()..configuration = courts().toJson();
@@ -127,44 +158,28 @@ void main() {
   });
 
   test(
-    'Team coaches manage court coaches and court-plan assignments',
+    'Team coaches assign court plans to staff assigned to the courts',
     () async {
-      final source = CourtSource()..configuration = courts().toJson();
+      final source = CourtTeamSource()..configuration = courts().toJson();
       final repository = ConfigurationTeamCoachesRepository(
         source,
-        FakePoolRepository(PoolSource()),
-        FakeCourtRepository(source),
+        CourtCoachApi(source),
       );
-      var b = (await repository.load()).single;
+      var b = (await repository.load()).businesses.single;
       expect(b.court, isTrue);
       expect(b.spacesLabel, 'courts');
       expect(b.spaces.map((s) => s.name), ['Court 1', 'Court 2']);
-      await repository.add(b.id, b.version, 'Asha', '9876500001');
-      b = (await repository.load()).single;
-      final coach = b.coaches.single.id;
+      expect(b.coaches.single.poolIds, ['c2']);
       await expectLater(
-        repository.assign(b.id, b.version, coach, {'p1'}),
+        repository.assign(b.id, b.version, 'asha', {'p1'}),
         throwsA(isA<AppException>()),
       );
-      await repository.assignSpaces(b.id, b.version, coach, {'c1'});
-      b = (await repository.load()).single;
-      await repository.assign(b.id, b.version, coach, {'p1'});
+      source.courts = ['c1'];
+      b = (await repository.load()).businesses.single;
+      await repository.assign(b.id, b.version, 'asha', {'p1'});
       final saved = CourtConfiguration.fromJson(source.configuration!);
-      expect(saved.coaches.single.courtIds, ['c1']);
-      expect(saved.plans.single.coachId, coach);
+      expect(saved.plans.single.coachId, 'asha');
       expect(saved.validate(), isNull);
-      b = (await repository.load()).single;
-      await expectLater(
-        repository.assignSpaces(b.id, b.version, coach, {'c2'}),
-        throwsA(isA<AppException>()),
-      );
-      await repository.assignSpaces(b.id, b.version, coach, {
-        'c2',
-      }, removeAffectedPlans: true);
-      expect(
-        CourtConfiguration.fromJson(source.configuration!).plans.single.coachId,
-        isNull,
-      );
     },
   );
 
@@ -238,13 +253,12 @@ void main() {
       expect(CourtPlan.fromJson(json).coaching, isFalse);
       final config = courts().copyWith(plans: [...courts().plans, play]);
       expect(config.validate(), isNull);
-      final source = CourtSource()..configuration = config.toJson();
+      final source = CourtTeamSource()..configuration = config.toJson();
       final repository = ConfigurationTeamCoachesRepository(
         source,
-        FakePoolRepository(PoolSource()),
-        FakeCourtRepository(source),
+        CourtCoachApi(source),
       );
-      final b = (await repository.load()).single;
+      final b = (await repository.load()).businesses.single;
       expect(b.plans.map((p) => p.id), ['p1']);
       final workspace = WorkspaceCubit(source);
       await workspace.load();

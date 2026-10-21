@@ -6,7 +6,7 @@ Badminton, tennis and basketball businesses can now sell **court plans** (like s
 
 1. **Court settings → Plans & coaching → Add coaching plan** (or **Add court plan**, see below). Choose the courts the plan can run on, number of classes, validity (days, months, years or fixed date), total price, class duration, maximum students per class and the coaching days/times. The coaching times must fit inside the opening hours of every selected court. Coaching plans are optional; a court business without plans is unchanged.
 2. **Save changes** (or Activate). Enabled plans need at least one court and a price before an active business can be saved.
-3. **Team management → Coaches.** Court businesses now appear next to pool businesses. Add a coach contact, **Assign courts**, then **Assign coaching plans**. A coach can be assigned only to plans whose courts they cover. Coach contacts never create logins or staff access.
+3. **Team management → Coaches.** Coaches are team members with **Coach** turned on in their staff access (see [Staff coaches](staff-coaches.md)). Their courts are the courts of that staff access. **Assign coaching plans** offers only plans whose courts they cover.
 
 **Court plans** (Court settings → Plans & coaching → Add court plan) give a player a number of play days within validity. There is no class size or coach. Each visit reserves the whole court like an ordinary booking: a second player cannot use that court at the same time. Visits use the court's minimum duration and can be extended in 30-minute steps. Flexible plans deduct one day per attendance date. Fixed schedules reserve every visit up front, and each reserved visit counts once it ends. In Admissions, court plans have their own **Court plans** filter, and the booking form offers **Court booking / Court plan / Coaching**.
 
@@ -69,7 +69,7 @@ WHERE name = '20261020120000_admissions.sql';
 ## Smoke checks after deployment
 
 1. On a test court business, add a coaching plan (2 seats) on Court 1 and save.
-2. In Team → Coaches, add a coach, assign Court 1, assign the plan.
+2. Invite a staff member with Coach on and Court 1 assigned; in Team → Coaches, assign them the plan.
 3. Enroll student A on a fixed schedule. Confirm the class appears on Calendar and that an ordinary booking for Court 1 at that time is unavailable, while Court 2 is still bookable.
 4. Enroll student B at the same time and plan: accepted. Student C: "This coaching class is full."
 5. Try a second plan with the same coach on Court 2 at that time: "The coach has another overlapping class."

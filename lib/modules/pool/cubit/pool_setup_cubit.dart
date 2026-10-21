@@ -195,9 +195,6 @@ class PoolSetupCubit extends ConfigurationSetupCubit<PoolSetupState> {
     _edit(
       state.draft.copyWith(
         pools: state.draft.pools.where((p) => p.id != id),
-        coaches: state.draft.coaches.map(
-          (c) => c.withPools(c.poolIds.where((p) => p != id)),
-        ),
         offers: state.draft.offers.map(
           (o) => o.copyWith(
             poolIds: o.poolIds.where((p) => p != id),

@@ -1,3 +1,4 @@
+import '../../modules/coaching/screens/coach_classes_screen.dart';
 import '../../modules/booking_blocks/models/slot_block_models.dart';
 import '../../modules/booking_blocks/screens/slot_block_screens.dart';
 import '../../modules/admissions/screens/admissions_screen.dart';
@@ -286,6 +287,10 @@ GoRouter createRouter(
                 children: [],
               ),
       ),
+      GoRoute(
+        path: Routes.myClasses,
+        builder: (c, s) => const CoachClassesScreen(),
+      ),
       GoRoute(path: '/admissions', builder: (c, s) => const AdmissionsScreen()),
       GoRoute(
         path: '/admissions/new',
@@ -421,7 +426,8 @@ GoRouter createRouter(
       ),
       GoRoute(
         path: '/team/invite',
-        builder: (c, s) => const StaffAssignmentScreen(),
+        builder: (c, s) =>
+            StaffAssignmentScreen(startAsCoach: s.extra == 'coach'),
       ),
       GoRoute(
         path: '/team/edit',

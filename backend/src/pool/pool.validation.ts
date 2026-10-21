@@ -130,25 +130,10 @@ export const poolConfigurationSchema = z
     pools: z.array(pool).max(30),
     group_offers: z.array(offer).max(50),
     plans: z.array(plan).max(50),
+    // Coaches are team members now; plans reference their membership id.
     coaches: z
-      .array(
-        z
-          .object({
-            id,
-            name,
-            pool_ids: z.array(id).max(30).optional(),
-            phone: z
-              .string()
-              .trim()
-              .regex(/^\+?[0-9 ()-]{6,30}$/)
-              .refine((v) => {
-                const digits = v.replace(/[^0-9]/g, "");
-                return digits.length >= 6 && digits.length <= 15;
-              }, "Enter a valid phone number with 6–15 digits."),
-          })
-          .strict(),
-      )
-      .max(100)
+      .array(z.unknown())
+      .max(0, "Coach contacts were replaced by staff coaches. Refresh the app.")
       .optional(),
   })
   .strict()
@@ -241,32 +226,6 @@ export const poolConfigurationSchema = z
         o.people,
         o.duration_minutes,
       );
-    const contacts = v.coaches ?? [];
-    if (
-      !unique(contacts.map((c) => c.id)) ||
-      !unique(contacts.map((c) => c.phone.replace(/[^0-9]/g, "")))
-    )
-      issue("Coach contacts must have unique IDs and phone numbers.");
-    for (const contact of contacts) {
-      if (
-        contact.pool_ids &&
-        (!unique(contact.pool_ids) ||
-          contact.pool_ids.some((id) => !v.pools.some((p) => p.id === id)))
-      )
-        issue("Assign coaches to distinct pool spaces in this business.");
-      if (
-        contact.pool_ids &&
-        v.plans.some(
-          (p) =>
-            p.kind === "coaching" &&
-            p.coach_id === contact.id &&
-            p.pool_ids.some((id) => !contact.pool_ids!.includes(id)),
-        )
-      )
-        issue(
-          "The coach must be assigned to every eligible pool for their coaching plans.",
-        );
-    }
     for (const p of v.plans) {
       const amounts = [
         p.expiry_days,

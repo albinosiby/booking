@@ -130,6 +130,11 @@ class Workspace extends Equatable {
     logo: bytes,
   );
   bool get isOwner => membership?['role'] == 'owner';
+
+  /// Coaches teach coaching plans and mark attendance in My classes. Owners
+  /// opt in too, so this is not implied by [isOwner].
+  bool get isCoach =>
+      (membership?['permissions'] as List? ?? const []).contains('coach');
   bool hasPermission(String permission) =>
       isOwner ||
       (membership?['permissions'] as List? ?? []).contains(permission);

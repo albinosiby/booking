@@ -226,82 +226,140 @@ test("pool calendar validity handles months, leap years and backward compatible 
     "2030-12-31",
   );
 });
-test("coach contacts save with the plan without creating a staff account", async () => {
+async function staffMember(
+  owner: Actor,
+  business: string,
+  resources: string[],
+  permissions: string[] = ["coach"],
+) {
+  const staff = actor();
+  const invite = await workspace.invite(owner, {
+    email: staff.email,
+    display_name: "Pool coach",
+    role: "staff",
+    permissions,
+    assignments: [{ business_id: business, resource_ids: resources }],
+  });
+  await workspace.accept(
+    staff,
+    new URL(invite.invitation_url).searchParams.get("token")!,
+  );
+  const member = (await workspace.team(owner)).members.find(
+    (m: any) => m.user_id === staff.uid,
+  );
+  return { staff, member };
+}
+const business = async (owner: Actor, id: string) =>
+  (await workspace.workspace(owner)).businesses.find((b: any) => b.id === id);
+test("coach contacts are rejected and plans need a coach from the team", async () => {
   const { owner, id } = await fixture();
   const c = configuration();
-  const coach = {
-    id: randomUUID(),
-    name: "Alex Coach",
-    phone: "+91 98765 43210",
-  };
-  c.coaches = [coach];
-  c.plans[1].coach_id = coach.id;
-  c.plans[1].expiry_mode = "after_years";
-  c.plans[1].expiry_date = null;
-  c.plans[1].expiry_years = 1;
-  const before = (await workspace.team(owner)).members.length;
+  assert.equal(
+    poolConfigurationSchema.safeParse({
+      ...c,
+      coaches: [{ id: randomUUID(), name: "Alex", phone: "9876543210" }],
+    }).success,
+    false,
+  );
+  c.plans[1].coach_id = randomUUID();
+  await assert.rejects(
+    () => service.configure(owner, id, { version: 1, configuration: c }),
+    /active coach/,
+  );
+  const ownerId = (await workspace.workspace(owner)).membership.id;
+  c.plans[1].coach_id = ownerId;
+  await assert.rejects(
+    () => service.configure(owner, id, { version: 1, configuration: c }),
+    /not marked as a coach/,
+  );
+  await workspace.ownerCoach(owner, { coach: true });
   await service.configure(owner, id, { version: 1, configuration: c });
-  const saved = (await workspace.workspace(owner)).businesses.find(
-    (b: any) => b.id === id,
-  ).configuration;
-  assert.deepEqual(saved.coaches, [coach]);
-  assert.equal(saved.plans[1].coach_id, coach.id);
-  assert.equal(saved.plans[1].expiry_years, 1);
-  assert.equal((await workspace.team(owner)).members.length, before);
-  const invalid = structuredClone(c);
-  invalid.coaches![0].phone = "abc";
-  assert.equal(poolConfigurationSchema.safeParse(invalid).success, false);
-  invalid.coaches = [
-    coach,
-    { ...coach, id: randomUUID(), phone: "+919876543210" },
-  ];
-  assert.equal(poolConfigurationSchema.safeParse(invalid).success, false);
-  const foreign = { ...c, coaches: [], plans: c.plans.map((p) => ({ ...p })) };
-  await assert.rejects(() =>
-    service.configure(owner, id, { version: 2, configuration: foreign }),
+  await workspace.activate(owner, id);
+  assert.equal(
+    (await business(owner, id)).configuration.plans[1].coach_id,
+    ownerId,
   );
-});
-test("direct coach spaces are validated and constrain coaching-plan assignment", async () => {
-  const { owner, id } = await fixture();
-  const c = configuration();
-  const coach = {
-    id: randomUUID(),
-    name: "Pool Coach",
-    phone: "9876543212",
-    pool_ids: [c.pools[0].id],
-  };
-  c.coaches = [coach];
-  const members = (await workspace.team(owner)).members.length;
-  await service.configure(owner, id, { version: 1, configuration: c });
-  let b = (await workspace.workspace(owner)).businesses.find(
-    (b: any) => b.id === id,
+  // Opting out releases the owner's plans and keeps the business ready.
+  assert.equal(
+    (await workspace.ownerCoach(owner, { coach: false })).released,
+    1,
   );
-  assert.deepEqual(b.configuration.coaches[0].pool_ids, [c.pools[0].id]);
-  assert.equal((await workspace.team(owner)).members.length, members);
-  const bad = structuredClone(c);
-  bad.coaches![0].pool_ids = [randomUUID()];
-  assert.equal(poolConfigurationSchema.safeParse(bad).success, false);
-  bad.coaches![0].pool_ids = [c.pools[0].id, c.pools[0].id];
-  assert.equal(poolConfigurationSchema.safeParse(bad).success, false);
-  c.plans[1].coach_id = coach.id;
-  c.plans[1].pool_ids = c.pools.map((p) => p.id);
-  await assert.rejects(() =>
-    service.configure(owner, id, { version: 2, configuration: c }),
-  );
-  coach.pool_ids = c.pools.map((p) => p.id);
-  await service.configure(owner, id, { version: 2, configuration: c });
-  coach.pool_ids = [];
-  assert.equal(poolConfigurationSchema.safeParse(c).success, false);
-  c.plans[1].coach_id = null;
-  await service.configure(owner, id, { version: 3, configuration: c });
-  b = (await workspace.workspace(owner)).businesses.find(
-    (b: any) => b.id === id,
-  );
-  assert.deepEqual(b.configuration.coaches[0].pool_ids, []);
+  const b = await business(owner, id);
   assert.equal(b.configuration.plans[1].coach_id, null);
-  await assert.rejects(() =>
-    service.configure(owner, id, { version: 3, configuration: c }),
+  assert.equal(b.status, "ready");
+});
+test("staff coaches teach in their assigned pools and lose plans when access changes", async () => {
+  const { owner, id } = await fixture();
+  const c = configuration();
+  await service.configure(owner, id, { version: 1, configuration: c });
+  await workspace.activate(owner, id);
+  const plan = c.plans[1].id;
+  const { member } = await staffMember(owner, id, [c.pools[0].id]);
+  const helper = await staffMember(owner, id, [], ["view_bookings"]);
+  let b = await business(owner, id);
+  await assert.rejects(
+    () =>
+      workspace.planCoaches(owner, id, {
+        version: b.version,
+        coaches: { [plan]: helper.member.id },
+      }),
+    /not marked as a coach/,
   );
+  await assert.rejects(
+    () =>
+      workspace.planCoaches(owner, id, {
+        version: b.version,
+        coaches: { [c.plans[0].id]: member.id },
+      }),
+    /coaching plans/,
+  );
+  await workspace.planCoaches(owner, id, {
+    version: b.version,
+    coaches: { [plan]: member.id },
+  });
+  b = await business(owner, id);
+  assert.equal(b.configuration.plans[1].coach_id, member.id);
+  assert.equal(b.status, "ready");
+  // The coach must cover every pool of the plan.
+  const wider = structuredClone(b.configuration);
+  wider.plans[1].pool_ids = c.pools.map((p) => p.id);
+  await assert.rejects(
+    () =>
+      service.configure(owner, id, {
+        version: b.version,
+        configuration: wider,
+      }),
+    /every space/,
+  );
+  // Moving the coach to another pool releases the plan.
+  const update = {
+    email: member.email,
+    display_name: member.display_name,
+    role: "staff",
+    permissions: ["coach"],
+    assignments: [{ business_id: id, resource_ids: [c.pools[1].id] }],
+  };
+  assert.equal(
+    (await workspace.updateMember(owner, member.id, update)).released,
+    1,
+  );
+  assert.equal(
+    (await business(owner, id)).configuration.plans[1].coach_id,
+    null,
+  );
+  await workspace.updateMember(owner, member.id, {
+    ...update,
+    assignments: [{ business_id: id, resource_ids: [] }],
+  });
+  b = await business(owner, id);
+  await workspace.planCoaches(owner, id, {
+    version: b.version,
+    coaches: { [plan]: member.id },
+  });
+  assert.equal((await workspace.revoke(owner, member.id, false)).released, 1);
+  b = await business(owner, id);
+  assert.equal(b.configuration.plans[1].coach_id, null);
+  assert.equal(b.status, "ready");
 });
 test("pool group packages enforce exact/up-to sizes with one total price", () => {
   const c = configuration(),
@@ -427,59 +485,31 @@ test("pool tenant/version guards and pending staff scopes prevent partial writes
     }),
   );
 });
-test("pool staff projections and coach permissions stay within assigned pools", async () => {
+test("pool staff projections stay within assigned pools", async () => {
   const { owner, id } = await fixture(),
     c = configuration();
-  const visibleCoach = {
-    id: randomUUID(),
-    name: "Assigned pool coach",
-    phone: "9876543210",
-  };
-  const hiddenCoach = {
-    id: randomUUID(),
-    name: "Other pool coach",
-    phone: "9876543211",
-  };
-  const directCoach = {
-    id: randomUUID(),
-    name: "Direct pool coach",
-    phone: "9876543213",
-    pool_ids: c.pools.map((p) => p.id),
-  };
-  c.coaches = [visibleCoach, hiddenCoach, directCoach];
-  c.plans[1].coach_id = visibleCoach.id;
   c.plans.push({
     ...structuredClone(c.plans[1]),
     id: randomUUID(),
     pool_ids: [c.pools[1].id],
-    coach_id: hiddenCoach.id,
   });
   await service.configure(owner, id, { version: 1, configuration: c });
-  const staff = actor();
-  const invite = await workspace.invite(owner, {
-    email: staff.email,
-    display_name: "Coach",
-    role: "staff",
-    permissions: ["view_bookings"],
-    assignments: [{ business_id: id, resource_ids: [c.pools[0].id] }],
-  });
-  await workspace.accept(
-    staff,
-    new URL(invite.invitation_url).searchParams.get("token")!,
+  const { staff, member } = await staffMember(
+    owner,
+    id,
+    [c.pools[0].id],
+    ["view_bookings", "coach"],
   );
   const b = (await workspace.workspace(staff)).businesses[0];
   assert.equal(b.configuration.pools.length, 1);
   assert.deepEqual(b.configuration.group_offers[0].pool_ids, [c.pools[0].id]);
   assert.equal(b.resources[0].capacity, 20);
-  assert.deepEqual(b.configuration.coaches, [
-    visibleCoach,
-    { ...directCoach, pool_ids: [c.pools[0].id] },
-  ]);
+  assert.deepEqual(
+    b.configuration.plans.map((p: any) => p.id),
+    [c.plans[0].id, c.plans[1].id],
+  );
   await assert.rejects(() =>
     service.configure(staff, id, { version: 2, configuration: c }),
-  );
-  const member = (await workspace.team(owner)).members.find(
-    (m: any) => m.user_id === staff.uid,
   );
   c.plans[1].coach_id = member.id;
   await service.configure(owner, id, { version: 2, configuration: c });
@@ -487,11 +517,7 @@ test("pool staff projections and coach permissions stay within assigned pools", 
   await assert.rejects(() =>
     service.configure(owner, id, { version: 3, configuration: c }),
   );
-  c.plans[1].pool_ids = [c.pools[0].id];
   await workspace.revoke(owner, member.id, false);
-  await assert.rejects(() => workspace.activate(owner, id));
-  c.plans[1].enabled = false;
-  await service.configure(owner, id, { version: 3, configuration: c });
   await workspace.activate(owner, id);
 });
 test("legacy pool resource identifiers survive adoption of pool_v1", async () => {

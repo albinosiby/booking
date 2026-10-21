@@ -35,7 +35,7 @@ class _TeamScreenState extends State<TeamScreen> {
     if (await confirmAction(
       context,
       'Remove staff access?',
-      'This person will lose organization access immediately.',
+      'This person will lose organization access immediately. Coaching plans they teach become Unassigned.',
     )) {
       await cubit.revoke(m['id']);
     }
@@ -294,7 +294,7 @@ class _TeamScreenState extends State<TeamScreen> {
                                         if (await confirmAction(
                                           context,
                                           'Remove staff access?',
-                                          'This person will lose organization access immediately.',
+                                          'This person will lose organization access immediately. Coaching plans they teach become Unassigned.',
                                         )) {
                                           await cubit.revoke(m['id']);
                                         }

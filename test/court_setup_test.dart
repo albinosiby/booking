@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:eden_booking/modules/pool/models/pool_configuration.dart'
+    show PoolCoach;
 import 'package:eden_booking/design_system/design_system.dart';
 import 'package:eden_booking/di/injection.dart';
 import 'package:eden_booking/di/feature_injection.dart';
@@ -51,6 +53,8 @@ class CourtSource extends Fake implements WorkspaceRepository {
 class FakeCourtRepository implements CourtRepository {
   FakeCourtRepository(this.source);
   final CourtSource source;
+  @override
+  Future<List<PoolCoach>> loadCoaches(String id) async => const [];
   int writes = 0, activations = 0;
   bool loseSave = false, loseActivation = false, failActivation = false;
   @override

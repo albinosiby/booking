@@ -8,10 +8,18 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../../../utils/helpers/validation.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
+import '../models/staff_coaches.dart';
 
 class StaffAssignmentScreen extends StatefulWidget {
-  const StaffAssignmentScreen({super.key, this.member});
+  const StaffAssignmentScreen({
+    super.key,
+    this.member,
+    this.startAsCoach = false,
+  });
   final Map<String, dynamic>? member;
+
+  /// Invites with Coach already on, when opened from Team → Coaches.
+  final bool startAsCoach;
   @override
   State<StaffAssignmentScreen> createState() => _StaffAssignmentScreenState();
 }
@@ -21,6 +29,14 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
     param1: context.read<WorkspaceCubit>(),
     param2: widget.member,
   );
+  @override
+  void initState() {
+    super.initState();
+    if (widget.member == null && widget.startAsCoach) {
+      cubit.selectPermission('coach', true);
+    }
+  }
+
   final form = GlobalKey<FormState>();
   late final name = TextEditingController(text: widget.member?['display_name']),
       email = TextEditingController(text: widget.member?['email']);
@@ -36,6 +52,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
     'manage_attendance': 'Manage subscriptions and attendance',
     'record_expenses': 'Record expenses',
     'view_finance': 'View financial reports',
+    'coach': 'Coach · teaches coaching plans in the assigned spaces',
   };
   @override
   void dispose() {
@@ -72,6 +89,25 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
         ),
       ),
     );
+    if (widget.member != null) {
+      final released = releasedPlans(
+        cubit.state.data.businesses,
+        widget.member!['id'],
+        coach: permissions.contains('coach'),
+        assignments: {
+          for (final a in data.assignments) a.businessId: a.resourceIds,
+        },
+      );
+      if (released.isNotEmpty &&
+          !await confirmAction(
+            context,
+            'Remove coaching plans?',
+            'With this access ${name.text.trim()} can no longer coach: ${released.join(', ')}. Those plans become Unassigned.',
+          )) {
+        return;
+      }
+      if (!mounted) return;
+    }
     String? link;
     final bool ok;
     if (widget.member == null) {

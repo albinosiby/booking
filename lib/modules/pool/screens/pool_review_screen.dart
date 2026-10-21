@@ -140,7 +140,10 @@ class PoolReviewScreen extends StatelessWidget {
                 ),
                 ReviewDetail(label: 'Expiry', value: p.validityLabel),
                 if (p.coaching)
-                  ReviewDetail(label: 'Coach', value: c.coachLabel(p.coachId)),
+                  ReviewDetail(
+                    label: 'Coach',
+                    value: model.coachLabel(p.coachId),
+                  ),
                 ReviewMore(
                   title: 'Plan details',
                   children: [

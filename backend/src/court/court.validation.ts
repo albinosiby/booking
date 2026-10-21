@@ -101,21 +101,6 @@ const plan = z
     renewal: z.literal("none"),
   })
   .strict();
-const coach = z
-  .object({
-    id,
-    name,
-    court_ids: z.array(id).max(50),
-    phone: z
-      .string()
-      .trim()
-      .regex(/^\+?[0-9 ()-]{6,30}$/)
-      .refine((v) => {
-        const digits = v.replace(/[^0-9]/g, "");
-        return digits.length >= 6 && digits.length <= 15;
-      }, "Enter a valid phone number with 6–15 digits."),
-  })
-  .strict();
 const minute = (v: string) => Number(v.slice(0, 2)) * 60 + Number(v.slice(3));
 const span = (v: z.infer<typeof courtHoursSchema>) => hoursSpan(v);
 function within(
@@ -130,7 +115,11 @@ export const courtConfigurationSchema = z
     schema_version: z.literal(1),
     courts: z.array(court).max(50),
     plans: z.array(plan).max(50).optional(),
-    coaches: z.array(coach).max(100).optional(),
+    // Coaches are team members now; plans reference their membership id.
+    coaches: z
+      .array(z.unknown())
+      .max(0, "Coach contacts were replaced by staff coaches. Refresh the app.")
+      .optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -138,20 +127,14 @@ export const courtConfigurationSchema = z
       ctx.addIssue({ code: "custom", message });
     const unique = (values: unknown[]) =>
       new Set(values).size === values.length;
-    const plans = v.plans ?? [],
-      coaches = v.coaches ?? [];
+    const plans = v.plans ?? [];
     if (
-      !unique([...v.courts, ...plans, ...coaches].map((x) => x.id)) ||
+      !unique([...v.courts, ...plans].map((x) => x.id)) ||
       !unique(v.courts.map((p) => p.name.toLowerCase()))
     )
       issue("Use unique identifiers and court names.");
-    if (!unique(coaches.map((c) => c.phone.replace(/[^0-9]/g, ""))))
-      issue("Coach contacts must have unique phone numbers.");
     const known = (ids: string[]) =>
       unique(ids) && ids.every((id) => v.courts.some((p) => p.id === id));
-    for (const c of coaches)
-      if (!known(c.court_ids))
-        issue("Assign coaches to distinct courts in this business.");
     for (const p of plans) {
       const amounts = [
         p.expiry_days,
@@ -180,12 +163,6 @@ export const courtConfigurationSchema = z
             p.coach_id !== null
       )
         issue("Class duration, seats and coach belong only to coaching plans.");
-      if (p.coach_id !== null) {
-        const contact = coaches.find((c) => c.id === p.coach_id);
-        if (!contact) issue("Choose a coach contact from this business.");
-        else if (p.court_ids.some((id) => !contact.court_ids.includes(id)))
-          issue("The coach must be assigned to every court of their plans.");
-      }
       if (!p.enabled) continue;
       for (const c of v.courts.filter((c) => p.court_ids.includes(c.id)))
         if (

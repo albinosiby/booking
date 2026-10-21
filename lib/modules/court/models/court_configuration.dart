@@ -306,21 +306,17 @@ class CourtConfiguration extends Equatable {
   CourtConfiguration({
     Iterable<CourtResource> courts = const [],
     Iterable<CourtPlan> plans = const [],
-    Iterable<CourtCoach> coaches = const [],
   }) : courts = List.unmodifiable(courts),
-       plans = List.unmodifiable(plans),
-       coaches = List.unmodifiable(coaches);
+       plans = List.unmodifiable(plans);
+
   final List<CourtResource> courts;
   final List<CourtPlan> plans;
-  final List<CourtCoach> coaches;
   CourtConfiguration copyWith({
     Iterable<CourtResource>? courts,
     Iterable<CourtPlan>? plans,
-    Iterable<CourtCoach>? coaches,
   }) => CourtConfiguration(
     courts: courts ?? this.courts,
     plans: plans ?? this.plans,
-    coaches: coaches ?? this.coaches,
   );
 
   /// Removes references to a deleted court from plans and coach contacts.
@@ -333,7 +329,6 @@ class CourtConfiguration extends Equatable {
         clearCoach: !p.courtIds.any((v) => v != id),
       ),
     ),
-    coaches: coaches.map((c) => c.withCourts(c.courtIds.where((v) => v != id))),
   );
   // Optional keys are omitted when empty so older APIs keep accepting saves.
   Map<String, dynamic> toJson({bool localDraft = false}) => {
@@ -342,20 +337,25 @@ class CourtConfiguration extends Equatable {
     'courts': courts.map((p) => p.toJson(localDraft: localDraft)).toList(),
     if (plans.isNotEmpty)
       'plans': plans.map((p) => p.toJson(localDraft: localDraft)).toList(),
-    if (coaches.isNotEmpty) 'coaches': coaches.map((c) => c.toJson()).toList(),
   };
-  factory CourtConfiguration.fromJson(Map<String, dynamic> v) =>
-      CourtConfiguration(
-        courts: (v['courts'] as List).map(
-          (p) => CourtResource.fromJson(Map<String, dynamic>.from(p)),
-        ),
-        plans: ((v['plans'] as List?) ?? const []).map(
-          (p) => CourtPlan.fromJson(Map<String, dynamic>.from(p)),
-        ),
-        coaches: ((v['coaches'] as List?) ?? const []).map(
-          (c) => CourtCoach.fromJson(Map<String, dynamic>.from(c)),
-        ),
-      );
+  factory CourtConfiguration.fromJson(Map<String, dynamic> v) {
+    // Coach contacts were replaced by team coaches; their plans are
+    // Unassigned until a team coach takes them.
+    final contacts = {
+      for (final c in v['coaches'] as List? ?? const []) (c as Map)['id'],
+    };
+    return CourtConfiguration(
+      courts: (v['courts'] as List).map(
+        (p) => CourtResource.fromJson(Map<String, dynamic>.from(p)),
+      ),
+      plans: ((v['plans'] as List?) ?? const []).map((p) {
+        final plan = CourtPlan.fromJson(Map<String, dynamic>.from(p));
+        return contacts.contains(plan.coachId)
+            ? plan.copyWith(clearCoach: true)
+            : plan;
+      }),
+    );
+  }
   factory CourtConfiguration.initial(Business? b) {
     if (b?.configuration?['kind'] == 'court_v1') {
       return CourtConfiguration.fromJson(b!.configuration!);
@@ -487,17 +487,12 @@ class CourtConfiguration extends Equatable {
       }
     }
     for (final p in plans) {
-      final error = p.validate(
-        courts,
-        coaches,
-        complete: complete,
-        today: today,
-      );
+      final error = p.validate(courts, complete: complete, today: today);
       if (error != null) return error;
     }
     return null;
   }
 
   @override
-  List<Object?> get props => [courts, plans, coaches];
+  List<Object?> get props => [courts, plans];
 }

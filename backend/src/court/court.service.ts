@@ -1,4 +1,5 @@
 import { protectBookingInventory } from "../bookings/configuration.guard";
+import { assertPlanCoaches } from "../workspace/coach.access";
 import {
   Injectable,
   BadRequestException,
@@ -51,6 +52,7 @@ export class CourtService {
           );
         }
       }
+      await assertPlanCoaches(db, b.organization_id, id, v.configuration);
       const courts = v.configuration.courts;
       const current = (
         await db.query<Row>("SELECT id FROM resources WHERE business_id=$1", [

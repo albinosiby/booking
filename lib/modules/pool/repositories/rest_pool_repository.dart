@@ -2,6 +2,7 @@ import '../../../constants/api_path.dart';
 import '../../../utils/services/rest_api_service.dart';
 import '../models/pool_configuration.dart';
 import 'pool_repository.dart';
+import '../../team/models/staff_coaches.dart';
 
 class RestPoolRepository implements PoolRepository {
   RestPoolRepository(this.api);
@@ -25,26 +26,6 @@ class RestPoolRepository implements PoolRepository {
   }
 
   @override
-  Future<List<PoolCoach>> loadCoaches(String businessId) async {
-    final json = await api.request('/team');
-    final coaches = <PoolCoach>[];
-    for (final member in json['members'] as List) {
-      if (member['active'] != true) continue;
-      final owner = member['role'] == 'owner';
-      final assignments = member['assignments'] as List;
-      final assignment = assignments
-          .where((a) => a['business_id'] == businessId)
-          .firstOrNull;
-      if (!owner && assignment == null) continue;
-      coaches.add(
-        PoolCoach(
-          id: member['id'],
-          name: member['display_name'],
-          owner: owner,
-          poolIds: owner ? [] : List<String>.from(assignment['resource_ids']),
-        ),
-      );
-    }
-    return List.unmodifiable(coaches);
-  }
+  Future<List<PoolCoach>> loadCoaches(String businessId) async =>
+      staffCoaches(await api.request(ApiPath.team), businessId);
 }

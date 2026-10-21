@@ -14,6 +14,7 @@ import 'court_resources_screen.dart';
 import 'court_pricing_screen.dart';
 import 'court_review_screen.dart';
 import 'court_coaching_screen.dart';
+import '../../pool/models/pool_configuration.dart' show PoolCoach;
 
 class CourtSetupScreen extends StatefulWidget {
   const CourtSetupScreen({super.key, required this.businessId});
@@ -28,9 +29,20 @@ class _CourtSetupScreenState extends State<CourtSetupScreen> {
     param2: widget.businessId,
   );
   final form = GlobalKey<FormState>();
+
+  /// Names plan coaches; plans still edit while this is empty.
+  List<PoolCoach> coaches = const [];
   @override
   void initState() {
     super.initState();
+    if (context.read<WorkspaceCubit>().state.data.isOwner) {
+      cubit.repository
+          .loadCoaches(widget.businessId)
+          .then(
+            (v) => mounted ? setState(() => coaches = v) : null,
+            onError: (_) {},
+          );
+    }
   }
 
   @override
@@ -59,6 +71,7 @@ class _CourtSetupScreenState extends State<CourtSetupScreen> {
       model: s.coachingModel,
       cubit: cubit,
       disabled: s.disabled,
+      coaches: coaches,
     ),
     CourtSection.review => CourtReviewScreen(
       model: s.reviewModel,

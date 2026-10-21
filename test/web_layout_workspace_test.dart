@@ -172,16 +172,15 @@ Future<(WorkspaceCubit, FakeTeamRepository)> teamSession() async {
 }
 
 Future<WorkspaceCubit> coachSession({bool withCoach = true}) async {
-  final f = await coaches.fixture();
+  final f = await coaches.fixture(
+    members: [
+      if (withCoach) coaches.staff('arjun', 'Arjun Pillai', pools: ['pool']),
+    ],
+  );
   addTearDown(f.session.close);
   if (withCoach) {
-    var b = (await f.repository.load()).single;
-    await f.repository.add(b.id, b.version, 'Arjun Pillai', '9876543210');
-    b = (await f.repository.load()).single;
-    final id = b.coaches.single.id;
-    await f.repository.assignSpaces(b.id, b.version, id, {'pool'});
-    b = (await f.repository.load()).single;
-    await f.repository.assign(b.id, b.version, id, {'beginner'});
+    final b = (await f.repository.load()).businesses.single;
+    await f.repository.assign(b.id, b.version, 'arjun', {'beginner'});
     await f.session.load();
   }
   getIt.registerFactoryParam<TeamCoachesCubit, WorkspaceSession, void>(
@@ -349,13 +348,13 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(AppTwoPane), findsOneWidget);
     expect(find.text('Arjun Pillai'), findsWidgets);
-    expect(find.byTooltip('Add coach'), findsOneWidget);
+    expect(find.text('Invite coach'), findsOneWidget);
     expect(find.byTooltip('Refresh coaches'), findsOneWidget);
     expect(find.text('Coaching plans'), findsOneWidget);
-    await tester.tap(find.byTooltip('Add coach'));
+    await tester.tap(find.text('Assign coaching plans'));
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsOneWidget);
-    expect(find.text('Save coach'), findsOneWidget);
+    expect(find.text('Save assignments'), findsOneWidget);
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsNothing);

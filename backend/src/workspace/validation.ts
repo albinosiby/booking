@@ -16,6 +16,8 @@ export const permissionNames = [
   "manage_attendance",
   "record_expenses",
   "view_finance",
+  // Teaches coaching plans and marks attendance for their own classes.
+  "coach",
 ] as const;
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 export const locationSchema = z
@@ -111,7 +113,7 @@ export const invitationSchema = z
     email: z.email().transform((v) => v.toLowerCase()),
     display_name: name,
     role: z.enum(["staff", "manager"]),
-    permissions: z.array(z.enum(permissionNames)).max(6),
+    permissions: z.array(z.enum(permissionNames)).max(permissionNames.length),
     assignments: z
       .array(
         z

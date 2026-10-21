@@ -25,5 +25,6 @@ class Routes {
       organizationEdit = '/organization/details/edit',
       team = '/team',
       teamCoaches = '/team/coaches',
+      myClasses = '/coaching/classes',
       invite = '/invite';
 }

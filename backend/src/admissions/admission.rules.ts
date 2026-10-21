@@ -68,20 +68,20 @@ export function currentCoachId(
   const plan = config?.plans?.find((p: Row) => p.id === planId);
   return (plan ? plan.coach_id : snapshot?.coach_id) ?? null;
 }
-export function coachName(config: Row | undefined, coachId: string | null) {
+/** Coach names by membership id; see `coachNames` in the admission service. */
+export type CoachNames = Map<string, string>;
+export function coachName(names: CoachNames, coachId: string | null) {
   if (coachId === null) return "Unassigned";
-  // Older pool plans name a staff member instead of a coach contact.
-  return (
-    config?.coaches?.find((c: Row) => c.id === coachId)?.name ?? "Staff coach"
-  );
+  return names.get(coachId) ?? "Unassigned";
 }
 export function currentCoachName(
   config: Row | undefined,
   planId: string,
-  snapshot?: Row,
+  snapshot: Row | undefined,
+  names: CoachNames,
 ) {
   return config?.plans?.some((p: Row) => p.id === planId)
-    ? coachName(config, currentCoachId(config, planId))
+    ? coachName(names, currentCoachId(config, planId))
     : (snapshot?.coach_name ?? "Unassigned");
 }
 export function validSwimmingDuration(pool: Row, duration: number) {

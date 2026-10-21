@@ -32,6 +32,9 @@ export class AdmissionController {
   ) {
     return this.service.coachConflicts(r.actor, v);
   }
+  @Get("classes") classes(@Req() r: AuthRequest, @Query() v: unknown) {
+    return this.service.classes(r.actor, v);
+  }
   @Get() list(@Req() r: AuthRequest, @Query() v: unknown) {
     return this.service.list(r.actor, v);
   }

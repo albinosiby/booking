@@ -61,7 +61,15 @@ class PoolPlansModel {
 }
 
 class PoolReviewModel {
-  const PoolReviewModel(this.configuration, this.currency);
+  const PoolReviewModel(
+    this.configuration,
+    this.currency, {
+    this.coaches = const [],
+  });
   final PoolConfiguration configuration;
   final String currency;
+  final List<PoolCoach> coaches;
+  String coachLabel(String? id) => id == null
+      ? 'Not assigned'
+      : coaches.where((c) => c.id == id).firstOrNull?.name ?? 'Assigned coach';
 }

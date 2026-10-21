@@ -53,6 +53,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     (
       null,
       [
+        if (w.isCoach)
+          const _Destination(
+            Icons.sports_outlined,
+            'My classes',
+            'Your coaching classes and attendance',
+            Routes.myClasses,
+          ),
         if ([
           'view_bookings',
           'manage_bookings',

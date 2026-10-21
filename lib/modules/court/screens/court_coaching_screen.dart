@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../models/court_screen_models.dart';
 import '../models/court_configuration.dart';
+import '../../pool/models/pool_configuration.dart' show PoolCoach;
 import '../cubit/court_setup_cubit.dart';
 import '../widgets/court_editors.dart';
 
@@ -12,10 +13,18 @@ class CourtCoachingScreen extends StatelessWidget {
     required this.model,
     required this.cubit,
     required this.disabled,
+    this.coaches = const [],
   });
   final CourtCoachingModel model;
   final CourtSetupCubit cubit;
   final bool disabled;
+
+  /// Team coaches of this business, to name assigned plan coaches.
+  final List<PoolCoach> coaches;
+  String coachName(CourtPlan plan) => plan.coachId == null
+      ? 'Unassigned'
+      : coaches.where((c) => c.id == plan.coachId).firstOrNull?.name ??
+            'Assigned coach';
   @override
   Widget build(BuildContext context) {
     final p = model.selected;
@@ -49,7 +58,7 @@ class CourtCoachingScreen extends StatelessWidget {
                   (p) => (
                     p.id,
                     p.name,
-                    '${p.coaching ? 'Coaching' : 'Court plan'} · ${p.allowance} ${p.coaching ? 'classes' : 'play days'} · ${p.validityLabel} · ${model.currency} ${p.price.isEmpty ? 'not set' : p.price}${p.coaching ? ' · ${model.coachName(p)}' : ''}${p.enabled ? '' : ' · disabled'}',
+                    '${p.coaching ? 'Coaching' : 'Court plan'} · ${p.allowance} ${p.coaching ? 'classes' : 'play days'} · ${p.validityLabel} · ${model.currency} ${p.price.isEmpty ? 'not set' : p.price}${p.coaching ? ' · ${coachName(p)}' : ''}${p.enabled ? '' : ' · disabled'}',
                   ),
                 )
                 .toList(),
@@ -203,7 +212,7 @@ class CourtCoachingScreen extends StatelessWidget {
               labelText: 'Coach',
               prefixIcon: Icon(Icons.sports_outlined),
             ),
-            child: Text(model.coachName(p)),
+            child: Text(coachName(p)),
           ),
           if (p.coachId != null)
             Align(

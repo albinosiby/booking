@@ -179,7 +179,10 @@ BusinessDetailSummary describeBusiness(Business business, String currency) {
                       if (p.coaching) ...[
                         Field('Class duration', '${p.classDuration} min'),
                         Field('Class capacity', '${p.seats} students'),
-                        Field('Coach assignment', c.coachLabel(p.coachId)),
+                        Field(
+                          'Coach assignment',
+                          p.coachId == null ? 'Not assigned' : 'Assigned',
+                        ),
                       ],
                       Field('Plan price', reviewPrice(currency, p.price)),
                       const Field('Renewal', 'No automatic renewal'),

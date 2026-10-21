@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../../../design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
@@ -25,155 +26,241 @@ class _TeamCoachesScreenState extends State<TeamCoachesScreen> {
   }
 
   Future<void> editor() async {
-    await showAdaptiveSheet<void>(
-      context: context,
-      isDismissible: false,
-      showClose: false,
-      showDragHandle: true,
-      scrollable: false,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(top: isDesktopWidth(context) ? 16 : 0),
-        child: _CoachEditor(cubit: cubit),
-      ),
-    );
+    if (isDesktopWidth(context)) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => Dialog(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: _CoachEditor(cubit: cubit),
+            ),
+          ),
+        ),
+      );
+    } else {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        isDismissible: false,
+        enableDrag: false,
+        builder: (_) => _CoachEditor(cubit: cubit),
+      );
+    }
     cubit.closeEditor();
   }
 
-  void add() {
-    cubit.beginAdd();
-    editor();
+  /// Coaches are staff: inviting one opens staff access with Coach on.
+  Future<void> addCoach() async {
+    await context.push('/team/invite', extra: 'coach');
+    cubit.load();
   }
+
+  Future<void> editStaff(Map<String, dynamic> member) async {
+    await context.push('/team/edit', extra: member);
+    cubit.load();
+  }
+
+  Future<void> ownerCoach(TeamCoachesModel s, bool coach) async {
+    final plans = cubit.ownerId == null
+        ? const <CoachPlan>[]
+        : s.plansOf(cubit.ownerId!);
+    if (!coach &&
+        plans.isNotEmpty &&
+        !await confirmAction(
+          context,
+          'Stop coaching?',
+          'These plans will become Unassigned: ${plans.map((p) => p.name).join(', ')}.',
+        )) {
+      return;
+    }
+    await cubit.setOwnerCoach(coach);
+  }
+
+  Widget ownerCard(TeamCoachesModel s) => AppCard(
+    padding: const EdgeInsets.all(6),
+    child: SwitchListTile(
+      title: const Text('I also coach'),
+      subtitle: const Text(
+        'Assign yourself coaching plans and mark attendance in My classes.',
+      ),
+      value: s.ownerCoach,
+      onChanged: s.busy || s.loading ? null : (v) => ownerCoach(s, v),
+    ),
+  );
 
   Widget coachCard(
     BuildContext context,
     TeamCoachesModel s,
     CoachBusiness business,
     PoolCoach coach,
-  ) => AppCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const CircleAvatar(child: Icon(Icons.sports_outlined)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    coach.name,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  SelectableText(coach.phone),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (coach.poolIds.isEmpty)
-          Text('No ${business.spacesLabel} assigned')
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
+  ) {
+    final member = s.member(coach.id);
+    final spaces = business.spaces.where((p) => coach.poolIds.contains(p.id));
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (final space in business.spaces.where(
-                (p) => coach.poolIds.contains(p.id),
-              ))
-                Chip(label: Text(space.name)),
+              const CircleAvatar(child: Icon(Icons.sports_outlined)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      coach.name,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(coach.owner ? 'Owner' : 'Staff'),
+                  ],
+                ),
+              ),
             ],
           ),
-        OutlinedButton.icon(
-          onPressed: s.busy || business.spaces.isEmpty
-              ? null
-              : () {
-                  cubit.beginSpaces(business.id, coach.id);
-                  editor();
-                },
-          icon: Icon(
-            business.court ? Icons.sports_tennis : Icons.pool_outlined,
+          const SizedBox(height: 12),
+          if (spaces.length == business.spaces.length)
+            Text('All ${business.spacesLabel}')
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final space in spaces) Chip(label: Text(space.name)),
+              ],
+            ),
+          const SizedBox(height: 12),
+          Text(
+            business.plans.any((p) => p.coachId == coach.id)
+                ? business.plans
+                      .where((p) => p.coachId == coach.id)
+                      .map((p) => p.name)
+                      .join(' · ')
+                : 'No coaching plans assigned',
           ),
-          label: Text('Assign ${business.spacesLabel}'),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: s.busy || business.plans.isEmpty
+                ? null
+                : () {
+                    cubit.beginAssign(business.id, coach.id);
+                    editor();
+                  },
+            icon: const Icon(Icons.assignment_ind_outlined),
+            label: const Text('Assign coaching plans'),
+          ),
+          if (!coach.owner && member != null)
+            TextButton.icon(
+              onPressed: s.busy ? null : () => editStaff(member),
+              icon: Icon(
+                business.court ? Icons.sports_tennis : Icons.pool_outlined,
+              ),
+              label: Text('Change ${business.spacesLabel} in staff access'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> businessCoaches(
+    BuildContext context,
+    TeamCoachesModel s,
+    CoachBusiness business,
+  ) => [
+    if (business.coaches.isEmpty)
+      const AppCard(
+        child: Text(
+          'No coaches here yet. Turn on Coach in a staff member’s access for this business, or switch on “I also coach”.',
         ),
-        const SizedBox(height: 12),
-        Text(
-          business.plans.any((p) => p.coachId == coach.id)
-              ? business.plans
-                    .where((p) => p.coachId == coach.id)
-                    .map((p) => p.name)
-                    .join(' · ')
-              : 'No coaching plans assigned',
+      )
+    else
+      AppGrid(
+        minTileWidth: 320,
+        maxColumns: 2,
+        children: [
+          for (final coach in business.coaches)
+            coachCard(context, s, business, coach),
+        ],
+      ),
+    if (business.plans.isEmpty)
+      Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Text(
+          'Add a coaching plan in ${business.court ? 'court' : 'pool'} settings to assign a coach.',
         ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: s.busy || business.plans.isEmpty
-              ? null
-              : () {
-                  cubit.beginAssign(business.id, coach.id);
-                  editor();
-                },
-          icon: const Icon(Icons.assignment_ind_outlined),
-          label: const Text('Assign coaching plans'),
-        ),
-      ],
+      ),
+  ];
+
+  List<Widget> status(TeamCoachesModel s, {bool card = true}) => [
+    if (s.loading)
+      AppLoadingState(
+        initial: s.businesses.isEmpty,
+        label: s.businesses.isEmpty ? 'Loading coaches…' : null,
+      ),
+    if (s.error != null && !s.editing)
+      AppErrorWidget(message: s.error!, onRetry: cubit.load),
+    if (!s.loading && s.businesses.isEmpty)
+      AppEmptyState(
+        showCard: card,
+        title: 'Set up a pool or court first',
+        message:
+            'Save a pool or court configuration, then assign coaches here.',
+      ),
+  ];
+
+  List<Widget> actions(TeamCoachesModel s, {bool wide = false}) => [
+    IconButton(
+      tooltip: 'Refresh coaches',
+      onPressed: s.loading || s.busy ? null : cubit.load,
+      icon: const Icon(Icons.refresh),
     ),
-  );
+    if (cubit.authorized)
+      if (wide) ...[
+        const SizedBox(width: 6),
+        FilledButton.icon(
+          onPressed: s.busy ? null : addCoach,
+          icon: const Icon(Icons.person_add_alt_outlined, size: 18),
+          label: const Text('Invite coach'),
+        ),
+      ] else
+        IconButton(
+          tooltip: 'Invite coach',
+          onPressed: s.busy ? null : addCoach,
+          icon: const Icon(Icons.person_add_alt_outlined),
+        ),
+  ];
+
+  static const subtitle =
+      'Coaches are team members with Coach turned on in their staff access. Assign them coaching plans here.';
 
   // Wide windows: coach cards per business beside a coaching-plan summary.
   Widget desktop(BuildContext context, TeamCoachesModel s) {
     final theme = Theme.of(context), colors = theme.colorScheme;
-    final canAdd = s.businesses.isNotEmpty && !s.busy && !s.loading;
     return AppPage(
       back: true,
       showAppBar: true,
       title: 'Coaches',
       eyebrow: 'TEAM & ACCESS',
-      subtitle:
-          'Add coach contacts and assign them to coaching plans. Staff access is managed separately.',
+      subtitle: subtitle,
       maxWidth: 1200,
-      actions: [
-        IconButton(
-          tooltip: 'Refresh coaches',
-          onPressed: s.loading || s.busy ? null : cubit.load,
-          icon: const Icon(Icons.refresh),
-        ),
-        if (cubit.authorized) ...[
-          const SizedBox(width: 6),
-          Tooltip(
-            message: 'Add coach',
-            child: FilledButton.icon(
-              onPressed: canAdd ? add : null,
-              icon: const Icon(Icons.person_add_alt_outlined, size: 18),
-              label: const Text('Add coach'),
-            ),
-          ),
-        ],
-      ],
+      actions: actions(s, wide: true),
       children: [
         if (!cubit.authorized)
           const AppErrorWidget(message: 'Only the owner can manage coaches.')
         else ...[
-          if (s.loading)
-            AppLoadingState(
-              initial: s.businesses.isEmpty,
-              label: s.businesses.isEmpty ? 'Loading coaches…' : null,
-            ),
-          if (s.error != null && s.editor == null)
-            AppErrorWidget(message: s.error!, onRetry: cubit.load),
-          if (!s.loading && s.businesses.isEmpty)
-            const AppEmptyState(
-              title: 'Set up a pool or court first',
-              message:
-                  'Save a pool or court configuration, then add coaches here.',
-            ),
+          ...status(s),
           if (s.businesses.isNotEmpty)
             AppTwoPane(
               secondaryWidth: 340,
               primary: [
+                ownerCard(s),
                 for (final business in s.businesses)
                   AppPanel(
                     title: business.name,
@@ -183,30 +270,7 @@ class _TeamCoachesScreenState extends State<TeamCoachesScreen> {
                         '${business.spaces.length} ${business.spacesLabel}',
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (business.coaches.isEmpty)
-                          const AppCard(
-                            child: Text(
-                              'No coaches added. Coaching plans remain Unassigned.',
-                            ),
-                          )
-                        else
-                          AppGrid(
-                            minTileWidth: 320,
-                            maxColumns: 2,
-                            children: [
-                              for (final coach in business.coaches)
-                                coachCard(context, s, business, coach),
-                            ],
-                          ),
-                        if (business.plans.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: Text(
-                              'Add a coaching plan in ${business.court ? 'court' : 'pool'} settings to assign a coach.',
-                            ),
-                          ),
-                      ],
+                      children: businessCoaches(context, s, business),
                     ),
                   ),
               ],
@@ -264,9 +328,7 @@ class _TeamCoachesScreenState extends State<TeamCoachesScreen> {
                                             .where((c) => c.id == plan.coachId)
                                             .firstOrNull
                                             ?.name ??
-                                        (plan.coachId == null
-                                            ? 'Unassigned'
-                                            : 'Staff coach'),
+                                        'Unassigned',
                                     color: plan.coachId == null
                                         ? colors.onSurfaceVariant
                                         : null,
@@ -287,87 +349,42 @@ class _TeamCoachesScreenState extends State<TeamCoachesScreen> {
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) => BlocBuilder<TeamCoachesCubit, TeamCoachesModel>(
-    bloc: cubit,
-    builder: (context, s) => isDesktopWidth(context)
-        ? desktop(context, s)
-        : AppPage(
-            back: true,
-            showAppBar: true,
-            title: 'Coaches',
-            compactHeader: true,
-            subtitle:
-                'Add coach contacts and assign them to coaching plans. Staff access is managed separately.',
-            actions: [
-              IconButton(
-                tooltip: 'Refresh coaches',
-                onPressed: s.loading || s.busy ? null : cubit.load,
-                icon: const Icon(Icons.refresh),
-              ),
-              if (cubit.authorized)
-                IconButton(
-                  tooltip: 'Add coach',
-                  onPressed: s.businesses.isEmpty || s.busy || s.loading
-                      ? null
-                      : () {
-                          cubit.beginAdd();
-                          editor();
-                        },
-                  icon: const Icon(Icons.person_add_alt_outlined),
-                ),
-            ],
-            children: [
-              if (!cubit.authorized)
-                const AppErrorWidget(
-                  message: 'Only the owner can manage coaches.',
-                )
-              else ...[
-                if (s.loading)
-                  AppLoadingState(
-                    initial: s.businesses.isEmpty,
-                    label: s.businesses.isEmpty ? 'Loading coaches…' : null,
-                  ),
-                if (s.error != null && s.editor == null)
-                  AppErrorWidget(message: s.error!, onRetry: cubit.load),
-                if (!s.loading && s.businesses.isEmpty)
-                  const AppEmptyState(
-                    showCard: false,
-                    title: 'Set up a pool or court first',
-                    message:
-                        'Save a pool or court configuration, then add coaches here.',
-                  ),
-                for (final business in s.businesses) ...[
-                  Text(
-                    business.name,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  if (business.coaches.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 20),
-                      child: Text(
-                        'No coaches added. Coaching plans remain Unassigned.',
+  Widget build(BuildContext context) =>
+      BlocBuilder<TeamCoachesCubit, TeamCoachesModel>(
+        bloc: cubit,
+        builder: (context, s) => isDesktopWidth(context)
+            ? desktop(context, s)
+            : AppPage(
+                back: true,
+                showAppBar: true,
+                title: 'Coaches',
+                compactHeader: true,
+                subtitle: subtitle,
+                actions: actions(s),
+                children: [
+                  if (!cubit.authorized)
+                    const AppErrorWidget(
+                      message: 'Only the owner can manage coaches.',
+                    )
+                  else ...[
+                    ...status(s, card: false),
+                    if (s.businesses.isNotEmpty) ...[
+                      ownerCard(s),
+                      const SizedBox(height: 20),
+                    ],
+                    for (final business in s.businesses) ...[
+                      Text(
+                        business.name,
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
-                    ),
-                  for (final coach in business.coaches)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: coachCard(context, s, business, coach),
-                    ),
-                  if (business.plans.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: Text(
-                        'Add a coaching plan in ${business.court ? 'court' : 'pool'} settings to assign a coach.',
-                      ),
-                    ),
+                      const SizedBox(height: 12),
+                      ...businessCoaches(context, s, business),
+                      const SizedBox(height: 20),
+                    ],
+                  ],
                 ],
-              ],
-            ],
-          ),
-  );
+              ),
+      );
 }
 
 class _CoachEditor extends StatelessWidget {
@@ -379,9 +396,8 @@ class _CoachEditor extends StatelessWidget {
   ) => BlocBuilder<TeamCoachesCubit, TeamCoachesModel>(
     bloc: cubit,
     builder: (context, s) {
-      final adding = s.editor == CoachEditor.add;
-      final spaces = s.editor == CoachEditor.spaces;
       final business = s.selectedBusiness;
+      final spaces = business?.spacesLabel ?? 'pool spaces';
       return PopScope(
         canPop: !s.busy,
         child: SafeArea(
@@ -400,11 +416,7 @@ class _CoachEditor extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        adding
-                            ? 'Add coach'
-                            : spaces
-                            ? 'Assign ${business?.spacesLabel ?? 'pool spaces'}'
-                            : 'Assign coaching plans',
+                        'Assign coaching plans',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ),
@@ -416,136 +428,53 @@ class _CoachEditor extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                if (adding) ...[
-                  if (s.businesses.length > 1) ...[
-                    AppPicker(
-                      label: 'Business',
-                      value: s.businessId,
-                      enabled: !s.busy,
-                      items: s.businesses
-                          .map((b) => PickerItem(b.id, b.name))
-                          .toList(),
-                      onChanged: cubit.business,
-                    ),
-                    const SizedBox(height: 16),
-                  ] else
-                    Text(business?.name ?? ''),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    initialValue: s.name,
-                    enabled: !s.busy,
-                    decoration: const InputDecoration(labelText: 'Coach name'),
-                    textCapitalization: TextCapitalization.words,
-                    maxLength: 100,
-                    onChanged: cubit.name,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    initialValue: s.phone,
-                    enabled: !s.busy,
-                    decoration: const InputDecoration(
-                      labelText: 'Phone number',
-                    ),
-                    keyboardType: TextInputType.phone,
-                    maxLength: 30,
-                    onChanged: cubit.phone,
-                  ),
-                  const SizedBox(height: 12),
+                Text(s.selectedCoach?.name ?? 'Coach'),
+                const SizedBox(height: 8),
+                Text(
+                  'Choose plans for this coach. Only plans covered by the $spaces in their staff access are shown. Selecting a plan assigned to another coach replaces that assignment.',
+                ),
+                const SizedBox(height: 12),
+                if (s.eligiblePlans.isEmpty)
                   Text(
-                    'This adds a coach contact without a login. Assign ${business?.spacesLabel ?? 'pool spaces'}, then coaching plans after saving.',
+                    'Add the required $spaces to this coach’s staff access to make coaching plans available.',
                   ),
-                ] else ...[
-                  Text(
-                    business?.coaches
-                            .where((c) => c.id == s.coachId)
-                            .firstOrNull
-                            ?.name ??
-                        'Coach',
+                for (final plan in s.eligiblePlans)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(plan.name),
+                    value: s.planIds.contains(plan.id),
+                    subtitle: Text(
+                      plan.coachId == null
+                          ? 'Unassigned'
+                          : plan.coachId != s.coachId
+                          ? 'Assigned to another coach'
+                          : plan.keepsCoach(s.selectedCoach?.poolIds ?? [])
+                          ? 'Assigned to this coach'
+                          : 'Not covered by this coach’s $spaces. Untick to save, or add the missing $spaces to their staff access first.',
+                    ),
+                    onChanged: s.busy
+                        ? null
+                        : (value) => cubit.toggle(plan.id, value ?? false),
                   ),
-                  const SizedBox(height: 8),
-                  if (spaces) ...[
-                    Text(
-                      'Choose one or more ${business?.spacesLabel ?? 'pool spaces'}. Clear all to leave this coach Unassigned.',
-                    ),
-                    for (final space in business?.spaces ?? <CoachSpace>[])
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(space.name),
-                        value: s.spaceIds.contains(space.id),
-                        onChanged: s.busy
-                            ? null
-                            : (value) =>
-                                  cubit.toggleSpace(space.id, value ?? false),
-                      ),
-                    if (s.affectedPlans.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        'These coaching-plan assignments will also be removed: ${s.affectedPlans.map((p) => p.name).join(', ')}',
-                      ),
-                    ],
-                  ] else ...[
-                    Text(
-                      'Choose plans for this coach. Only plans covered by their assigned ${business?.spacesLabel ?? 'pool spaces'} are shown. Selecting a plan assigned to another coach replaces that assignment.',
-                    ),
-                    const SizedBox(height: 12),
-                    if (s.eligiblePlans.isEmpty)
-                      Text(
-                        'Assign the required ${business?.spacesLabel ?? 'pool spaces'} first to make coaching plans available.',
-                      ),
-                    for (final plan in s.eligiblePlans)
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(plan.name),
-                        value: s.planIds.contains(plan.id),
-                        subtitle: Text(
-                          plan.coachId == null
-                              ? 'Unassigned'
-                              : plan.coachId != s.coachId
-                              ? 'Assigned to another coach'
-                              : plan.keepsCoach(s.selectedCoach?.poolIds ?? [])
-                              ? 'Assigned to this coach'
-                              : 'Not covered by this coach’s ${business?.spacesLabel ?? 'pool spaces'}. Untick to save, or assign the missing ${business?.spacesLabel ?? 'pool spaces'} first.',
-                        ),
-                        onChanged: s.busy
-                            ? null
-                            : (value) => cubit.toggle(plan.id, value ?? false),
-                      ),
-                  ],
-                ],
                 if (s.error != null) AppErrorWidget(message: s.error!),
                 const SizedBox(height: 20),
                 AppButton(
-                  label: adding ? 'Save coach' : 'Save assignments',
+                  label: 'Save assignments',
                   busy: s.busy,
                   onPressed: s.busy
                       ? null
                       : () async {
-                          var confirmed = false;
-                          if (!adding && !spaces) {
-                            final conflicts = await cubit.assignmentConflicts();
-                            if (conflicts == null || !context.mounted) return;
-                            if (conflicts.isNotEmpty &&
-                                !await confirmAction(
-                                  context,
-                                  'Coach has overlapping classes',
-                                  'After this change the coach would teach overlapping upcoming classes:\n${conflicts.join('\n')}\n\nReschedule those classes or choose another coach. Save anyway?',
-                                )) {
-                              return;
-                            }
-                            if (!context.mounted) return;
+                          final conflicts = await cubit.assignmentConflicts();
+                          if (conflicts == null || !context.mounted) return;
+                          if (conflicts.isNotEmpty &&
+                              !await confirmAction(
+                                context,
+                                'Coach has overlapping classes',
+                                'After this change the coach would teach overlapping upcoming classes:\n${conflicts.join('\n')}\n\nReschedule those classes or choose another coach. Save anyway?',
+                              )) {
+                            return;
                           }
-                          if (spaces && cubit.state.affectedPlans.isNotEmpty) {
-                            confirmed = await confirmAction(
-                              context,
-                              'Remove affected plan assignments?',
-                              'The following plans will become Unassigned: ${cubit.state.affectedPlans.map((p) => p.name).join(', ')}. The coach’s ${business?.court == true ? 'court' : 'pool-space'} assignments will be saved at the same time.',
-                            );
-                            if (!confirmed || !context.mounted) return;
-                          }
-                          if (await cubit.saveEditor(
-                                removeAffectedPlans: confirmed,
-                              ) &&
-                              context.mounted) {
+                          if (await cubit.saveEditor() && context.mounted) {
                             Navigator.pop(context);
                           }
                         },

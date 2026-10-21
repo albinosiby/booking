@@ -17,7 +17,7 @@ All reservation views and availability use the existing booking inventory. Admis
 
 ## Permissions and architecture
 
-Existing permissions are reused: `view_bookings` for reading, `manage_bookings` for enrollment/schedule management, `manage_attendance` for check-in/attendance, and `collect_payments` for collections. Owners can refund and correct attendance. All reads/writes check current organization membership and assigned business/resource scope. Coach contacts do not create staff logins.
+Existing permissions are reused: `view_bookings` for reading, `manage_bookings` for enrollment/schedule management, `manage_attendance` for check-in/attendance, and `collect_payments` for collections. Owners can refund and correct attendance. All reads/writes check current organization membership and assigned business/resource scope. Coaches are staff (or the owner) with the `coach` permission; they mark attendance for their own classes in My classes without `manage_attendance`. See [Staff coaches](staff-coaches.md).
 
 Flutter feature: `lib/modules/admissions/{models,repositories,cubit,screens,widgets}`. Screens call Cubit commands; repositories own HTTP mapping. Session/access changes clear protected state and invalidate in-flight results. Unknown write outcomes retain the original command key and lock editing until retry resolves them. Calendar uses current admission/session versions for attendance.
 

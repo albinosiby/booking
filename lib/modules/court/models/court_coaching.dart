@@ -57,8 +57,7 @@ class CourtPlan extends Equatable {
   };
 
   String? validate(
-    List<CourtResource> courts,
-    List<CourtCoach> coaches, {
+    List<CourtResource> courts, {
     bool complete = false,
     String? today,
   }) {
@@ -91,14 +90,7 @@ class CourtPlan extends Equatable {
     }
     final error = hours.validate();
     if (error != null) return '$name: $error';
-    final coach = coaches.where((c) => c.id == coachId).firstOrNull;
-    if (coaching &&
-        coachId != null &&
-        (coach == null || !courtIds.every(coach.courtIds.contains))) {
-      return coach == null
-          ? '$name: its coach was removed. Unassign the coach here.'
-          : '$name: ${coach.name} isn’t assigned to every court of this plan. Unassign the coach here, or add the courts in Team management → Coaches.';
-    }
+    // The server checks that the coach is assigned to every court.
     if (enabled) {
       for (final court in courts.where((c) => courtIds.contains(c.id))) {
         if (!court.enabled ||
@@ -232,32 +224,4 @@ class CourtPlan extends Equatable {
     seats,
     coachId,
   ];
-}
-
-/// Coach contact for a court business; never a login or staff member.
-class CourtCoach extends Equatable {
-  CourtCoach({
-    required this.id,
-    required this.name,
-    required this.phone,
-    Iterable<String> courtIds = const [],
-  }) : courtIds = List.unmodifiable(courtIds);
-  final String id, name, phone;
-  final List<String> courtIds;
-  CourtCoach withCourts(Iterable<String> ids) =>
-      CourtCoach(id: id, name: name, phone: phone, courtIds: ids);
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name.trim(),
-    'phone': phone.trim(),
-    'court_ids': courtIds,
-  };
-  factory CourtCoach.fromJson(Map<String, dynamic> v) => CourtCoach(
-    id: v['id'],
-    name: v['name'],
-    phone: v['phone'],
-    courtIds: List<String>.from(v['court_ids'] ?? const []),
-  );
-  @override
-  List<Object?> get props => [id, name, phone, courtIds];
 }

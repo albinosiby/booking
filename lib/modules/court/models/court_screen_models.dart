@@ -35,19 +35,13 @@ class CourtCoachingModel {
   const CourtCoachingModel(
     this.courts,
     this.plans,
-    this.coaches,
     this.selected,
     this.currency,
   );
   final List<CourtResource> courts;
   final List<CourtPlan> plans;
-  final List<CourtCoach> coaches;
   final CourtPlan? selected;
   final String currency;
-  String coachName(CourtPlan plan) => plan.coachId == null
-      ? 'Unassigned'
-      : coaches.where((c) => c.id == plan.coachId).firstOrNull?.name ??
-            'Assigned coach';
 }
 
 class CourtReviewModel {

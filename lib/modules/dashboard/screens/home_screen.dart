@@ -16,6 +16,7 @@ import 'package:eden_booking/design_system/design_system.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
 import '../../workspace/models/workspace.dart';
 import '../../businesses/widgets/business_icon.dart';
+import '../../../config/routes/routes.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -79,6 +80,28 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           if (s.needsAccountSetup) SizedBox(height: 16.h),
+          if (workspace.isCoach) ...[
+            Material(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(16.r),
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 16.w,
+                  vertical: 6.h,
+                ),
+                leading: Icon(
+                  Icons.sports_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                title: const Text('My classes'),
+                subtitle: const Text('Today’s coaching classes and attendance'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.push(Routes.myClasses),
+              ),
+            ),
+            SizedBox(height: 16.h),
+          ],
           if (ready.isEmpty)
             AppCard(
               child: Column(

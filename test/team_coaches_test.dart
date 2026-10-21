@@ -5,18 +5,47 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import 'package:eden_booking/di/injection.dart';
+import 'package:eden_booking/modules/coaching/repositories/coach_api.dart';
 import 'package:eden_booking/modules/pool/models/pool_configuration.dart';
 import 'package:eden_booking/modules/team/cubit/team_coaches_cubit.dart';
+import 'package:eden_booking/modules/team/models/staff_coaches.dart';
 import 'package:eden_booking/modules/team/repositories/team_coaches_repository.dart';
 import 'package:eden_booking/modules/team/screens/team_coaches_screen.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_session.dart';
 import 'package:eden_booking/utils/exceptions/app_exception.dart';
-import 'pool_setup_test.dart' show PoolSource, FakePoolRepository;
+import 'pool_setup_test.dart' show PoolSource;
 
-class AccessPoolSource extends PoolSource {
-  bool owner = true;
+Map<String, dynamic> staff(
+  String id,
+  String name, {
+  List<String> pools = const [],
+  bool coach = true,
+  String business = 'swimming',
+}) => {
+  'id': id,
+  'display_name': name,
+  'role': 'staff',
+  'active': true,
+  'permissions': [if (coach) 'coach'],
+  'assignments': [
+    {'business_id': business, 'resource_ids': pools},
+  ],
+};
+
+/// A pool workspace with a team; coach plan saves change only plan coaches.
+class TeamSource extends PoolSource {
+  bool owner = true, ownerCoach = false;
+  List<Map<String, dynamic>> members = [];
+  Map<String, dynamic> get ownerRow => {
+    'id': 'owner',
+    'display_name': 'Owner',
+    'role': 'owner',
+    'active': true,
+    'permissions': [if (ownerCoach) 'coach'],
+    'assignments': [],
+  };
   @override
   Future<Workspace> load() async {
     final data = await super.load();
@@ -24,20 +53,79 @@ class AccessPoolSource extends PoolSource {
       organization: data.organization,
       businesses: data.businesses,
       locations: data.locations,
-      membership: {'id': 'member', 'role': owner ? 'owner' : 'staff'},
+      membership: owner ? ownerRow : {'id': 'member', 'role': 'staff'},
     );
+  }
+
+  @override
+  Future<Map<String, dynamic>> team() async => {
+    'members': [ownerRow, ...members],
+    'invitations': [],
+  };
+  void setCoaches(Map<String, String?> coaches) {
+    configuration = {
+      ...configuration!,
+      'plans': [
+        for (final p in configuration!['plans'] as List)
+          coaches.containsKey(p['id'])
+              ? {...p, 'coach_id': coaches[p['id']]}
+              : p,
+      ],
+    };
+    version++;
+  }
+}
+
+class FakeCoachApi extends Fake implements CoachApi {
+  FakeCoachApi(this.source);
+  final TeamSource source;
+  List<String> clashes = const [];
+  int conflictChecks = 0;
+  @override
+  Future<void> assignPlans(
+    String businessId,
+    int version,
+    Map<String, String?> coaches,
+  ) async {
+    if (version != source.version) {
+      throw const AppException('Settings changed.', code: 'CONFLICT');
+    }
+    source.setCoaches(coaches);
+  }
+
+  @override
+  Future<void> setOwnerCoach(bool coach) async {
+    source.ownerCoach = coach;
+    if (!coach) {
+      source.setCoaches({
+        for (final p in source.configuration!['plans'] as List)
+          if (p['coach_id'] == 'owner') p['id'] as String: null,
+      });
+    }
+  }
+
+  @override
+  Future<List<String>> conflicts(
+    String businessId,
+    String coachId,
+    Set<String> planIds,
+  ) async {
+    conflictChecks++;
+    return clashes;
   }
 }
 
 Future<
   ({
-    PoolSource source,
+    TeamSource source,
     WorkspaceCubit session,
+    FakeCoachApi api,
     ConfigurationTeamCoachesRepository repository,
   })
 >
-fixture() async {
-  final source = AccessPoolSource()
+fixture({List<Map<String, dynamic>> members = const []}) async {
+  final source = TeamSource()
+    ..members = [...members]
     ..configuration = PoolConfiguration(
       pools: [
         PoolResource(
@@ -76,11 +164,12 @@ fixture() async {
     ).toJson();
   final session = WorkspaceCubit(source);
   await session.load();
-  final pools = FakePoolRepository(source);
+  final api = FakeCoachApi(source);
   return (
     source: source,
     session: session,
-    repository: ConfigurationTeamCoachesRepository(source, pools),
+    api: api,
+    repository: ConfigurationTeamCoachesRepository(source, api),
   );
 }
 
@@ -88,362 +177,237 @@ void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
   tearDown(() => getIt.reset());
   test(
-    'Team coach addition preserves pool settings, then assigns and unassigns plans',
+    'Coaches are staff with the coach flag, limited to their pools',
     () async {
-      final f = await fixture();
+      final f = await fixture(
+        members: [
+          staff('ravi', 'Ravi', pools: ['pool']),
+          staff('mia', 'Mia', coach: false),
+          staff('elsewhere', 'Elsewhere', business: 'other'),
+        ],
+      );
       addTearDown(f.session.close);
-      final before = f.source.configuration!;
-      var b = (await f.repository.load()).single;
-      expect(b.coaches, isEmpty);
-      expect(b.plans.every((p) => p.coachId == null), isTrue);
-      await f.repository.add(
-        b.id,
-        b.version,
-        ' Alex Coach ',
-        '+91 98765 43210',
-      );
-      b = (await f.repository.load()).single;
-      expect(b.coaches.single.name, 'Alex Coach');
-      expect(b.plans.every((p) => p.coachId == null), isTrue);
-      expect(f.source.configuration!['pools'], before['pools']);
-      expect(f.source.configuration!['plans'], before['plans']);
-      final coachId = b.coaches.single.id;
+      var b = (await f.repository.load()).businesses.single;
+      expect(b.coaches.map((c) => c.name), ['Ravi']);
+      expect(b.coaches.single.poolIds, ['pool']);
       await expectLater(
-        f.repository.add(b.id, b.version, 'Duplicate', '+919876543210'),
+        f.repository.assign(b.id, b.version, 'ravi', {'advanced'}),
         throwsA(isA<AppException>()),
       );
       await expectLater(
-        f.repository.assign(b.id, b.version, coachId, {b.plans.first.id}),
+        f.repository.assign(b.id, b.version, 'mia', {'beginner'}),
         throwsA(isA<AppException>()),
       );
-      await f.repository.assignSpaces(
-        b.id,
-        b.version,
-        coachId,
-        b.spaces.map((p) => p.id).toSet(),
-      );
-      b = (await f.repository.load()).single;
-      await f.repository.assign(
-        b.id,
-        b.version,
-        coachId,
-        b.plans.map((p) => p.id).toSet(),
-      );
-      b = (await f.repository.load()).single;
-      expect(b.plans.every((p) => p.coachId == coachId), isTrue);
-      await f.repository.assign(b.id, b.version, coachId, {b.plans.first.id});
-      b = (await f.repository.load()).single;
-      expect(b.plans.first.coachId, coachId);
-      expect(b.plans.last.coachId, isNull);
+      await f.repository.assign(b.id, b.version, 'ravi', {'beginner'});
+      b = (await f.repository.load()).businesses.single;
+      expect(b.plans.first.coachId, 'ravi');
+      // Unrestricted staff teach in every pool of the business.
+      f.source.members.add(staff('asha', 'Asha'));
+      b = (await f.repository.load()).businesses.single;
+      expect(b.coaches.last.poolIds, ['pool', 'pool-b']);
+      await f.repository.assign(b.id, b.version, 'asha', {
+        'beginner',
+        'advanced',
+      });
+      b = (await f.repository.load()).businesses.single;
+      expect(b.plans.every((p) => p.coachId == 'asha'), isTrue);
+      await f.repository.assign(b.id, b.version, 'asha', {'advanced'});
+      b = (await f.repository.load()).businesses.single;
+      expect(b.plans.first.coachId, isNull);
       await expectLater(
-        f.repository.assign(b.id, b.version - 1, coachId, {}),
-        throwsA(isA<AppException>()),
-      );
-      await expectLater(
-        f.repository.assign(b.id, b.version, coachId, {'foreign-plan'}),
+        f.repository.assign(b.id, b.version - 1, 'asha', {}),
         throwsA(isA<AppException>()),
       );
     },
   );
+
   test(
-    'Coach Cubit can select/unselect plans and updates the workspace after saving',
+    'The owner opts in to coaching and releases plans when opting out',
     () async {
       final f = await fixture();
       final c = TeamCoachesCubit(f.repository, f.session);
       addTearDown(c.close);
       addTearDown(f.session.close);
       await c.load();
-      c.beginAdd();
-      c.name('Alex Coach');
-      c.phone('9876543210');
+      expect(c.state.ownerCoach, isFalse);
+      expect(c.state.businesses.single.coaches, isEmpty);
+      expect(await c.setOwnerCoach(true), isTrue);
+      expect(c.state.ownerCoach, isTrue);
+      final b = c.state.businesses.single;
+      expect(b.coaches.single.owner, isTrue);
+      expect(b.coaches.single.poolIds, ['pool', 'pool-b']);
+      c.beginAssign(b.id, 'owner');
+      c.toggle('beginner', true);
       expect(await c.saveEditor(), isTrue);
-      c.closeEditor();
-      var b = c.state.businesses.single;
-      c.beginSpaces(b.id, b.coaches.single.id);
-      c.toggleSpace(b.spaces.first.id, true);
-      expect(await c.saveEditor(), isTrue);
-      c.closeEditor();
-      b = c.state.businesses.single;
-      c.beginAssign(b.id, b.coaches.single.id);
-      c.toggle(b.plans.first.id, true);
-      expect(c.state.planIds, {b.plans.first.id});
-      c.toggle(b.plans.first.id, false);
-      expect(c.state.planIds, isEmpty);
-      c.toggle(b.plans.first.id, true);
-      expect(await c.saveEditor(), isTrue);
-      expect(
-        c.state.businesses.single.plans.first.coachId,
-        b.coaches.single.id,
-      );
-      expect(
-        f
-            .session
-            .state
-            .data
-            .businesses
-            .single
-            .configuration!['plans'][0]['coach_id'],
-        b.coaches.single.id,
-      );
+      expect(c.state.plansOf('owner').map((p) => p.id), ['beginner']);
+      expect(await c.setOwnerCoach(false), isTrue);
+      expect(c.state.plansOf('owner'), isEmpty);
     },
   );
-  test(
-    'Coach management blocks staff and purges retained contacts after access changes',
-    () async {
-      final f = await fixture();
-      final c = TeamCoachesCubit(f.repository, f.session);
-      addTearDown(c.close);
-      addTearDown(f.session.close);
-      await c.load();
-      c.beginAdd();
-      c.name('Alex Coach');
-      c.phone('9876543210');
-      expect(await c.saveEditor(), isTrue);
-      expect(c.state.businesses.single.coaches, hasLength(1));
-      (f.source as AccessPoolSource).owner = false;
-      await f.session.load();
-      await Future<void>.delayed(Duration.zero);
-      expect(c.authorized, isFalse);
-      expect(c.state.businesses, isEmpty);
-      expect(await c.saveEditor(), isFalse);
-      await expectLater(f.repository.load(), throwsA(isA<AppException>()));
-    },
-  );
-  test(
-    'A plan left without pools keeps its coach and can still be unticked',
-    () async {
-      final f = await fixture();
-      addTearDown(f.session.close);
-      var b = (await f.repository.load()).single;
-      await f.repository.add(b.id, b.version, 'Alex Coach', '9876543210');
-      b = (await f.repository.load()).single;
-      final id = b.coaches.single.id;
-      await f.repository.assignSpaces(b.id, b.version, id, {'pool', 'pool-b'});
-      b = (await f.repository.load()).single;
-      await f.repository.assign(b.id, b.version, id, {'beginner', 'advanced'});
-      // Older data: the advanced plan lost its pools but kept its coach.
-      final config = PoolConfiguration.fromJson(f.source.configuration!);
-      f.source.configuration = config
-          .copyWith(
-            plans: config.plans.map(
-              (p) => p.id == 'advanced' ? p.copyWith(poolIds: []) : p,
-            ),
-          )
-          .toJson();
-      final c = TeamCoachesCubit(f.repository, f.session);
-      addTearDown(c.close);
-      await c.load();
-      b = c.state.businesses.single;
-      c.beginSpaces(b.id, id);
-      c.toggleSpace('pool-b', false);
-      expect(c.state.affectedPlans, isEmpty);
-      c.closeEditor();
-      c.beginAssign(b.id, id);
-      expect(c.state.eligiblePlans.map((p) => p.id), contains('advanced'));
-      expect(await c.saveEditor(), isTrue);
-      c.beginAssign(b.id, id);
-      c.toggle('advanced', false);
-      expect(await c.saveEditor(), isTrue);
-      expect(
-        c.state.businesses.single.plans
-            .firstWhere((p) => p.id == 'advanced')
-            .coachId,
-        isNull,
-      );
-    },
-  );
-  test('Closing the editor does not leave its error on the page', () async {
-    final f = await fixture();
+
+  test('Assigned plans no longer covered can be unticked', () async {
+    final f = await fixture(
+      members: [
+        staff('ravi', 'Ravi', pools: ['pool', 'pool-b']),
+      ],
+    );
+    addTearDown(f.session.close);
+    var b = (await f.repository.load()).businesses.single;
+    await f.repository.assign(b.id, b.version, 'ravi', {
+      'beginner',
+      'advanced',
+    });
+    f.source.members = [
+      staff('ravi', 'Ravi', pools: ['pool']),
+    ];
+    final c = TeamCoachesCubit(f.repository, f.session);
+    addTearDown(c.close);
+    await c.load();
+    b = c.state.businesses.single;
+    c.beginAssign(b.id, 'ravi');
+    expect(c.state.eligiblePlans.map((p) => p.id), ['beginner', 'advanced']);
+    expect(await c.saveEditor(), isFalse);
+    expect(c.state.error, contains('every pool'));
+    c.toggle('advanced', false);
+    expect(await c.saveEditor(), isTrue);
+    expect(c.state.businesses.single.plans.map((p) => p.coachId), [
+      'ravi',
+      null,
+    ]);
+    // Editor errors don't stay on the page after closing.
+    c.beginAssign(b.id, 'ravi');
+    c.toggle('advanced', true);
+    expect(await c.saveEditor(), isFalse);
+    c.closeEditor();
+    expect(c.state.error, isNull);
+  });
+
+  test('Conflicts are only checked when the coach gains plans', () async {
+    final f = await fixture(members: [staff('ravi', 'Ravi')]);
     final c = TeamCoachesCubit(f.repository, f.session);
     addTearDown(c.close);
     addTearDown(f.session.close);
     await c.load();
-    c.beginAdd();
-    expect(await c.saveEditor(), isFalse);
-    expect(c.state.error, isNotNull);
-    c.closeEditor();
-    expect(c.state.error, isNull);
+    final b = c.state.businesses.single;
+    c.beginAssign(b.id, 'ravi');
+    expect(await c.assignmentConflicts(), isEmpty);
+    expect(f.api.conflictChecks, 0);
+    f.api.clashes = ['Beginner coaching and Swim club · 2030-06-04 17:00'];
+    c.toggle('beginner', true);
+    expect(await c.assignmentConflicts(), f.api.clashes);
+    expect(f.api.conflictChecks, 1);
   });
-  test(
-    'Removing spaces needs confirmation and removes only affected plan assignments',
-    () async {
-      final f = await fixture();
-      addTearDown(f.session.close);
-      var b = (await f.repository.load()).single;
-      await f.repository.add(b.id, b.version, 'Alex Coach', '9876543210');
-      b = (await f.repository.load()).single;
-      final id = b.coaches.single.id;
-      await f.repository.assignSpaces(b.id, b.version, id, {'pool', 'pool-b'});
-      b = (await f.repository.load()).single;
-      await f.repository.assign(
-        b.id,
-        b.version,
-        id,
-        b.plans.map((p) => p.id).toSet(),
-      );
-      final c = TeamCoachesCubit(f.repository, f.session);
-      addTearDown(c.close);
-      await c.load();
-      c.beginSpaces(b.id, id);
-      c.toggleSpace('pool-b', false);
-      expect(c.state.affectedPlans.single.name, 'Advanced coaching');
-      final beforeVersion = f.source.version;
-      expect(await c.saveEditor(), isFalse);
-      expect(f.source.version, beforeVersion);
-      expect(c.state.spaceIds, {'pool'});
-      expect(await c.saveEditor(removeAffectedPlans: true), isTrue);
-      b = c.state.businesses.single;
-      expect(b.plans.first.coachId, id);
-      expect(b.plans.last.coachId, isNull);
-      expect(b.coaches.single.poolIds, ['pool']);
-      await expectLater(
-        f.repository.assignSpaces(b.id, b.version, id, {'foreign-pool'}),
-        throwsA(isA<AppException>()),
-      );
-      await expectLater(
-        f.repository.assignSpaces(b.id, b.version - 1, id, {}),
-        throwsA(isA<AppException>()),
-      );
-      await f.repository.assignSpaces(
-        b.id,
-        b.version,
-        id,
-        {},
-        removeAffectedPlans: true,
-      );
-      b = (await f.repository.load()).single;
-      expect(b.coaches.single.poolIds, isEmpty);
-      expect(b.plans.every((p) => p.coachId == null), isTrue);
-    },
-  );
-  test(
-    'Legacy coach contacts retain spaces inferred from existing plan assignments',
-    () {
-      final config = PoolConfiguration(
-        pools: [PoolResource(id: 'pool', name: 'Pool A')],
-        plans: [
-          PoolPlan(
-            id: 'plan',
-            kind: 'coaching',
-            poolIds: ['pool'],
-            coachId: 'coach',
-          ),
-        ],
-      );
-      final json = config.toJson();
-      json['coaches'] = [
-        {'id': 'coach', 'name': 'Legacy Coach', 'phone': '9876543210'},
-      ];
-      final restored = PoolConfiguration.fromJson(json);
-      expect(restored.coaches.single.poolIds, ['pool']);
-      expect(restored.plans.single.coachId, 'coach');
-      expect(restored.toJson()['coaches'][0]['pool_ids'], ['pool']);
-    },
-  );
-  testWidgets(
-    'Team coach screen supports add and assignment on narrow large text',
-    (tester) async {
-      tester.view.physicalSize = const Size(320, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final f = await fixture();
-      getIt.registerFactoryParam<TeamCoachesCubit, WorkspaceSession, void>(
-        (session, _) => TeamCoachesCubit(f.repository, session),
-      );
-      await tester.pumpWidget(
-        BlocProvider.value(
-          value: f.session,
-          child: ScreenUtilInit(
-            designSize: const Size(390, 844),
-            builder: (_, _) => MaterialApp(
-              theme: AppTheme.build(Brightness.light),
-              builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(
-                  context,
-                ).copyWith(textScaler: const TextScaler.linear(1.6)),
-                child: child!,
-              ),
-              home: const TeamCoachesScreen(),
+
+  test('Coach management blocks staff after access changes', () async {
+    final f = await fixture(members: [staff('ravi', 'Ravi')]);
+    final c = TeamCoachesCubit(f.repository, f.session);
+    addTearDown(c.close);
+    addTearDown(f.session.close);
+    await c.load();
+    expect(c.state.businesses.single.coaches, hasLength(1));
+    f.source.owner = false;
+    await f.session.load();
+    await Future<void>.delayed(Duration.zero);
+    expect(c.authorized, isFalse);
+    expect(c.state.businesses, isEmpty);
+    expect(await c.saveEditor(), isFalse);
+    await expectLater(f.repository.load(), throwsA(isA<AppException>()));
+  });
+
+  test('Old coach contacts are dropped and their plans become Unassigned', () {
+    final json = PoolConfiguration(
+      pools: [PoolResource(id: 'pool', name: 'Pool A')],
+      plans: [
+        PoolPlan(id: 'a', kind: 'coaching', poolIds: ['pool'], coachId: 'c'),
+        PoolPlan(id: 'b', kind: 'coaching', poolIds: ['pool'], coachId: 'm'),
+      ],
+    ).toJson();
+    json['coaches'] = [
+      {'id': 'c', 'name': 'Legacy Coach', 'phone': '9876543210'},
+    ];
+    final restored = PoolConfiguration.fromJson(json);
+    expect(restored.plans.map((p) => p.coachId), [null, 'm']);
+    expect(restored.toJson().containsKey('coaches'), isFalse);
+  });
+
+  test('Released plans follow the staff access being saved', () async {
+    final f = await fixture();
+    addTearDown(f.session.close);
+    f.source.setCoaches({'beginner': 'ravi', 'advanced': 'ravi'});
+    final data = await f.source.load();
+    List<String> released({
+      bool coach = true,
+      Map<String, List<String>> assignments = const {'swimming': []},
+    }) => releasedPlans(
+      data.businesses,
+      'ravi',
+      coach: coach,
+      assignments: assignments,
+    );
+    expect(released(), isEmpty);
+    expect(released(coach: false), ['Beginner coaching', 'Advanced coaching']);
+    expect(
+      released(
+        assignments: {
+          'swimming': ['pool'],
+        },
+      ),
+      ['Advanced coaching'],
+    );
+    expect(released(assignments: {}), hasLength(2));
+  });
+
+  testWidgets('Team coach screen assigns plans on narrow large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final f = await fixture(
+      members: [
+        staff('ravi', 'Ravi Kumar', pools: ['pool']),
+      ],
+    );
+    addTearDown(f.session.close);
+    getIt.registerFactoryParam<TeamCoachesCubit, WorkspaceSession, void>(
+      (session, _) => TeamCoachesCubit(f.repository, session),
+    );
+    await tester.pumpWidget(
+      BlocProvider.value(
+        value: f.session,
+        child: ScreenUtilInit(
+          designSize: const Size(390, 844),
+          builder: (_, _) => MaterialApp(
+            theme: AppTheme.build(Brightness.light),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.6)),
+              child: child!,
             ),
+            home: const TeamCoachesScreen(),
           ),
         ),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.text('No coaches added. Coaching plans remain Unassigned.'),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byType(AppBar),
-          matching: find.byTooltip('Add coach'),
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Add coach'), findsNothing);
-      await tester.tap(find.byTooltip('Add coach'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Coach name'),
-        'Alex Coach',
-      );
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Phone number'),
-        '9876543210',
-      );
-      await tester.ensureVisible(find.text('Save coach'));
-      await tester.tap(find.text('Save coach'));
-      await tester.pumpAndSettle();
-      expect(find.text('Alex Coach'), findsOneWidget);
-      await tester.ensureVisible(find.text('Assign pool spaces'));
-      await tester.tap(find.text('Assign pool spaces'));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Pool A'));
-      await tester.tap(find.text('Pool A'));
-      await tester.ensureVisible(find.text('Save assignments'));
-      await tester.tap(find.text('Save assignments'));
-      await tester.pumpAndSettle();
-      expect(find.text('Pool A'), findsOneWidget);
-      await tester.ensureVisible(find.text('Assign coaching plans'));
-      await tester.tap(find.text('Assign coaching plans'));
-      await tester.pumpAndSettle();
-      expect(find.text('Advanced coaching'), findsNothing);
-      await tester.ensureVisible(find.text('Beginner coaching'));
-      await tester.tap(find.text('Beginner coaching'));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Save assignments'));
-      await tester.tap(find.text('Save assignments'));
-      await tester.pumpAndSettle();
-      expect(find.text('Beginner coaching'), findsOneWidget);
-      expect(
-        f.source.configuration!['plans'][0]['coach_id'],
-        f.source.configuration!['coaches'][0]['id'],
-      );
-      await tester.ensureVisible(find.text('Assign pool spaces'));
-      await tester.tap(find.text('Assign pool spaces'));
-      await tester.pumpAndSettle();
-      final poolBox = find.widgetWithText(CheckboxListTile, 'Pool A');
-      await tester.ensureVisible(poolBox);
-      await tester.tap(poolBox);
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Save assignments'));
-      await tester.tap(find.text('Save assignments'));
-      await tester.pumpAndSettle();
-      expect(find.text('Remove affected plan assignments?'), findsOneWidget);
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-      expect(f.source.configuration!['plans'][0]['coach_id'], isNotNull);
-      await tester.tap(find.text('Save assignments'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Confirm'));
-      await tester.pumpAndSettle();
-      expect(f.source.configuration!['plans'][0]['coach_id'], isNull);
-      expect(f.source.configuration!['coaches'][0]['pool_ids'], isEmpty);
-      expect(find.text('No pool spaces assigned'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-      await f.session.close();
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Ravi Kumar'), findsOneWidget);
+    expect(find.text('I also coach'), findsOneWidget);
+    expect(find.byTooltip('Invite coach'), findsOneWidget);
+    expect(find.text('Pool A'), findsOneWidget);
+    await tester.ensureVisible(find.text('Assign coaching plans'));
+    await tester.tap(find.text('Assign coaching plans'));
+    await tester.pumpAndSettle();
+    expect(find.text('Advanced coaching'), findsNothing);
+    await tester.ensureVisible(find.text('Beginner coaching'));
+    await tester.tap(find.text('Beginner coaching'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Save assignments'));
+    await tester.tap(find.text('Save assignments'));
+    await tester.pumpAndSettle();
+    expect(find.text('Beginner coaching'), findsOneWidget);
+    expect(f.source.configuration!['plans'][0]['coach_id'], 'ravi');
+    expect(tester.takeException(), isNull);
+  });
 }
