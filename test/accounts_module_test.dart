@@ -325,6 +325,47 @@ void main() {
       await w.close();
     },
   );
+  for (final width in const [1000.0, 1440.0]) {
+    testWidgets('overview shows the wide dashboard at ${width}px', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final w = await session();
+      await getIt.reset();
+      registerFeatureDependencies(getIt);
+      getIt.unregister<AccountsRepository>();
+      getIt.registerSingleton<AccountsRepository>(FakeAccountsRepository());
+      getIt.unregister<BookingRepository>();
+      getIt.registerSingleton<BookingRepository>(FakeBookingRepository());
+      getIt.unregister<IncomeRepository>();
+      getIt.registerSingleton<IncomeRepository>(IncomeRepo());
+      final router = GoRouter(
+        routes: [GoRoute(path: '/', builder: (c, s) => const AccountsScreen())],
+      );
+      await tester.pumpWidget(
+        BlocProvider.value(
+          value: w,
+          child: ScreenUtilInit(
+            designSize: Size(width, 1400),
+            builder: (c, _) => MaterialApp.router(
+              theme: AppTheme.build(Brightness.dark),
+              routerConfig: router,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Net cash flow'), findsOneWidget);
+      expect(find.text('Booking dues'), findsOneWidget);
+      expect(find.text('Income & expenses'), findsOneWidget);
+      expect(find.text("Today's collection"), findsOneWidget);
+      await w.close();
+    });
+  }
   for (final screen in [
     'overview',
     'settings',
