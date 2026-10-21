@@ -204,6 +204,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               subtitle: 'WhatsApp messages and primary template',
               path: '/profile/message-templates',
             ),
+            destination(
+              context,
+              icon: Icons.support_agent_outlined,
+              title: 'Sarvam voice agent',
+              subtitle: 'Phone bookings, call logs and transcripts',
+              path: Routes.sarvam,
+            ),
           ],
           const SizedBox(height: 24),
           Text('Preferences', style: Theme.of(context).textTheme.titleMedium),

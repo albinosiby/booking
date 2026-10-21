@@ -276,7 +276,7 @@ test("public health exposes a revision for deployment verification without accou
   assert.deepEqual(await response.json(), {
     status: "ok",
     runtime: "supabase-edge",
-    revision: "2026-10-21-block-slot-grid",
+    revision: "2026-10-22-sarvam-voice-agent",
   });
 });
 
@@ -417,4 +417,62 @@ test("Edge exposes non-sensitive server timing for performance diagnosis", async
     result.headers.get("server-timing") ?? "",
     /^app;dur=\d+\.\d+, auth;dur=\d+\.\d+$/,
   );
+});
+
+test("Edge routes Sarvam voice tools by tool key and speaks refusals", async () => {
+  const { BadRequestException, UnauthorizedException } =
+    await import("@nestjs/common");
+  const voiceCalls: any[] = [];
+  const handler = createHandler(
+    {
+      sarvam: {
+        authenticateToolKey: async (key: string | null) => {
+          if (key !== "bkv_good")
+            throw new UnauthorizedException(
+              "A valid voice tool key is required.",
+            );
+          return { uid: "sarvam:org", email: "v@x", name: "Voice" };
+        },
+      },
+      voice: {
+        book: async (actor: any, body: any) => {
+          voiceCalls.push({ actor, body });
+          if (body.time === "taken")
+            throw new BadRequestException("That slot is taken.");
+          return { ok: true, reference: "BK-1" };
+        },
+      },
+    } as any,
+    async () => {
+      throw new Error("user auth must not run for voice tools");
+    },
+    async () => {},
+  );
+  const call = (key: string | null, data: unknown) =>
+    handler(
+      new Request(
+        "https://example.com/functions/v1/booking-api/voice/v1/bookings",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(key ? { "x-api-key": key } : {}),
+          },
+          body: JSON.stringify(data),
+        },
+      ),
+    );
+  assert.equal((await call(null, {})).status, 401);
+  assert.equal((await call("bkv_bad", {})).status, 401);
+  assert.equal(voiceCalls.length, 0);
+  const ok = await call("bkv_good", { time: "19:00" });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { ok: true, reference: "BK-1" });
+  assert.equal(voiceCalls[0].actor.uid, "sarvam:org");
+  const refused = await call("bkv_good", { time: "taken" });
+  assert.equal(refused.status, 200);
+  assert.deepEqual(await refused.json(), {
+    ok: false,
+    message: "That slot is taken.",
+  });
 });

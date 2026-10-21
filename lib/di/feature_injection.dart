@@ -12,6 +12,10 @@ import '../modules/messages/models/message_template.dart';
 import '../modules/messages/repositories/message_repository.dart';
 import '../modules/messages/repositories/rest_message_repository.dart';
 import '../modules/messages/repositories/device_message_share.dart';
+import '../modules/sarvam/cubit/sarvam_cubits.dart';
+import '../modules/sarvam/models/sarvam_models.dart';
+import '../modules/sarvam/repositories/sarvam_repository.dart';
+import '../modules/sarvam/repositories/rest_sarvam_repository.dart';
 import '../modules/team/cubit/team_coaches_cubit.dart';
 import '../modules/team/repositories/team_coaches_repository.dart';
 import '../modules/profile/cubit/organization_edit_cubit.dart';
@@ -110,6 +114,17 @@ void registerFeatureDependencies(GetIt di) {
     WorkspaceSession,
     MessageTemplate?
   >((s, t) => TemplateEditorCubit(s, di(), t));
+  di.registerLazySingleton<SarvamRepository>(() => RestSarvamRepository(di()));
+  di.registerLazySingleton<RecordingSaver>(() => DeviceRecordingSaver());
+  di.registerFactoryParam<SarvamSettingsCubit, WorkspaceSession, void>(
+    (s, _) => SarvamSettingsCubit(s, di()),
+  );
+  di.registerFactoryParam<CallLogsCubit, WorkspaceSession, void>(
+    (s, _) => CallLogsCubit(s, di()),
+  );
+  di.registerFactoryParam<CallDetailCubit, WorkspaceSession, SarvamCall>(
+    (s, call) => CallDetailCubit(s, di(), di(), call),
+  );
   di.registerFactoryParam<MessagePreviewCubit, WorkspaceSession, String>(
     (s, id) => MessagePreviewCubit(s, di(), di(), id),
   );

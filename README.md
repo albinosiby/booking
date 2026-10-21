@@ -15,6 +15,8 @@ A Flutter owner/staff app with a Supabase-hosted API for one organization operat
 - Elevated Home / Calendar / Bookings / Payments / Profile navigation with preserved tab state.
 - Server-enforced owner operations and staff visibility. No passwords or service keys are stored in the application database.
 
+A Sarvam phone voice agent can book, reschedule and cancel by phone, with owner-managed setup and call logs in Profile; see [Sarvam voice agent](docs/sarvam-voice-agent.md).
+
 Bookings, daily Calendar and manual payment collections are implemented, including split payments and atomic rescheduling. Home shows live booking and collection figures. Admissions and coaching now support fixed weekly reservations, flexible attendance, expiry/completion and renewals. No payment gateway, email-delivery provider or public booking website is included.
 
 ## Current Supabase setup

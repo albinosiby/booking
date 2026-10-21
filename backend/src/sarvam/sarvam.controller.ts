@@ -4,7 +4,6 @@ import {
   Get,
   Headers,
   HttpCode,
-  HttpException,
   Post,
   Put,
   Query,
@@ -13,10 +12,10 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { Request, Response } from "express";
-import { ZodError } from "zod";
 import { Actor, AuthGuard } from "../common/auth.guard";
 import { SarvamService } from "./sarvam.service";
 import { VoiceService } from "./voice.service";
+import { voiceResult } from "./voice-result";
 type AuthRequest = Request & { actor: Actor };
 @Controller("v1/sarvam")
 @UseGuards(AuthGuard)
@@ -102,27 +101,5 @@ export class VoiceController {
     @Body() b: unknown,
   ) {
     return this.run(k, (a) => this.voice.cancel(a, b));
-  }
-}
-
-/**
- * Expected refusals (slot taken, unknown space, not the caller's booking) are
- * returned as 200 `{ok:false,message}` so the voice agent can say them.
- */
-export async function voiceResult(work: () => Promise<unknown>) {
-  try {
-    return await work();
-  } catch (error) {
-    if (error instanceof ZodError)
-      return {
-        ok: false,
-        message:
-          "Some details are missing: " +
-          error.issues.map((i) => i.path.join(".")).join(", ") +
-          ".",
-      };
-    if (error instanceof HttpException && error.getStatus() < 500)
-      return { ok: false, message: error.message };
-    throw error;
   }
 }

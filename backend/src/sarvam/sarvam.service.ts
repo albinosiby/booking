@@ -28,7 +28,10 @@ export const voiceActor = (organizationId: string): Actor => ({
   name: "Sarvam voice agent",
 });
 const SARVAM_ORIGIN = "https://apps.sarvam.ai";
-const id = z.string().trim().regex(/^[A-Za-z0-9_-]{1,100}$/, "Use the ID shown in Sarvam.");
+const id = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9_-]{1,100}$/, "Use the ID shown in Sarvam.");
 const interactionId = z
   .string()
   .regex(/^[A-Za-z0-9:_.-]+(\/[A-Za-z0-9:_.-]+)?$/)
@@ -53,7 +56,10 @@ const callsSchema = z
     offset: z.coerce.number().int().min(0).max(100000).default(0),
   })
   .strict()
-  .refine((v) => Date.parse(v.end) > Date.parse(v.start), "End must be after start.")
+  .refine(
+    (v) => Date.parse(v.end) > Date.parse(v.start),
+    "End must be after start.",
+  )
   .refine(
     (v) => Date.parse(v.end) - Date.parse(v.start) <= 31 * 86400000,
     "Choose at most 31 days.",
@@ -200,7 +206,9 @@ export class SarvamService {
         )
       ).rows;
       if (owned.length !== new Set(v.business_ids).size)
-        throw new BadRequestException("Choose businesses in your organization.");
+        throw new BadRequestException(
+          "Choose businesses in your organization.",
+        );
       const key =
         v.api_key === undefined
           ? { sealed: s.api_key_ciphertext, last4: s.api_key_last4 }
@@ -271,7 +279,8 @@ export class SarvamService {
         [hashToolKey(key)],
       )
     ).rows[0];
-    if (!s) throw new UnauthorizedException("A valid voice tool key is required.");
+    if (!s)
+      throw new UnauthorizedException("A valid voice tool key is required.");
     if (!s.enabled)
       throw new HttpException("The voice agent is turned off.", 403);
     return voiceActor(s.organization_id);
@@ -279,7 +288,12 @@ export class SarvamService {
   private async analytics(actor: Actor) {
     const m = await this.workspace.member(actor, true);
     const s = await this.row(m.organization_id);
-    if (!s?.api_key_ciphertext || !s.sarvam_org_id || !s.workspace_id || !s.app_id)
+    if (
+      !s?.api_key_ciphertext ||
+      !s.sarvam_org_id ||
+      !s.workspace_id ||
+      !s.app_id
+    )
       throw new BadRequestException(
         "Connect Sarvam first: add the API key, organization, workspace and app IDs.",
       );
@@ -295,7 +309,9 @@ export class SarvamService {
           signal: AbortSignal.timeout(20000),
         });
       } catch {
-        throw new ServiceUnavailableException("Sarvam did not respond. Try again.");
+        throw new ServiceUnavailableException(
+          "Sarvam did not respond. Try again.",
+        );
       }
       if (res.status === 401 || res.status === 403)
         throw new BadRequestException(
@@ -322,7 +338,10 @@ export class SarvamService {
         end_datetime: end.toISOString(),
       })
     ).json()) as Row;
-    return { ok: true, calls_last_24h: Number(data.total ?? data.items?.length ?? 0) };
+    return {
+      ok: true,
+      calls_last_24h: Number(data.total ?? data.items?.length ?? 0),
+    };
   }
   async calls(actor: Actor, input: unknown) {
     const v = callsSchema.parse(input);
@@ -366,7 +385,9 @@ export class SarvamService {
   async transcript(actor: Actor, id: unknown) {
     const interaction = interactionId.parse(id);
     const get = await this.analytics(actor);
-    const data = (await (await get(`/transcripts/${interaction}`)).json()) as Row;
+    const data = (await (
+      await get(`/transcripts/${interaction}`)
+    ).json()) as Row;
     return {
       interaction_id: interaction,
       messages: (Array.isArray(data.messages) ? data.messages : []).map(
@@ -387,7 +408,9 @@ export class SarvamService {
       throw new ServiceUnavailableException("Sarvam did not return audio.");
     const bytes = new Uint8Array(await res.arrayBuffer());
     if (bytes.length > 25 * 1024 * 1024)
-      throw new BadRequestException("This recording is too large to play here.");
+      throw new BadRequestException(
+        "This recording is too large to play here.",
+      );
     return { content_type: "audio/wav", data: bytes };
   }
 }

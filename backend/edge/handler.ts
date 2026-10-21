@@ -1,6 +1,9 @@
 import type { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
 import { AdmissionService } from "../src/admissions/admission.service";
 import type { MessagesService } from "../src/messages/messages.service";
+import type { SarvamService } from "../src/sarvam/sarvam.service";
+import type { VoiceService } from "../src/sarvam/voice.service";
+import { voiceResult } from "../src/sarvam/voice-result";
 import { z, ZodError } from "zod";
 import {
   HttpException,
@@ -27,6 +30,8 @@ type Services = {
   blocks: SlotBlocksService;
   admissions: AdmissionService;
   messages: MessagesService;
+  sarvam: SarvamService;
+  voice: VoiceService;
   expenses: ExpensesService;
   income: IncomeService;
   workspace: WorkspaceService;
@@ -152,6 +157,43 @@ export function createHandler(
   add("DELETE", "/v1/message-templates/:id", (i) =>
     services.messages.remove(i.actor, i.params.id),
   );
+  add("GET", "/v1/sarvam/settings", (i) => services.sarvam.settings(i.actor));
+  add("PUT", "/v1/sarvam/settings", (i) =>
+    services.sarvam.save(i.actor, i.body),
+  );
+  add("POST", "/v1/sarvam/tool-key", (i) =>
+    services.sarvam.rotateToolKey(i.actor),
+  );
+  add("POST", "/v1/sarvam/test", (i) => services.sarvam.test(i.actor));
+  add("GET", "/v1/sarvam/calls", (i) =>
+    services.sarvam.calls(i.actor, i.query),
+  );
+  add("GET", "/v1/sarvam/transcript", (i) =>
+    services.sarvam.transcript(i.actor, i.query.interaction_id),
+  );
+  add("GET", "/v1/sarvam/recording", async (i) => {
+    const audio = await services.sarvam.recording(
+      i.actor,
+      i.query.interaction_id,
+    );
+    return new Response(audio.data, {
+      headers: {
+        "Content-Type": audio.content_type,
+        "Content-Disposition": 'attachment; filename="call.wav"',
+      },
+    });
+  });
+  const voiceRoutes: Record<
+    string,
+    (actor: Actor, body: unknown) => Promise<unknown>
+  > = {
+    "/voice/v1/catalog": (a) => services.voice.catalog(a),
+    "/voice/v1/availability": (a, b) => services.voice.availability(a, b),
+    "/voice/v1/bookings": (a, b) => services.voice.book(a, b),
+    "/voice/v1/my-bookings": (a, b) => services.voice.mine(a, b),
+    "/voice/v1/reschedule": (a, b) => services.voice.reschedule(a, b),
+    "/voice/v1/cancel": (a, b) => services.voice.cancel(a, b),
+  };
   add("GET", "/v1/workspace", (i) => w.workspace(i.actor));
   add("GET", "/v1/organization/details", (i) => w.organizationDetails(i.actor));
   add("PATCH", "/v1/organization/details", (i) =>
@@ -420,7 +462,7 @@ export function createHandler(
         return respond({
           status: "ok",
           runtime: "supabase-edge",
-          revision: "2026-10-21-block-slot-grid",
+          revision: "2026-10-22-sarvam-voice-agent",
         });
       }
       if (req.method === "GET" && path === "/v1/catalog")
@@ -447,6 +489,26 @@ export function createHandler(
             name: s.name,
           })),
         );
+      const voice = voiceRoutes[path];
+      if (voice && req.method === "POST") {
+        // Sarvam tool calls: tool key instead of a user session.
+        const actor = await services.sarvam.authenticateToolKey(
+          req.headers.get("x-api-key"),
+        );
+        const now = Date.now();
+        const burst = bursts.get(actor.uid) ?? { until: now + 60000, count: 0 };
+        if (burst.until <= now)
+          Object.assign(burst, { until: now + 60000, count: 0 });
+        if (++burst.count > 120)
+          throw new HttpException(
+            "Too many requests. Please try again shortly.",
+            429,
+          );
+        bursts.set(actor.uid, burst);
+        return respond(
+          await voiceResult(async () => voice(actor, await body(req))),
+        );
+      }
       const segments = path.split("/");
       let match: Route | undefined;
       const params: Record<string, string> = {};

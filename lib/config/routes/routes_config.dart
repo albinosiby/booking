@@ -56,6 +56,8 @@ import '../../modules/team/screens/invitation_screen.dart';
 import 'routes.dart';
 import '../../modules/auth/screens/password_update_screen.dart';
 import 'route_guard.dart';
+import '../../modules/sarvam/screens/sarvam_settings_screen.dart';
+import '../../modules/sarvam/screens/call_logs_screen.dart';
 
 class RouterRefresh extends ChangeNotifier {
   RouterRefresh(List<Stream<Object?>> streams) {
@@ -99,6 +101,11 @@ GoRouter createRouter(
       ],
     ),
     routes: [
+      GoRoute(
+        path: Routes.sarvam,
+        builder: (c, s) => const SarvamSettingsScreen(),
+      ),
+      GoRoute(path: Routes.callLogs, builder: (c, s) => const CallLogsScreen()),
       GoRoute(
         path: '/profile/message-templates',
         builder: (c, s) => const TemplatesScreen(),

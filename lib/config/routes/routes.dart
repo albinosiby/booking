@@ -10,6 +10,8 @@ class Routes {
       bookingBlocks = '/bookings/blocks',
       newBookingBlock = '/bookings/blocks/new',
       payments = '/payments',
+      sarvam = '/profile/sarvam',
+      callLogs = '/profile/sarvam/calls',
       profile = '/profile',
       customers = '/customers',
       admissions = '/admissions',

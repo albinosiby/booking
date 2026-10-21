@@ -32,7 +32,11 @@ const when = {
   people: z.coerce.number().int().min(1).max(10000).optional().default(1),
 };
 const availabilitySchema = z
-  .object({ ...place, ...when, preferred_time: text(20).optional().default("") })
+  .object({
+    ...place,
+    ...when,
+    preferred_time: text(20).optional().default(""),
+  })
   .strip();
 const bookSchema = z
   .object({
@@ -67,7 +71,11 @@ const cancelSchema = z
   })
   .strip();
 
-const fold = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const fold = (v: string) =>
+  v
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 const digits = (v: string) => v.replace(/\D/g, "");
 /** Last ten digits identify Indian numbers with or without +91/0 prefixes. */
 const phoneKey = (v: string) => digits(v).slice(-10);
@@ -77,7 +85,8 @@ export function parseTime(raw: string) {
   const m = /^(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?$/i.exec(
     raw.trim(),
   );
-  if (!m) throw new BadRequestException(`I could not understand the time "${raw}".`);
+  if (!m)
+    throw new BadRequestException(`I could not understand the time "${raw}".`);
   let hour = Number(m[1]);
   const minute = Number(m[2] ?? 0),
     half = m[3]?.toLowerCase()[0];
@@ -136,6 +145,9 @@ export class VoiceService {
     private readonly db: Database,
     private readonly bookings: BookingService,
   ) {}
+  private detail(actor: Actor, id: string): Promise<Row> {
+    return this.bookings.detail(actor, id);
+  }
   private org(actor: Actor) {
     return actor.uid.slice(actor.uid.indexOf(":") + 1);
   }
@@ -203,7 +215,9 @@ export class VoiceService {
       );
     if (found.length > 1)
       throw new BadRequestException(
-        "Which one: " + found.map((x) => `${x.r.name} (${x.b.name})`).join(", ") + "?",
+        "Which one: " +
+          found.map((x) => `${x.r.name} (${x.b.name})`).join(", ") +
+          "?",
       );
     const { b, r, options } = found[0];
     const exactOption = options.filter(
@@ -214,7 +228,12 @@ export class VoiceService {
       throw new BadRequestException(
         `Which activity at ${r.name}: ${pick.map((o: Row) => o.name).join(", ")}?`,
       );
-    return { business: b, resource: r, option: pick[0], currency: c.currency as string };
+    return {
+      business: b,
+      resource: r,
+      option: pick[0],
+      currency: c.currency as string,
+    };
   }
   private selection(
     found: Awaited<ReturnType<VoiceService["resolve"]>>,
@@ -225,7 +244,11 @@ export class VoiceService {
   ) {
     const o = found.option;
     const minutes = duration ?? o.default_duration ?? o.durations?.[0];
-    if (o.minimum_duration ? minutes < o.minimum_duration : !o.durations.includes(minutes))
+    if (
+      o.minimum_duration
+        ? minutes < o.minimum_duration
+        : !o.durations.includes(minutes)
+    )
       throw new BadRequestException(
         o.minimum_duration
           ? `The minimum duration is ${o.minimum_duration} minutes.`
@@ -244,14 +267,21 @@ export class VoiceService {
   async availability(actor: Actor, input: unknown) {
     const v = availabilitySchema.parse(input);
     const found = await this.resolve(actor, v);
-    const selection = this.selection(found, v.date, "00:00", v.duration_minutes, v.people);
+    const selection = this.selection(
+      found,
+      v.date,
+      "00:00",
+      v.duration_minutes,
+      v.people,
+    );
     const { slots } = await this.bookings.availability(actor, {
       selection,
       exclude_booking_id: null,
     });
     const open = slots.filter((s: Row) => s.available);
     const preferred = v.preferred_time ? parseTime(v.preferred_time) : "";
-    const minute = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+    const minute = (t: string) =>
+      Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
     const ranked = preferred
       ? [...open].sort(
           (a, b) =>
@@ -297,10 +327,16 @@ export class VoiceService {
     const v = bookSchema.parse(input);
     const phoneNumber = v.contact_phone || v.caller_phone;
     if (digits(phoneNumber).length < 7)
-      throw new BadRequestException("I need the caller's phone number to book.");
+      throw new BadRequestException(
+        "I need the caller's phone number to book.",
+      );
     if (v.customer_name.length < 2)
       throw new BadRequestException("I need the caller's name to book.");
     const found = await this.resolve(actor, v);
+    const { interaction_id, expected_total, ...request } = v;
+    const key = commandKey(this.org(actor), interaction_id, "book", request);
+    const previous = await this.replay(actor, key, interaction_id);
+    if (previous) return this.booked(previous, found);
     const selection = this.selection(
       found,
       v.date,
@@ -326,14 +362,28 @@ export class VoiceService {
       email: null,
     };
     const { id } = await this.bookings.create(actor, {
-      command_key: commandKey(this.org(actor), v.interaction_id, "book", selection),
+      command_key: key,
       selection,
       quote_token: quote.quote_token,
       customer,
       notes: `Booked by phone through the Sarvam voice agent${v.interaction_id ? ` (call ${v.interaction_id})` : ""}.`,
       payments: [],
     });
-    const booking = await this.bookings.detail(actor, id);
+    return this.booked(await this.detail(actor, id), found);
+  }
+  /**
+   * A Sarvam retry of the same call and request returns the first result
+   * instead of re-checking a slot the first attempt already took.
+   */
+  private async replay(actor: Actor, key: string, call: string) {
+    if (!call) return null;
+    const { id } = (await this.bookings.commandResult(actor, key)) as Row;
+    return id ? this.detail(actor, id) : null;
+  }
+  private booked(
+    booking: Row,
+    found: Awaited<ReturnType<VoiceService["resolve"]>>,
+  ) {
     return {
       ok: true,
       message: `Booked. Your booking reference is ${booking.reference.split("").join(" ")}. ${found.resource.name}, ${this.span(booking)}. Total ${money(booking.total_minor, found.currency)}, payable at the venue.`,
@@ -355,7 +405,11 @@ export class VoiceService {
     return (row?.customer_id as string | undefined) ?? null;
   }
   /** Upcoming confirmed bookings made with the caller's phone number. */
-  private async callerBookings(actor: Actor, callerPhone: string, reference?: string) {
+  private async callerBookings(
+    actor: Actor,
+    callerPhone: string,
+    reference?: string,
+  ) {
     const key = phoneKey(callerPhone);
     if (key.length < 7)
       throw new ForbiddenException(
@@ -398,7 +452,7 @@ export class VoiceService {
     const { currency } = await this.bookings.catalog(actor);
     const items = [];
     for (const id of ids) {
-      const b = await this.bookings.detail(actor, id);
+      const b = await this.detail(actor, id);
       items.push({ ...this.summary(b, currency), span: this.span(b) });
     }
     return {
@@ -419,21 +473,36 @@ export class VoiceService {
       throw new NotFoundException(
         "I could not find an upcoming booking with that reference for this phone number.",
       );
-    return this.bookings.detail(actor, id);
+    return this.detail(actor, id);
   }
   async reschedule(actor: Actor, input: unknown) {
     const v = rescheduleSchema.parse(input);
-    const old = await this.owned(actor, v.caller_phone, v.reference);
+    const { interaction_id, ...request } = v;
+    request.reference = request.reference.toUpperCase().replace(/\s+/g, "");
+    const key = commandKey(
+      this.org(actor),
+      interaction_id,
+      "reschedule",
+      request,
+    );
     const catalog = await this.bookings.catalog(actor);
-    const business = catalog.businesses.find((b: Row) => b.id === old.business_id);
-    const current = business?.resources.find((r: Row) => r.id === old.resource_id);
+    const previous = await this.replay(actor, key, interaction_id);
+    if (previous) return this.moved(previous, catalog, null);
+    const old = await this.owned(actor, v.caller_phone, v.reference);
+    const business = catalog.businesses.find(
+      (b: Row) => b.id === old.business_id,
+    );
+    const current = business?.resources.find(
+      (r: Row) => r.id === old.resource_id,
+    );
     if (!business || !current)
       throw new ForbiddenException("This booking cannot be changed by phone.");
     const found = await this.resolve(actor, {
       business: business.name,
       space: v.space || current.name,
       activity:
-        current.options.find((o: Row) => o.id === old.selection.option_id)?.name ?? "",
+        current.options.find((o: Row) => o.id === old.selection.option_id)
+          ?.name ?? "",
     });
     const selection = this.selection(
       found,
@@ -447,34 +516,52 @@ export class VoiceService {
       exclude_booking_id: old.id,
     });
     await this.bookings.reschedule(actor, old.id, {
-      command_key: commandKey(this.org(actor), v.interaction_id, "reschedule", [old.id, selection]),
+      command_key: key,
       version: old.version,
       selection,
       quote_token: quote.quote_token,
       reason: `Rescheduled by the caller through the Sarvam voice agent${v.interaction_id ? ` (call ${v.interaction_id})` : ""}.`,
     });
-    const b = await this.bookings.detail(actor, old.id);
+    return this.moved(await this.detail(actor, old.id), catalog, old);
+  }
+  private moved(b: Row, catalog: Row, old: Row | null) {
+    const space =
+      catalog.businesses
+        .flatMap((x: Row) => x.resources)
+        .find((r: Row) => r.id === b.resource_id)?.name ?? "";
     const change =
-      b.total_minor === old.total_minor
-        ? ""
-        : ` The new total is ${money(b.total_minor, catalog.currency)}.`;
+      old && b.total_minor !== old.total_minor
+        ? ` The new total is ${money(b.total_minor, catalog.currency)}.`
+        : "";
     return {
       ok: true,
-      message: `Done. Booking ${b.reference.split("").join(" ")} is now ${found.resource.name}, ${this.span(b)}.${change}`,
+      message: `Done. Booking ${b.reference.split("").join(" ")} is now ${space}, ${this.span(b)}.${change}`,
       ...this.summary(b, catalog.currency),
     };
   }
   async cancel(actor: Actor, input: unknown) {
     const v = cancelSchema.parse(input);
+    const key = commandKey(this.org(actor), v.interaction_id, "cancel", [
+      v.reference.toUpperCase().replace(/\s+/g, ""),
+      v.caller_phone,
+    ]);
+    const previous = await this.replay(actor, key, v.interaction_id);
+    if (previous) return this.cancelled(actor, previous);
     const b = await this.owned(actor, v.caller_phone, v.reference);
     await this.bookings.status(actor, b.id, {
-      command_key: commandKey(this.org(actor), v.interaction_id, "cancel", b.id),
+      command_key: key,
       version: b.version,
       status: "cancelled",
       reason:
-        `Cancelled by the caller through the Sarvam voice agent${v.reason ? `: ${v.reason}` : ""}`.slice(0, 500),
+        `Cancelled by the caller through the Sarvam voice agent${v.reason ? `: ${v.reason}` : ""}`.slice(
+          0,
+          500,
+        ),
     });
-    const after = await this.bookings.detail(actor, b.id);
+    return this.cancelled(actor, await this.detail(actor, b.id));
+  }
+  private async cancelled(actor: Actor, after: Row) {
+    const b = after;
     const { currency } = await this.bookings.catalog(actor);
     const refund = after.refund_due_minor
       ? ` ${money(after.refund_due_minor, currency)} already paid will be refunded by the venue.`

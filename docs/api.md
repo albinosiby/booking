@@ -142,6 +142,10 @@ List filters: business_id, resource_id, date, date_until, overlap=true (calendar
 
 Calendar date badges: `GET /v1/bookings/date-counts?date=2030-06-01&date_until=2030-06-30` returns `{items:[{date:"2030-06-01",count:3},...]}`, including zeros. The inclusive range is limited to 62 days. Optional `business_id`, `resource_id`, `status` and `q` match the calendar list filters. Counts use booking-local dates, include overnight continuations with exclusive end boundaries, enforce organization/staff visibility, and are independent of booking-page pagination. All statuses are included unless filtered.
 
+## Sarvam voice agent
+
+Owner routes under `/v1/sarvam` manage the connection, tool key and call logs. Public tool routes under `/voice/v1` (`catalog`, `availability`, `bookings`, `my-bookings`, `reschedule`, `cancel`) authenticate with the `X-API-Key` tool key and act as the organization's restricted voice membership. See [Sarvam voice agent](sarvam-voice-agent.md).
+
 ## Accounts
 
 Accounts routes are under `/v1/accounts`; see [Accounts API and accounting rules](accounts-module.md#api). They include scoped overview/transactions, bank management, cash opening balance, business/space payment routing, manual split income/expenses, balanced transfers, reversals and protected PDF/XLSX reports. Reports accept date/business/space filters; transaction-only search/type/account filters are rejected for exports. Existing booking payment requests now optionally accept `account_id`; otherwise the configured routing is resolved atomically with the payment posting. Existing booking clients remain compatible.

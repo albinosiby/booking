@@ -5,10 +5,7 @@ import { AdmissionController } from "./admissions/admission.controller";
 import { MessagesService } from "./messages/messages.service";
 import { SarvamService } from "./sarvam/sarvam.service";
 import { VoiceService } from "./sarvam/voice.service";
-import {
-  SarvamController,
-  VoiceController,
-} from "./sarvam/sarvam.controller";
+import { SarvamController, VoiceController } from "./sarvam/sarvam.controller";
 import { MessagesController } from "./messages/messages.controller";
 import { ExpensesService } from "./expenses/expenses.service";
 import { ExpensesController } from "./expenses/expenses.controller";

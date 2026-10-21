@@ -1,6 +1,8 @@
 import { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
 import { AdmissionService } from "../src/admissions/admission.service";
 import { MessagesService } from "../src/messages/messages.service";
+import { SarvamService } from "../src/sarvam/sarvam.service";
+import { VoiceService } from "../src/sarvam/voice.service";
 import { projectUrl, publishableKey } from "./project";
 import process from "node:process";
 import { Buffer } from "node:buffer";
@@ -25,6 +27,7 @@ export const db = new EdgeDatabase();
 const workspace = new WorkspaceService(db as never);
 workspace.publicAppUrl = `${projectUrl}/functions/v1/booking-api`;
 const accounts = new AccountsService(db as never, workspace);
+const bookings = new BookingService(db as never, workspace);
 export const services = {
   blocks: new SlotBlocksService(db as never),
   admissions: new AdmissionService(db as never),
@@ -32,7 +35,9 @@ export const services = {
   expenses: new ExpensesService(db as never, workspace, accounts),
   income: new IncomeService(db as never, workspace, accounts),
   workspace,
-  bookings: new BookingService(db as never, workspace),
+  bookings,
+  sarvam: new SarvamService(db as never, workspace),
+  voice: new VoiceService(db as never, bookings),
   accounts,
   turf: new TurfService(db as never, workspace),
   court: new CourtService(db as never, workspace),

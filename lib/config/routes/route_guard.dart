@@ -97,6 +97,7 @@ String? routeRedirect(
   }
   if (!workspace.data.isOwner &&
       (path.startsWith('/team') ||
+          path.startsWith(Routes.sarvam) ||
           path.startsWith('/businesses') ||
           path == Routes.organizationDetails ||
           path == Routes.organizationEdit ||
