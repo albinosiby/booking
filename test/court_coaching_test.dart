@@ -96,10 +96,13 @@ void main() {
               courtIds: ['c1', 'c2'],
             ),
           ],
+          plans: [courts().plans.single.copyWith(coachId: 'k')],
         )
         .withoutCourt('c1');
     expect(c.courts.map((v) => v.id), ['c2']);
     expect(c.plans.single.courtIds, isEmpty);
+    // A plan left without courts no longer keeps its coach.
+    expect(c.plans.single.coachId, isNull);
     expect(c.coaches.single.courtIds, ['c2']);
   });
 

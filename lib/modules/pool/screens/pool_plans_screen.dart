@@ -191,9 +191,20 @@ class PoolPlansScreen extends StatelessWidget {
                   : assignedCoach?.name ?? 'Assigned coach',
             ),
           ),
+          if (p.coachId != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: disabled
+                    ? null
+                    : () => update((p) => p.copyWith(clearCoach: true)),
+                icon: const Icon(Icons.person_remove_outlined),
+                label: const Text('Unassign coach'),
+              ),
+            ),
           const SizedBox(height: 8),
           const Text(
-            'Add coaches and assign them to this plan from Team management → Coaches.',
+            'Add coaches and assign them to this plan from Team management → Coaches. Changing this plan’s pools needs a coach assigned to all of them.',
           ),
           const SizedBox(height: 12),
           const Text(

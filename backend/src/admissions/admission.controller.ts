@@ -26,6 +26,12 @@ export class AdmissionController {
   @Post("preview") preview(@Req() r: AuthRequest, @Body() v: unknown) {
     return this.service.preview(r.actor, v);
   }
+  @Post("coach-conflicts") coachConflicts(
+    @Req() r: AuthRequest,
+    @Body() v: unknown,
+  ) {
+    return this.service.coachConflicts(r.actor, v);
+  }
   @Get() list(@Req() r: AuthRequest, @Query() v: unknown) {
     return this.service.list(r.actor, v);
   }

@@ -57,6 +57,33 @@ export function admissionSpaces(c: Row | null | undefined): Row[] {
 export function planSpaceIds(plan: Row): string[] {
   return plan.pool_ids ?? plan.court_ids ?? [];
 }
+// Coaches are reassigned in Team → Coaches after admissions exist, so the
+// current configuration decides who teaches a plan. The admission snapshot
+// only answers for plans that were removed from the configuration.
+export function currentCoachId(
+  config: Row | undefined,
+  planId: string,
+  snapshot?: Row,
+): string | null {
+  const plan = config?.plans?.find((p: Row) => p.id === planId);
+  return (plan ? plan.coach_id : snapshot?.coach_id) ?? null;
+}
+export function coachName(config: Row | undefined, coachId: string | null) {
+  if (coachId === null) return "Unassigned";
+  // Older pool plans name a staff member instead of a coach contact.
+  return (
+    config?.coaches?.find((c: Row) => c.id === coachId)?.name ?? "Staff coach"
+  );
+}
+export function currentCoachName(
+  config: Row | undefined,
+  planId: string,
+  snapshot?: Row,
+) {
+  return config?.plans?.some((p: Row) => p.id === planId)
+    ? coachName(config, currentCoachId(config, planId))
+    : (snapshot?.coach_name ?? "Unassigned");
+}
 export function validSwimmingDuration(pool: Row, duration: number) {
   const minimum = pool.default_duration_minutes ?? pool.durations?.[0] ?? 60;
   return (

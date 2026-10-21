@@ -111,6 +111,9 @@ export function createHandler(
   add("POST", "/v1/admissions/preview", (i) =>
     services.admissions.preview(i.actor, i.body),
   );
+  add("POST", "/v1/admissions/coach-conflicts", (i) =>
+    services.admissions.coachConflicts(i.actor, i.body),
+  );
   add("GET", "/v1/admissions", (i) =>
     services.admissions.list(i.actor, i.query),
   );

@@ -332,3 +332,74 @@ test("court play plans reserve the whole court per visit and reject coaching fie
   const list = await service.list(f.owner, { kind: "play" });
   assert.equal(list.items.length, 3);
 });
+test("reassigned coaches are checked against the classes they now teach", async () => {
+  const f = await fixture();
+  const ravi = {
+    id: randomUUID(),
+    name: "Coach Ravi",
+    phone: "9876500002",
+    court_ids: f.config.courts.map((c: any) => c.id),
+  };
+  const config = structuredClone(f.config);
+  config.coaches.push(ravi);
+  config.plans[1].coach_id = ravi.id;
+  const version = async () =>
+    (await workspace.workspace(f.owner)).businesses.find(
+      (b: any) => b.id === f.businessId,
+    ).version;
+  await courts.configure(f.owner, f.businessId, {
+    version: await version(),
+    configuration: config,
+  });
+  await workspace.activate(f.owner, f.businessId);
+  // Different coaches may teach at the same time on different courts.
+  const beginner = await enroll(f);
+  await enroll(
+    f,
+    { plan_id: config.plans[1].id, resource_id: config.courts[1].id },
+    "9000000002",
+  );
+  const conflicts = await service.coachConflicts(f.owner, {
+    business_id: f.businessId,
+    coach_id: ravi.id,
+    plan_ids: [config.plans[0].id, config.plans[1].id],
+  });
+  assert.ok(conflicts.items.length > 0);
+  assert.deepEqual(
+    new Set(
+      conflicts.items.flatMap((c: any) => [c.plan_name, c.other_plan_name]),
+    ),
+    new Set(["Beginner batch", "Advanced batch"]),
+  );
+  // Keeping the current plans reports nothing new.
+  assert.equal(
+    (
+      await service.coachConflicts(f.owner, {
+        business_id: f.businessId,
+        coach_id: ravi.id,
+        plan_ids: [config.plans[1].id],
+      })
+    ).items.length,
+    0,
+  );
+  config.plans[0].coach_id = ravi.id;
+  await courts.configure(f.owner, f.businessId, {
+    version: await version(),
+    configuration: config,
+  });
+  await workspace.activate(f.owner, f.businessId);
+  // The beginner classes now belong to Ravi, not to the coach in the snapshot.
+  assert.equal(
+    (await service.detail(f.owner, beginner.id)).plan_snapshot.coach_name,
+    "Coach Ravi",
+  );
+  await assert.rejects(
+    () =>
+      enroll(
+        f,
+        { plan_id: config.plans[1].id, resource_id: config.courts[1].id },
+        "9000000003",
+      ),
+    /coach has another overlapping class/,
+  );
+});

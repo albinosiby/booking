@@ -1,4 +1,5 @@
 import '../../../utils/exceptions/app_exception.dart';
+import '../../../utils/services/rest_api_service.dart';
 import '../../court/models/court_configuration.dart';
 import '../../court/repositories/court_repository.dart';
 import '../../pool/models/pool_configuration.dart';
@@ -21,6 +22,14 @@ abstract interface class TeamCoachesRepository {
   Future<void> assign(
     String businessId,
     int version,
+    String coachId,
+    Set<String> planIds,
+  );
+
+  /// Upcoming classes that would overlap for [coachId] if they coached
+  /// exactly [planIds]; one readable line per clash.
+  Future<List<String>> conflicts(
+    String businessId,
     String coachId,
     Set<String> planIds,
   );
@@ -59,10 +68,18 @@ class _CoachTarget {
 /// Reuses the version-checked pool or court configuration save; no separate
 /// coach database.
 class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
-  ConfigurationTeamCoachesRepository(this.workspace, this.pools, [this.courts]);
+  ConfigurationTeamCoachesRepository(
+    this.workspace,
+    this.pools, [
+    this.courts,
+    this.api,
+  ]);
   final WorkspaceRepository workspace;
   final PoolRepository pools;
   final CourtRepository? courts;
+
+  /// Checks class conflicts; without it no conflicts are reported.
+  final RestApiService? api;
   Future<Workspace> _workspace() async {
     final data = await workspace.load();
     if (!data.isOwner) {
@@ -238,7 +255,11 @@ class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
     }
     final coach = c.coaches.firstWhere((v) => v.id == coachId);
     if (c.plans.any(
-      (p) => planIds.contains(p.id) && !p.coveredBy(coach.poolIds),
+      (p) =>
+          planIds.contains(p.id) &&
+          !(p.coachId == coachId
+              ? p.keepsCoach(coach.poolIds)
+              : p.coveredBy(coach.poolIds)),
     )) {
       throw AppException(
         c.court
@@ -271,7 +292,7 @@ class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
       throw AppException('Choose ${c.spaces} in this business.');
     }
     final affected = c.plans
-        .where((p) => p.coachId == coachId && !p.coveredBy(poolIds))
+        .where((p) => p.coachId == coachId && !p.keepsCoach(poolIds))
         .map((p) => p.id)
         .toSet();
     if (affected.isNotEmpty && !removeAffectedPlans) {
@@ -282,6 +303,29 @@ class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
     await c.write(
       c.coaches.map((v) => v.id == coachId ? v.withPools(poolIds) : v).toList(),
       {for (final id in affected) id: null},
+    );
+  }
+
+  @override
+  Future<List<String>> conflicts(
+    String businessId,
+    String coachId,
+    Set<String> planIds,
+  ) async {
+    if (api == null || planIds.isEmpty) return const [];
+    final j = await api!.request(
+      '/admissions/coach-conflicts',
+      method: 'POST',
+      data: {
+        'business_id': businessId,
+        'coach_id': coachId,
+        'plan_ids': planIds.toList(),
+      },
+    );
+    return List.unmodifiable(
+      (j['items'] as List).map(
+        (v) => '${v['plan_name']} and ${v['other_plan_name']} · ${v['label']}',
+      ),
     );
   }
 }

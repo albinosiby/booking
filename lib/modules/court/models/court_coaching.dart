@@ -95,7 +95,9 @@ class CourtPlan extends Equatable {
     if (coaching &&
         coachId != null &&
         (coach == null || !courtIds.every(coach.courtIds.contains))) {
-      return 'The coach of $name must be assigned to all of its courts.';
+      return coach == null
+          ? '$name: its coach was removed. Unassign the coach here.'
+          : '$name: ${coach.name} isn’t assigned to every court of this plan. Unassign the coach here, or add the courts in Team management → Coaches.';
     }
     if (enabled) {
       for (final court in courts.where((c) => courtIds.contains(c.id))) {

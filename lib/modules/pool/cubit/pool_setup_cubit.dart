@@ -204,10 +204,12 @@ class PoolSetupCubit extends ConfigurationSetupCubit<PoolSetupState> {
             enabled: o.enabled && o.poolIds.any((p) => p != id),
           ),
         ),
+        // A plan left without pools also loses its coach.
         plans: state.draft.plans.map(
           (p) => p.copyWith(
             poolIds: p.poolIds.where((x) => x != id),
             enabled: p.enabled && p.poolIds.any((x) => x != id),
+            clearCoach: !p.poolIds.any((x) => x != id),
           ),
         ),
       ),

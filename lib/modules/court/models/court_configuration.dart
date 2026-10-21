@@ -324,10 +324,14 @@ class CourtConfiguration extends Equatable {
   );
 
   /// Removes references to a deleted court from plans and coach contacts.
+  /// A plan left without courts also loses its coach.
   CourtConfiguration withoutCourt(String id) => copyWith(
     courts: courts.where((c) => c.id != id),
     plans: plans.map(
-      (p) => p.copyWith(courtIds: p.courtIds.where((v) => v != id)),
+      (p) => p.copyWith(
+        courtIds: p.courtIds.where((v) => v != id),
+        clearCoach: !p.courtIds.any((v) => v != id),
+      ),
     ),
     coaches: coaches.map((c) => c.withCourts(c.courtIds.where((v) => v != id))),
   );

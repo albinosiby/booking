@@ -320,9 +320,11 @@ class _CoachEditor extends StatelessWidget {
                         subtitle: Text(
                           plan.coachId == null
                               ? 'Unassigned'
-                              : plan.coachId == s.coachId
+                              : plan.coachId != s.coachId
+                              ? 'Assigned to another coach'
+                              : plan.keepsCoach(s.selectedCoach?.poolIds ?? [])
                               ? 'Assigned to this coach'
-                              : 'Assigned to another coach',
+                              : 'Not covered by this coach’s ${business?.spacesLabel ?? 'pool spaces'}. Untick to save, or assign the missing ${business?.spacesLabel ?? 'pool spaces'} first.',
                         ),
                         onChanged: s.busy
                             ? null
@@ -339,6 +341,19 @@ class _CoachEditor extends StatelessWidget {
                       ? null
                       : () async {
                           var confirmed = false;
+                          if (!adding && !spaces) {
+                            final conflicts = await cubit.assignmentConflicts();
+                            if (conflicts == null || !context.mounted) return;
+                            if (conflicts.isNotEmpty &&
+                                !await confirmAction(
+                                  context,
+                                  'Coach has overlapping classes',
+                                  'After this change the coach would teach overlapping upcoming classes:\n${conflicts.join('\n')}\n\nReschedule those classes or choose another coach. Save anyway?',
+                                )) {
+                              return;
+                            }
+                            if (!context.mounted) return;
+                          }
                           if (spaces && cubit.state.affectedPlans.isNotEmpty) {
                             confirmed = await confirmAction(
                               context,

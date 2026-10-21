@@ -1019,7 +1019,7 @@ class PoolConfiguration extends Equatable {
     for (final plan in plans.where((p) => p.coaching && p.coachId != null)) {
       final coach = coaches.where((c) => c.id == plan.coachId).firstOrNull;
       if (coach != null && !plan.poolIds.every(coach.poolIds.contains)) {
-        return 'Assign the coach to every eligible pool before assigning this plan.';
+        return '${plan.name}: ${coach.name} isn’t assigned to every pool of this plan. Unassign the coach here, or add the pools in Team management → Coaches.';
       }
     }
     for (final p in plans) {

@@ -210,6 +210,61 @@ void main() {
     },
   );
   test(
+    'A plan left without pools keeps its coach and can still be unticked',
+    () async {
+      final f = await fixture();
+      addTearDown(f.session.close);
+      var b = (await f.repository.load()).single;
+      await f.repository.add(b.id, b.version, 'Alex Coach', '9876543210');
+      b = (await f.repository.load()).single;
+      final id = b.coaches.single.id;
+      await f.repository.assignSpaces(b.id, b.version, id, {'pool', 'pool-b'});
+      b = (await f.repository.load()).single;
+      await f.repository.assign(b.id, b.version, id, {'beginner', 'advanced'});
+      // Older data: the advanced plan lost its pools but kept its coach.
+      final config = PoolConfiguration.fromJson(f.source.configuration!);
+      f.source.configuration = config
+          .copyWith(
+            plans: config.plans.map(
+              (p) => p.id == 'advanced' ? p.copyWith(poolIds: []) : p,
+            ),
+          )
+          .toJson();
+      final c = TeamCoachesCubit(f.repository, f.session);
+      addTearDown(c.close);
+      await c.load();
+      b = c.state.businesses.single;
+      c.beginSpaces(b.id, id);
+      c.toggleSpace('pool-b', false);
+      expect(c.state.affectedPlans, isEmpty);
+      c.closeEditor();
+      c.beginAssign(b.id, id);
+      expect(c.state.eligiblePlans.map((p) => p.id), contains('advanced'));
+      expect(await c.saveEditor(), isTrue);
+      c.beginAssign(b.id, id);
+      c.toggle('advanced', false);
+      expect(await c.saveEditor(), isTrue);
+      expect(
+        c.state.businesses.single.plans
+            .firstWhere((p) => p.id == 'advanced')
+            .coachId,
+        isNull,
+      );
+    },
+  );
+  test('Closing the editor does not leave its error on the page', () async {
+    final f = await fixture();
+    final c = TeamCoachesCubit(f.repository, f.session);
+    addTearDown(c.close);
+    addTearDown(f.session.close);
+    await c.load();
+    c.beginAdd();
+    expect(await c.saveEditor(), isFalse);
+    expect(c.state.error, isNotNull);
+    c.closeEditor();
+    expect(c.state.error, isNull);
+  });
+  test(
     'Removing spaces needs confirmation and removes only affected plan assignments',
     () async {
       final f = await fixture();

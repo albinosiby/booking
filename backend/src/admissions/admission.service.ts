@@ -25,6 +25,9 @@ import { destination } from "../accounts/ledger";
 import {
   admissionSpaces,
   admissionTypes,
+  coachName,
+  currentCoachId,
+  currentCoachName,
   planSpaceIds,
   validSwimmingDuration,
   enrollmentSchema,
@@ -34,6 +37,17 @@ import {
   interval,
 } from "./admission.rules";
 type Row = Record<string, any>;
+/** Shows who coaches the admission's plan now, not who did when it was sold. */
+function withCurrentCoach(a: Row, config: Row | undefined) {
+  if (a.plan_snapshot?.kind !== "coaching") return a;
+  return {
+    ...a,
+    plan_snapshot: {
+      ...a.plan_snapshot,
+      coach_name: currentCoachName(config, a.plan_id, a.plan_snapshot),
+    },
+  };
+}
 const reasonSchema = z.string().trim().min(2).max(500);
 @Injectable()
 export class AdmissionService {
@@ -248,9 +262,7 @@ export class AdmissionService {
             pool_ids: planSpaceIds(p).filter((id: string) =>
               pools.some((r: Row) => r.id === id),
             ),
-            coach_name:
-              c.coaches?.find((v: Row) => v.id === p.coach_id)?.name ??
-              "Unassigned",
+            coach_name: coachName(c, p.coach_id ?? null),
             active_count: counts.find((r) => r.plan_id === p.id)?.n ?? 0,
           })),
       });
@@ -319,13 +331,103 @@ export class AdmissionService {
       if (inventoryIsBlocked(quote, allocations))
         throw new SlotBlockedException();
     } else if (court) checkInventory(quote, allocations, exclude);
+    const coach = currentCoachId(b.configuration, plan.id, plan);
     if (
-      plan.coach_id &&
+      coach &&
       overlaps.some(
-        (r) => r.plan_snapshot.coach_id === plan.coach_id && !same.includes(r),
+        (r) =>
+          currentCoachId(b.configuration, r.plan_id, r.plan_snapshot) ===
+            coach && !same.includes(r),
       )
     )
       throw new ConflictException("The coach has another overlapping class.");
+  }
+  /**
+   * Upcoming classes that would overlap for a coach who coaches exactly
+   * `plan_ids` after a Team → Coaches save. Only clashes involving a plan
+   * the coach would newly take over are reported.
+   */
+  async coachConflicts(actor: Actor, input: unknown) {
+    const v = z
+      .object({
+        business_id: z.uuid(),
+        coach_id: z.string().min(1).max(100),
+        plan_ids: z.array(z.string().min(1).max(100)).max(50),
+      })
+      .strict()
+      .parse(input);
+    const m = await this.member(actor);
+    if (m.role !== "owner")
+      throw new ForbiddenException("Only the owner can manage coaches.");
+    const b = await this.business(m, v.business_id, undefined, this.db);
+    const plans: Row[] = b.configuration?.plans ?? [];
+    const wanted = new Set(v.plan_ids);
+    const gained = new Set(
+      plans
+        .filter((p) => wanted.has(p.id) && p.coach_id !== v.coach_id)
+        .map((p) => p.id),
+    );
+    if (!gained.size) return { items: [] };
+    const coachOf = (planId: string, snapshot: Row) => {
+      if (!plans.some((p) => p.id === planId))
+        return currentCoachId(undefined, planId, snapshot);
+      if (wanted.has(planId)) return v.coach_id;
+      const current = currentCoachId(b.configuration, planId);
+      return current === v.coach_id ? null : current;
+    };
+    const now = new Date().toISOString();
+    // Admissions may start far ahead, so every future class counts.
+    const until = "9999-12-31T23:59:59Z";
+    // One class per plan, space and time; students of a batch share it.
+    const classes = new Map<string, Row>();
+    for (const r of await this.allocations(this.db, b.id, now, until)) {
+      if (
+        !r.plan_id ||
+        r.plan_snapshot?.kind !== "coaching" ||
+        Date.parse(r.starts_at) <= Date.now() ||
+        coachOf(r.plan_id, r.plan_snapshot) !== v.coach_id
+      )
+        continue;
+      const key = [r.plan_id, r.inventory_key, r.starts_at, r.ends_at].join(
+        "|",
+      );
+      const c = classes.get(key) ?? { ...r, bookings: new Set<string>() };
+      c.bookings.add(r.booking_id);
+      classes.set(key, c);
+    }
+    const list = [...classes.values()].sort(
+      (x, y) => Date.parse(x.starts_at) - Date.parse(y.starts_at),
+    );
+    const name = (r: Row) =>
+      plans.find((p) => p.id === r.plan_id)?.name ??
+      r.plan_snapshot?.name ??
+      "Coaching plan";
+    const items: Row[] = [];
+    for (let i = 0; i < list.length && items.length < 20; i++)
+      for (let j = i + 1; j < list.length && items.length < 20; j++) {
+        const x = list[i],
+          y = list[j];
+        if (Date.parse(y.starts_at) >= Date.parse(x.ends_at)) break;
+        if (
+          (!gained.has(x.plan_id) && !gained.has(y.plan_id)) ||
+          [...x.bookings].some((id) => y.bookings.has(id))
+        )
+          continue;
+        items.push({
+          plan_id: x.plan_id,
+          plan_name: name(x),
+          other_plan_id: y.plan_id,
+          other_plan_name: name(y),
+          starts_at: x.starts_at,
+          ends_at: x.ends_at,
+          other_starts_at: y.starts_at,
+          other_ends_at: y.ends_at,
+          label: localStamp(Date.parse(y.starts_at), b.timezone)
+            .slice(0, 16)
+            .replace("T", " "),
+        });
+      }
+    return { items };
   }
   private async previewIn(
     db: Queryable,
@@ -436,9 +538,7 @@ export class AdmissionService {
     }
     const snapshot = {
       ...plan,
-      coach_name:
-        c.coaches?.find((v: Row) => v.id === plan.coach_id)?.name ??
-        "Unassigned",
+      coach_name: coachName(c, plan.coach_id ?? null),
     };
     const preview = {
       plan: snapshot,
@@ -772,14 +872,15 @@ export class AdmissionService {
     values.push(v.cursor);
     const rows = (
       await this.db.query<Row>(
-        `SELECT a.*,b.name business_name,r.name space_name,COALESCE((SELECT sum(CASE WHEN p.kind='collection' THEN p.amount_minor ELSE -p.amount_minor END) FROM admission_payments p WHERE p.admission_id=a.id),0)::integer net FROM admission_balances a JOIN businesses b ON b.id=a.business_id JOIN resources r ON r.id=a.resource_id WHERE ${where} ORDER BY a.created_at DESC,a.id LIMIT 51 OFFSET $${values.length}`,
+        `SELECT a.*,b.name business_name,b.configuration business_configuration,r.name space_name,COALESCE((SELECT sum(CASE WHEN p.kind='collection' THEN p.amount_minor ELSE -p.amount_minor END) FROM admission_payments p WHERE p.admission_id=a.id),0)::integer net FROM admission_balances a JOIN businesses b ON b.id=a.business_id JOIN resources r ON r.id=a.resource_id WHERE ${where} ORDER BY a.created_at DESC,a.id LIMIT 51 OFFSET $${values.length}`,
         values,
       )
     ).rows;
     return {
-      items: rows
-        .slice(0, 50)
-        .map((a) => ({ ...a, ...moneyStatus(a.total_minor, a.net) })),
+      items: rows.slice(0, 50).map(({ business_configuration, ...a }) => ({
+        ...withCurrentCoach(a, business_configuration),
+        ...moneyStatus(a.total_minor, a.net),
+      })),
       next_cursor: rows.length > 50 ? v.cursor + 50 : null,
     };
   }
@@ -817,7 +918,7 @@ export class AdmissionService {
       this.db,
     );
     return {
-      ...a,
+      ...withCurrentCoach(a, business.configuration),
       business_name: business.name,
       space_name:
         admissionSpaces(business.configuration).find(

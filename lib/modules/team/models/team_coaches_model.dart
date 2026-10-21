@@ -16,6 +16,11 @@ class CoachPlan extends Equatable {
   final List<String> poolIds;
   bool coveredBy(Iterable<String> assigned) =>
       poolIds.isNotEmpty && poolIds.every(assigned.contains);
+
+  /// Whether a coach already on this plan may stay on it. Matches the
+  /// configuration validators: a plan with no spaces never blocks its coach.
+  bool keepsCoach(Iterable<String> assigned) =>
+      poolIds.every(assigned.contains);
   @override
   List<Object?> get props => [id, name, coachId, poolIds];
 }
@@ -71,14 +76,21 @@ class TeamCoachesModel extends Equatable {
   final Set<String> planIds, spaceIds;
   PoolCoach? get selectedCoach =>
       selectedBusiness?.coaches.where((c) => c.id == coachId).firstOrNull;
+
+  /// Plans the coach covers, plus plans already assigned to them so an
+  /// assignment that is no longer covered can still be unticked.
   List<CoachPlan> get eligiblePlans =>
       selectedBusiness?.plans
-          .where((p) => p.coveredBy(selectedCoach?.poolIds ?? []))
+          .where(
+            (p) =>
+                p.coachId == coachId ||
+                p.coveredBy(selectedCoach?.poolIds ?? []),
+          )
           .toList() ??
       [];
   List<CoachPlan> get affectedPlans =>
       selectedBusiness?.plans
-          .where((p) => p.coachId == coachId && !p.coveredBy(spaceIds))
+          .where((p) => p.coachId == coachId && !p.keepsCoach(spaceIds))
           .toList() ??
       [];
 

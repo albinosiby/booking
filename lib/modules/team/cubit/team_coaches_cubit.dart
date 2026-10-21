@@ -132,8 +132,47 @@ class TeamCoachesCubit extends Cubit<TeamCoachesModel> {
   }
 
   void closeEditor() {
-    if (!isClosed && !state.busy) {
-      emit(state.copy(clearEditor: true, error: state.error));
+    // Editor errors belong to the editor; don't leave them on the page.
+    if (!isClosed && !state.busy) emit(state.copy(clearEditor: true));
+  }
+
+  /// Upcoming class clashes the plan assignment would create, or null when
+  /// they could not be checked (the error is shown in the editor).
+  Future<List<String>?> assignmentConflicts() async {
+    final b = state.selectedBusiness, coachId = state.coachId;
+    if (!authorized ||
+        state.busy ||
+        state.editor != CoachEditor.assign ||
+        b == null ||
+        coachId == null) {
+      return null;
+    }
+    final added = state.planIds.where(
+      (id) => !b.plans.any((p) => p.id == id && p.coachId == coachId),
+    );
+    if (added.isEmpty) return const [];
+    final g = generation;
+    emit(state.copy(busy: true));
+    try {
+      final conflicts = await repository.conflicts(
+        b.id,
+        coachId,
+        state.planIds,
+      );
+      if (isClosed || g != generation) return null;
+      emit(state.copy(busy: false));
+      return conflicts;
+    } catch (e) {
+      if (isClosed || g != generation) return null;
+      emit(
+        state.copy(
+          busy: false,
+          error: e is AppException
+              ? e.message
+              : 'Could not check this coach’s classes. Retry.',
+        ),
+      );
+      return null;
     }
   }
 

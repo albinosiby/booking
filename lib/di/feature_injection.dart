@@ -236,7 +236,7 @@ void registerFeatureDependencies(GetIt di) {
   di.registerFactory<LocationCatalogCubit>(() => LocationCatalogCubit(di()));
   di.registerFactory<TeamCubit>(() => TeamCubit(di()));
   di.registerLazySingleton<TeamCoachesRepository>(
-    () => ConfigurationTeamCoachesRepository(di(), di(), di()),
+    () => ConfigurationTeamCoachesRepository(di(), di(), di(), di()),
   );
   di.registerFactoryParam<TeamCoachesCubit, WorkspaceSession, void>(
     (session, _) => TeamCoachesCubit(di(), session),
