@@ -115,7 +115,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   );
 
   Widget editorSection(int index, Widget child) => WebsiteEditorSection(
-    key: sectionKeys[index],
+    key: index == 0 ? null : sectionKeys[index],
     index: index,
     title: sections[index].$1,
     description: sections[index].$2,
@@ -150,6 +150,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   }
 
   Widget header(WebsiteSettingsState s, WebsiteSettings d) => AppCard(
+    key: sectionKeys[0],
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -178,9 +179,23 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
         const SizedBox(height: 16),
         SelectableText(
           key: const ValueKey('website-saved-url'),
-          s.saved?.url ??
-              'Your public link will appear here when website hosting is configured.',
+          s.saved!.websiteAddress,
         ),
+        if (s.saved!.url != s.saved!.websiteAddress) ...[
+          const SizedBox(height: 8),
+          Text(
+            s.saved!.url == null
+                ? 'Connect this address before sharing it with customers.'
+                : 'This address is not connected yet. Use your current website link:',
+          ),
+          if (s.saved!.url != null) ...[
+            const SizedBox(height: 8),
+            SelectableText(
+              s.saved!.url!,
+              key: const ValueKey('website-current-live-url'),
+            ),
+          ],
+        ],
         const SizedBox(height: 8),
         const Text(
           'Customers can book normal visits using their name and phone number. Payments are collected at the venue.',
@@ -232,8 +247,8 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     LayoutBuilder(
       builder: (context, constraints) {
         final style = Theme.of(context).textTheme.bodyMedium!;
-        final prefix = d.domain == null ? null : 'https://';
-        final suffix = d.domain == null ? null : '.${d.domain}';
+        const prefix = 'https://';
+        final suffix = '.${d.addressDomain}';
         double textWidth(String text) {
           final painter = TextPainter(
             text: TextSpan(text: text, style: style),
@@ -247,12 +262,14 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
 
         // Wrap the fixed domain on narrow screens to leave room to type.
         final inline =
-            prefix == null ||
-            constraints.maxWidth >=
-                textWidth(prefix) + textWidth(suffix!) + 120;
+            constraints.maxWidth >= textWidth(prefix) + textWidth(suffix) + 120;
         Widget fixed(String text) => Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Text(text, style: style),
+          child: Center(
+            widthFactor: 1,
+            heightFactor: 1,
+            child: Text(text, style: style),
+          ),
         );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -274,9 +291,9 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
                 labelText: 'Website name',
                 floatingLabelBehavior: FloatingLabelBehavior.always,
                 hintText: 'your-name',
-                prefixIcon: prefix == null ? null : fixed(prefix),
+                prefixIcon: fixed(prefix),
                 prefixIconConstraints: const BoxConstraints(minHeight: 48),
-                suffixIcon: suffix != null && inline ? fixed(suffix) : null,
+                suffixIcon: inline ? fixed(suffix) : null,
                 suffixIconConstraints: const BoxConstraints(minHeight: 48),
                 helperText: 'Lowercase letters, numbers and single hyphens.',
                 helperMaxLines: 3,
@@ -285,7 +302,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
                 border: const OutlineInputBorder(),
               ),
             ),
-            if (suffix != null && !inline)
+            if (!inline)
               Align(alignment: Alignment.centerRight, child: fixed(suffix)),
           ],
         );

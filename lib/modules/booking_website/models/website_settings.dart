@@ -152,6 +152,13 @@ class WebsiteSettings extends Equatable {
 
   /// Wildcard domain, e.g. `bookingos.online`; null when the API uses path links.
   final String? domain, url;
+
+  String get addressDomain =>
+      domain?.trim().isNotEmpty == true ? domain!.trim() : 'bookingos.online';
+
+  /// Address shown in the editor even while a temporary hosting link is used.
+  String get websiteAddress =>
+      '${addressDomain.startsWith('localhost') ? 'http' : 'https'}://$slug.$addressDomain';
   final Map<String, String> socialLinks;
   final List<WebsiteImage> images;
   final List<WebsiteBusiness> businesses;

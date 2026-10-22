@@ -22,43 +22,47 @@ import 'package:eden_booking/utils/exceptions/app_exception.dart';
 import 'booking_module_test.dart' show BookingSource;
 
 class TestWebsiteRepository implements WebsiteRepository {
-  WebsiteSettings value = const WebsiteSettings(
-    version: 1,
-    slug: 'eden-sports',
-    title: 'Eden Sports',
-    description: '',
-    phone: '+919876543210',
-    instructions: '',
-    cancellationPolicy: '',
-    status: 'draft',
-    publishLogo: false,
-    noticeMinutes: 0,
-    advanceDays: 30,
-    businesses: [
-      WebsiteBusiness(
-        id: 'business',
-        name: 'Badminton',
-        type: 'badminton',
-        status: 'ready',
-        enabled: true,
-        spaces: [
-          WebsiteSpace(id: 'court-1', name: 'Court 1'),
-          WebsiteSpace(id: 'court-2', name: 'Court 2'),
+  TestWebsiteRepository({bool pathLinks = false})
+    : value = WebsiteSettings(
+        version: 1,
+        slug: 'eden-sports',
+        title: 'Eden Sports',
+        description: '',
+        phone: '+919876543210',
+        instructions: '',
+        cancellationPolicy: '',
+        status: 'draft',
+        publishLogo: false,
+        noticeMinutes: 0,
+        advanceDays: 30,
+        businesses: const [
+          WebsiteBusiness(
+            id: 'business',
+            name: 'Badminton',
+            type: 'badminton',
+            status: 'ready',
+            enabled: true,
+            spaces: [
+              WebsiteSpace(id: 'court-1', name: 'Court 1'),
+              WebsiteSpace(id: 'court-2', name: 'Court 2'),
+            ],
+          ),
+          WebsiteBusiness(
+            id: 'pool',
+            name: 'Pool',
+            type: 'pool',
+            status: 'ready',
+            enabled: true,
+            spaces: [WebsiteSpace(id: 'lane', name: 'Lane')],
+          ),
         ],
-      ),
-      WebsiteBusiness(
-        id: 'pool',
-        name: 'Pool',
-        type: 'pool',
-        status: 'ready',
-        enabled: true,
-        spaces: [WebsiteSpace(id: 'lane', name: 'Lane')],
-      ),
-    ],
-    businessIds: ['business', 'pool'],
-    domain: 'bookingos.online',
-    url: 'https://eden-sports.bookingos.online',
-  );
+        businessIds: const ['business', 'pool'],
+        domain: pathLinks ? null : 'bookingos.online',
+        url: pathLinks
+            ? 'https://venues.example.test/eden-sports'
+            : 'https://eden-sports.bookingos.online',
+      );
+  WebsiteSettings value;
   int reads = 0, saves = 0, uploads = 0, picks = 0;
   String? saveError;
   Completer<void>? delayedSave;
@@ -78,7 +82,12 @@ class TestWebsiteRepository implements WebsiteRepository {
     saves++;
     if (delayedSave != null) await delayedSave!.future;
     if (saveError != null) throw AppException(saveError!);
-    value = draft.copyWith(version: value.version + 1, url: draft.draftUrl);
+    value = draft.copyWith(
+      version: value.version + 1,
+      url: draft.domain == null
+          ? Uri.parse(value.url!).replace(path: '/${draft.slug}').toString()
+          : draft.draftUrl,
+    );
     return value;
   }
 
@@ -493,6 +502,92 @@ void main() {
           ),
         );
         expect(tester.widget<FilledButton>(save).onPressed, isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final width in [320.0, 1440.0]) {
+    testWidgets(
+      'path-hosted editor keeps URL parts and sidebar summary visible at $width',
+      (tester) async {
+        tester.view.physicalSize = Size(width, 1100);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final workspace = WorkspaceCubit(BookingSource());
+        await workspace.load();
+        final repo = TestWebsiteRepository(pathLinks: true);
+        repo.value = repo.value.copyWith(status: 'published');
+        getIt
+            .registerFactoryParam<WebsiteSettingsCubit, WorkspaceSession, void>(
+              (s, _) => WebsiteSettingsCubit(s, repo),
+            );
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox());
+          await workspace.close();
+        });
+        await tester.pumpWidget(
+          BlocProvider.value(
+            value: workspace,
+            child: ScreenUtilInit(
+              designSize: const Size(390, 844),
+              builder: (_, _) => MaterialApp(
+                theme: darkTheme(),
+                home: const WebsiteSettingsScreen(),
+                builder: (c, child) => MediaQuery(
+                  data: MediaQuery.of(c).copyWith(
+                    textScaler: TextScaler.linear(width == 320 ? 1.3 : 1),
+                  ),
+                  child: child!,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final summary = find.byKey(const ValueKey('website-saved-url'));
+        final live = find.byKey(const ValueKey('website-current-live-url'));
+        final name = find.widgetWithText(TextFormField, 'Website name');
+        final save = find.byKey(const ValueKey('website-address-save'));
+        expect(
+          tester.widget<SelectableText>(summary).data,
+          'https://eden-sports.bookingos.online',
+        );
+        expect(
+          tester.widget<SelectableText>(live).data,
+          'https://venues.example.test/eden-sports',
+        );
+        await tester.ensureVisible(name);
+        await tester.enterText(name, '');
+        await tester.pumpAndSettle();
+        expect(find.text('https://').hitTestable(), findsOneWidget);
+        expect(find.text('.bookingos.online'), findsOneWidget);
+        await tester.enterText(name, 'updated-venue');
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<SelectableText>(summary).data,
+          'https://eden-sports.bookingos.online',
+        );
+        await tester.ensureVisible(save);
+        await tester.tap(save);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<SelectableText>(summary).data,
+          'https://updated-venue.bookingos.online',
+        );
+        expect(
+          tester.widget<SelectableText>(live).data,
+          'https://venues.example.test/updated-venue',
+        );
+        expect(repo.value.domain, isNull);
+        if (width >= 1180) {
+          await tester.tap(find.byKey(const ValueKey('website-nav-1')));
+          await tester.pumpAndSettle();
+          expect(summary.hitTestable(), findsNothing);
+          await tester.tap(find.byKey(const ValueKey('website-nav-0')));
+          await tester.pumpAndSettle();
+          expect(summary.hitTestable(), findsOneWidget);
+          expect(live.hitTestable(), findsOneWidget);
+        }
         expect(tester.takeException(), isNull);
       },
     );
