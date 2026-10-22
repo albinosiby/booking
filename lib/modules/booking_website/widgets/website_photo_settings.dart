@@ -81,32 +81,68 @@ class WebsitePhotoSlot extends StatelessWidget {
   final VoidCallback onUpload;
   final ValueChanged<String> onRemove;
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(title, style: Theme.of(context).textTheme.titleSmall),
-      const SizedBox(height: 4),
-      Text(help, style: Theme.of(context).textTheme.bodySmall),
-      const SizedBox(height: 10),
-      if (image != null)
-        WebsitePhotoTile(
-          image: image!,
-          disabled: disabled,
-          onRemove: onRemove,
-          wide: wide,
-          height: height,
-        ),
-      OutlinedButton.icon(
-        onPressed:
-            disabled ||
-                image == null && settings.images.length >= websitePhotoLimit
-            ? null
-            : onUpload,
-        icon: const Icon(Icons.add_photo_alternate_outlined),
-        label: Text(image == null ? 'Upload photo' : 'Replace photo'),
+  Widget build(BuildContext context) {
+    final t = Theme.of(context), c = t.colorScheme;
+    final limitReached =
+        image == null && settings.images.length >= websitePhotoLimit;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surfaceContainerHighest.withValues(alpha: .4),
+        border: Border.all(color: c.outlineVariant),
+        borderRadius: BorderRadius.circular(16),
       ),
-    ],
-  );
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: t.textTheme.titleSmall),
+          const SizedBox(height: 6),
+          Text(
+            help,
+            style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
+          ),
+          const SizedBox(height: 16),
+          if (image != null)
+            WebsitePhotoTile(
+              image: image!,
+              disabled: disabled,
+              onRemove: onRemove,
+              wide: wide,
+              height: height,
+            )
+          else
+            Container(
+              width: double.infinity,
+              height: height ?? (wide ? 130 : 76),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: c.surface,
+              ),
+              child: Icon(
+                Icons.add_photo_alternate_outlined,
+                size: 30,
+                color: c.onSurfaceVariant,
+              ),
+            ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: disabled || limitReached ? null : onUpload,
+            icon: const Icon(Icons.add_photo_alternate_outlined),
+            label: Text(image == null ? 'Upload photo' : 'Replace photo'),
+          ),
+          if (limitReached) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Photo limit reached. Remove a photo to add another.',
+              style: t.textTheme.bodySmall,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 /// Booking page gallery for one space (up to four photos, the first is the cover).

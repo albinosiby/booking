@@ -9,6 +9,7 @@ import '../models/website_settings.dart';
 import '../repositories/rest_website_repository.dart' show normaliseSocialLink;
 import '../widgets/website_photo_settings.dart';
 import '../widgets/website_spaces_settings.dart';
+import '../widgets/website_editor_section.dart';
 
 /// Profile → Design website: address, branding, spaces, photos, rules and links.
 class WebsiteSettingsScreen extends StatefulWidget {
@@ -23,6 +24,21 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   );
   final form = GlobalKey<FormState>();
   final addressField = GlobalKey<FormFieldState<String>>();
+  final sectionKeys = List.generate(5, (_) => GlobalKey());
+  final expanded = <int>{0};
+  int selectedSection = 0;
+  bool desktop = false;
+  static const sections = [
+    ('Website address', 'Your public booking link', Icons.language_rounded),
+    (
+      'Brand & homepage',
+      'Logo, photos and introduction',
+      Icons.palette_outlined,
+    ),
+    ('Services & spaces', 'What customers can book', Icons.grid_view_rounded),
+    ('Social media', 'Connect with your visitors', Icons.link_rounded),
+    ('Booking policies', 'Rules and venue instructions', Icons.policy_outlined),
+  ];
   @override
   void initState() {
     super.initState();
@@ -36,7 +52,31 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   }
 
   void save([String? action]) {
-    if (form.currentState?.validate() ?? false) cubit.save(action: action);
+    final errors = form.currentState?.validateGranularly();
+    if (errors == null) return;
+    if (errors.isEmpty) {
+      cubit.save(action: action);
+      return;
+    }
+    final field = errors.first;
+    final section = field.context
+        .findAncestorWidgetOfExactType<WebsiteEditorSection>();
+    if (section != null) {
+      setState(() {
+        expanded.add(section.index);
+        selectedSection = section.index;
+      });
+    }
+    ExpansibleController.maybeOf(field.context)?.expand();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && field.mounted) {
+        Scrollable.ensureVisible(
+          field.context,
+          duration: const Duration(milliseconds: 250),
+          alignment: .15,
+        );
+      }
+    });
   }
 
   Widget field({
@@ -74,17 +114,40 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     ),
   );
 
-  Widget section(String title, String? intro, List<Widget> children) => AppCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(title, style: Theme.of(context).textTheme.titleLarge),
-        if (intro != null) ...[const SizedBox(height: 8), Text(intro)],
-        const SizedBox(height: 20),
-        ...children,
-      ],
-    ),
+  Widget editorSection(int index, Widget child) => WebsiteEditorSection(
+    key: sectionKeys[index],
+    index: index,
+    title: sections[index].$1,
+    description: sections[index].$2,
+    icon: sections[index].$3,
+    expanded: expanded.contains(index),
+    collapsible: !desktop,
+    onToggle: () => setState(() {
+      expanded.contains(index) ? expanded.remove(index) : expanded.add(index);
+    }),
+    child: child,
   );
+
+  Widget section(int index, String? intro, List<Widget> children) {
+    return editorSection(
+      index,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (intro != null) ...[
+            Text(
+              intro,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+          ...children,
+        ],
+      ),
+    );
+  }
 
   Widget header(WebsiteSettingsState s, WebsiteSettings d) => AppCard(
     child: Column(
@@ -100,14 +163,23 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
-            Chip(label: Text(d.status)),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
+        AppStatusBadge(
+          label: switch (d.status) {
+            'published' => 'Published',
+            'paused' => 'Bookings paused',
+            'unpublished' => 'Unpublished',
+            _ => 'Draft website',
+          },
+          icon: d.status == 'published' ? Icons.public : Icons.edit_outlined,
+        ),
+        const SizedBox(height: 16),
         SelectableText(
           key: const ValueKey('website-saved-url'),
           s.saved?.url ??
-              'Configure BOOKING_WEBSITE_DOMAIN on the API to enable public links.',
+              'Your public link will appear here when website hosting is configured.',
         ),
         const SizedBox(height: 8),
         const Text(
@@ -118,13 +190,6 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            OutlinedButton.icon(
-              onPressed: s.busy || s.dirty
-                  ? null
-                  : () => cubit.link(preview: true),
-              icon: const Icon(Icons.visibility_outlined),
-              label: const Text('Preview'),
-            ),
             OutlinedButton.icon(
               onPressed:
                   s.busy ||
@@ -145,6 +210,10 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 20),
+        const Divider(),
+        const SizedBox(height: 12),
+        actions(s, d),
         if (s.dirty)
           const Padding(
             padding: EdgeInsets.only(top: 10),
@@ -156,199 +225,195 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     ),
   );
 
-  Widget address(WebsiteSettingsState s, WebsiteSettings d) => section(
-    'Website address',
-    'Edit the name, then save your website address.',
-    [
-      LayoutBuilder(
-        builder: (context, constraints) {
-          final style = Theme.of(context).textTheme.bodyMedium!;
-          final prefix = d.domain == null ? null : 'https://';
-          final suffix = d.domain == null ? null : '.${d.domain}';
-          double textWidth(String text) {
-            final painter = TextPainter(
-              text: TextSpan(text: text, style: style),
-              textDirection: Directionality.of(context),
-              textScaler: MediaQuery.textScalerOf(context),
-            )..layout();
-            final width = painter.width;
-            painter.dispose();
-            return width;
-          }
+  Widget address(
+    WebsiteSettingsState s,
+    WebsiteSettings d,
+  ) => section(0, 'Edit the name, then save your website address.', [
+    LayoutBuilder(
+      builder: (context, constraints) {
+        final style = Theme.of(context).textTheme.bodyMedium!;
+        final prefix = d.domain == null ? null : 'https://';
+        final suffix = d.domain == null ? null : '.${d.domain}';
+        double textWidth(String text) {
+          final painter = TextPainter(
+            text: TextSpan(text: text, style: style),
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+          )..layout();
+          final width = painter.width;
+          painter.dispose();
+          return width;
+        }
 
-          // Wrap the fixed domain on narrow screens to leave room to type.
-          final inline =
-              prefix == null ||
-              constraints.maxWidth >=
-                  textWidth(prefix) + textWidth(suffix!) + 120;
-          Widget fixed(String text) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(text, style: style),
-          );
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextFormField(
-                key: addressField,
-                initialValue: d.slug,
-                enabled: !s.busy,
-                maxLength: 63,
-                autocorrect: false,
-                enableSuggestions: false,
-                textCapitalization: TextCapitalization.none,
-                keyboardType: TextInputType.url,
-                validator: websiteAddressError,
-                onChanged: (v) =>
-                    cubit.update(d.copyWith(slug: v.trim().toLowerCase())),
-                onFieldSubmitted: (_) => saveAddress(),
-                decoration: InputDecoration(
-                  labelText: 'Website name',
-                  floatingLabelBehavior: FloatingLabelBehavior.always,
-                  hintText: 'your-name',
-                  prefixIcon: prefix == null ? null : fixed(prefix),
-                  prefixIconConstraints: const BoxConstraints(minHeight: 48),
-                  suffixIcon: suffix != null && inline ? fixed(suffix) : null,
-                  suffixIconConstraints: const BoxConstraints(minHeight: 48),
-                  helperText: 'Lowercase letters, numbers and single hyphens.',
-                  helperMaxLines: 3,
-                  errorText: s.addressError,
-                  errorMaxLines: 4,
-                  border: const OutlineInputBorder(),
-                ),
+        // Wrap the fixed domain on narrow screens to leave room to type.
+        final inline =
+            prefix == null ||
+            constraints.maxWidth >=
+                textWidth(prefix) + textWidth(suffix!) + 120;
+        Widget fixed(String text) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Text(text, style: style),
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextFormField(
+              key: addressField,
+              initialValue: d.slug,
+              enabled: !s.busy,
+              maxLength: 63,
+              autocorrect: false,
+              enableSuggestions: false,
+              textCapitalization: TextCapitalization.none,
+              keyboardType: TextInputType.url,
+              validator: websiteAddressError,
+              onChanged: (v) =>
+                  cubit.update(d.copyWith(slug: v.trim().toLowerCase())),
+              onFieldSubmitted: (_) => saveAddress(),
+              decoration: InputDecoration(
+                labelText: 'Website name',
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                hintText: 'your-name',
+                prefixIcon: prefix == null ? null : fixed(prefix),
+                prefixIconConstraints: const BoxConstraints(minHeight: 48),
+                suffixIcon: suffix != null && inline ? fixed(suffix) : null,
+                suffixIconConstraints: const BoxConstraints(minHeight: 48),
+                helperText: 'Lowercase letters, numbers and single hyphens.',
+                helperMaxLines: 3,
+                errorText: s.addressError,
+                errorMaxLines: 4,
+                border: const OutlineInputBorder(),
               ),
-              if (suffix != null && !inline)
-                Align(alignment: Alignment.centerRight, child: fixed(suffix)),
-            ],
-          );
-        },
+            ),
+            if (suffix != null && !inline)
+              Align(alignment: Alignment.centerRight, child: fixed(suffix)),
+          ],
+        );
+      },
+    ),
+    const SizedBox(height: 12),
+    Align(
+      alignment: Alignment.centerLeft,
+      child: FilledButton.icon(
+        key: const ValueKey('website-address-save'),
+        onPressed: s.busy || !s.addressDirty ? null : saveAddress,
+        icon: s.savingAddress
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.save_outlined),
+        label: Text(s.savingAddress ? 'Saving…' : 'Save'),
       ),
-      const SizedBox(height: 12),
+    ),
+    if (s.addressError != null)
       Align(
         alignment: Alignment.centerLeft,
-        child: FilledButton.icon(
-          key: const ValueKey('website-address-save'),
-          onPressed: s.busy || !s.addressDirty ? null : saveAddress,
-          icon: s.savingAddress
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.save_outlined),
-          label: Text(s.savingAddress ? 'Saving…' : 'Save'),
+        child: TextButton(
+          onPressed: s.busy ? null : cubit.load,
+          child: const Text('Reload settings'),
         ),
       ),
-      if (s.addressError != null)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            onPressed: s.busy ? null : cubit.load,
-            child: const Text('Reload settings'),
-          ),
-        ),
-      const SizedBox(height: 12),
-      const Text(
-        'After saving a new name, share the updated address. The previous address will no longer open this website.',
-      ),
-    ],
-  );
+    const SizedBox(height: 12),
+    const Text(
+      'After saving a new name, share the updated address. The previous address will no longer open this website.',
+    ),
+  ]);
 
   void saveAddress() {
     if (addressField.currentState?.validate() ?? false) cubit.saveAddress();
   }
 
-  Widget brand(WebsiteSettingsState s, WebsiteSettings d) => section(
-    'Brand & homepage',
-    'The title, logo and hero appear at the top of your homepage.',
-    [
-      WebsitePhotoSlot(
-        title: 'Website logo',
-        help:
-            'A square logo works best. It appears in the header of every page.',
-        image: d.image('logo'),
-        settings: d,
-        disabled: s.busy || s.dirty,
-        height: 96,
-        onUpload: () => cubit.photo(kind: 'logo'),
-        onRemove: (id) => cubit.photo(removeId: id),
-      ),
-      if (d.image('logo') == null)
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: d.publishLogo,
-          onChanged: s.busy
-              ? null
-              : (v) => cubit.update(d.copyWith(publishLogo: v)),
-          title: const Text('Use my organisation profile logo instead'),
-          subtitle: const Text(
-            'Shows the logo saved in your organisation profile when no website logo is uploaded.',
-          ),
+  Widget brand(
+    WebsiteSettingsState s,
+    WebsiteSettings d,
+  ) => section(1, 'The title, logo and hero appear at the top of your homepage.', [
+    WebsitePhotoSlot(
+      title: 'Website logo',
+      help: 'A square logo works best. It appears in the header of every page.',
+      image: d.image('logo'),
+      settings: d,
+      disabled: s.busy || s.dirty,
+      height: 96,
+      onUpload: () => cubit.photo(kind: 'logo'),
+      onRemove: (id) => cubit.photo(removeId: id),
+    ),
+    if (d.image('logo') == null)
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: d.publishLogo,
+        onChanged: s.busy
+            ? null
+            : (v) => cubit.update(d.copyWith(publishLogo: v)),
+        title: const Text('Use my organisation profile logo instead'),
+        subtitle: const Text(
+          'Shows the logo saved in your organisation profile when no website logo is uploaded.',
         ),
-      const SizedBox(height: 18),
-      field(
-        label: 'Website title',
-        value: d.title,
-        max: 120,
-        helper: 'Your venue or organisation name.',
-        onChanged: (v) => cubit.update(d.copyWith(title: v)),
-        validator: (v) =>
-            (v?.trim().length ?? 0) >= 2 ? null : 'Enter a title.',
       ),
-      field(
-        label: 'Hero heading',
-        value: d.heroHeading,
-        max: 120,
-        helper:
-            'Large text over the hero image. Empty uses “A space for your next great moment.”',
-        onChanged: (v) => cubit.update(d.copyWith(heroHeading: v)),
-      ),
-      field(
-        label: 'Description',
-        value: d.description,
-        lines: 3,
-        max: 1200,
-        helper: 'Shown under the heading and used by search engines.',
-        onChanged: (v) => cubit.update(d.copyWith(description: v)),
-      ),
-      field(
-        label: 'Public contact phone',
-        value: d.phone,
-        max: 25,
-        keyboard: TextInputType.phone,
-        onChanged: (v) => cubit.update(d.copyWith(phone: v)),
-        validator: (v) {
-          final count = (v ?? '').replaceAll(RegExp(r'\D'), '').length;
-          return RegExp(r'^\+?[\d ()-]{7,25}$').hasMatch(v ?? '') &&
-                  count >= 7 &&
-                  count <= 15
-              ? null
-              : 'Enter a valid phone number.';
-        },
-      ),
-      WebsitePhotoSlot(
-        title: 'Hero image',
-        help:
-            'Use a wide photo of your venue. The heading and description are placed over it.',
-        image: d.image('hero'),
-        settings: d,
-        disabled: s.busy || s.dirty,
-        wide: true,
-        onUpload: () => cubit.photo(kind: 'hero'),
-        onRemove: (id) => cubit.photo(removeId: id),
-      ),
-      if (s.dirty)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(
-            'Save your changes before uploading photos.',
-            style: TextStyle(color: Theme.of(context).colorScheme.primary),
-          ),
+    const SizedBox(height: 18),
+    field(
+      label: 'Website title',
+      value: d.title,
+      max: 120,
+      helper: 'Your venue or organisation name.',
+      onChanged: (v) => cubit.update(d.copyWith(title: v)),
+      validator: (v) => (v?.trim().length ?? 0) >= 2 ? null : 'Enter a title.',
+    ),
+    field(
+      label: 'Hero heading',
+      value: d.heroHeading,
+      max: 120,
+      helper:
+          'Large text over the hero image. Empty uses “A space for your next great moment.”',
+      onChanged: (v) => cubit.update(d.copyWith(heroHeading: v)),
+    ),
+    field(
+      label: 'Description',
+      value: d.description,
+      lines: 3,
+      max: 1200,
+      helper: 'Shown under the heading and used by search engines.',
+      onChanged: (v) => cubit.update(d.copyWith(description: v)),
+    ),
+    field(
+      label: 'Public contact phone',
+      value: d.phone,
+      max: 25,
+      keyboard: TextInputType.phone,
+      onChanged: (v) => cubit.update(d.copyWith(phone: v)),
+      validator: (v) {
+        final count = (v ?? '').replaceAll(RegExp(r'\D'), '').length;
+        return RegExp(r'^\+?[\d ()-]{7,25}$').hasMatch(v ?? '') &&
+                count >= 7 &&
+                count <= 15
+            ? null
+            : 'Enter a valid phone number.';
+      },
+    ),
+    WebsitePhotoSlot(
+      title: 'Hero image',
+      help:
+          'Use a wide photo of your venue. The heading and description are placed over it.',
+      image: d.image('hero'),
+      settings: d,
+      disabled: s.busy || s.dirty,
+      wide: true,
+      onUpload: () => cubit.photo(kind: 'hero'),
+      onRemove: (id) => cubit.photo(removeId: id),
+    ),
+    if (s.dirty)
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'Save your changes before uploading photos.',
+          style: TextStyle(color: Theme.of(context).colorScheme.primary),
         ),
-    ],
-  );
+      ),
+  ]);
 
   Widget social(WebsiteSettings d) => section(
-    'Social media',
+    3,
     'Links appear on your homepage and footer. Leave a field empty to hide it.',
     [
       for (final e in websiteSocialNetworks.entries)
@@ -380,7 +445,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   );
 
   Widget policies(WebsiteSettings d) => section(
-    'Default booking rules & policies',
+    4,
     'Defaults apply to every space unless a space has its own rules.',
     [
       field(
@@ -432,17 +497,6 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     spacing: 12,
     runSpacing: 12,
     children: [
-      FilledButton.icon(
-        onPressed: s.busy || !s.dirty ? null : () => save(),
-        icon: s.busy
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.save_outlined),
-        label: const Text('Save changes'),
-      ),
       FilledButton.tonalIcon(
         onPressed: s.busy || d.status == 'published' && !s.dirty
             ? null
@@ -465,108 +519,218 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     ],
   );
 
-  @override
-  Widget build(
-    BuildContext context,
-  ) => BlocBuilder<WebsiteSettingsCubit, WebsiteSettingsState>(
-    bloc: cubit,
-    builder: (context, s) {
-      final d = s.draft;
-      const gap = SizedBox(height: 20);
-      return Scaffold(
-        appBar: AppBar(title: const Text('Design website')),
-        body: s.loading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 900),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (s.error != null)
-                            AppCard(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    s.error!,
-                                    style: TextStyle(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.error,
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: s.busy ? null : cubit.load,
-                                    child: const Text('Reload settings'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (s.message != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 16),
-                              child: Text(
-                                s.message!,
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
-                            ),
-                          if (d != null)
-                            Form(
-                              key: form,
-                              child: KeyedSubtree(
-                                key: ValueKey('${d.version}-${s.revision}'),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    header(s, d),
-                                    gap,
-                                    address(s, d),
-                                    gap,
-                                    brand(s, d),
-                                    gap,
-                                    WebsiteSpacesSettings(
-                                      settings: d,
-                                      busy: s.busy,
-                                      photosLocked: s.dirty,
-                                      onToggleBusiness: cubit.toggleBusiness,
-                                      onBusiness: (id, b) =>
-                                          cubit.updateBusiness(id, (_) => b),
-                                      onSpace: cubit.updateSpace,
-                                      onCopyRules: cubit.copyRulesToAll,
-                                      onUpload:
-                                          (kind, businessId, resourceId) =>
-                                              cubit.photo(
-                                                kind: kind,
-                                                businessId: businessId,
-                                                resourceId: resourceId,
-                                              ),
-                                      onRemovePhoto: (id) =>
-                                          cubit.photo(removeId: id),
-                                    ),
-                                    gap,
-                                    social(d),
-                                    gap,
-                                    policies(d),
-                                    gap,
-                                    actions(s, d),
-                                    const SizedBox(height: 30),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+  Widget saveBar(WebsiteSettingsState s) => SafeArea(
+    top: false,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              s.busy
+                  ? 'Please wait…'
+                  : s.dirty
+                  ? 'You have unsaved changes'
+                  : 'All changes saved',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: AppButton(
+                  label: 'Save changes',
+                  icon: Icons.save_outlined,
+                  busy: s.busy,
+                  onPressed: s.busy || !s.dirty ? null : save,
+                ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: AppButton(
+                  label: 'Preview',
+                  icon: Icons.visibility_outlined,
+                  secondary: true,
+                  onPressed: s.busy || s.dirty
+                      ? null
+                      : () => cubit.link(preview: true),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+
+  void jumpTo(int index) {
+    setState(() {
+      selectedSection = index;
+      expanded.add(index);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = sectionKeys[index].currentContext;
+      if (mounted && target != null) {
+        Scrollable.ensureVisible(
+          target,
+          duration: const Duration(milliseconds: 280),
+          alignment: .03,
+        );
+      }
+    });
+  }
+
+  Widget navigation() => SingleChildScrollView(
+    key: const PageStorageKey('website-editor-navigation'),
+    primary: false,
+    padding: const EdgeInsets.only(bottom: 24),
+    child: AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              'WEBSITE EDITOR',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                letterSpacing: 1.5,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          for (final (i, item) in sections.indexed)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: ListTile(
+                key: ValueKey('website-nav-$i'),
+                selected: selectedSection == i,
+                selectedTileColor: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: .1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                leading: Icon(item.$3, size: 21),
+                title: Text(item.$1),
+                subtitle: Text(item.$2),
+                onTap: () => jumpTo(i),
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+
+  Widget editor(WebsiteSettingsState s, WebsiteSettings d) => Form(
+    key: form,
+    child: SingleChildScrollView(
+      key: const PageStorageKey('website-editor-content'),
+      primary: false,
+      padding: const EdgeInsets.only(bottom: 28),
+      child: KeyedSubtree(
+        key: ValueKey('${d.version}-${s.revision}'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (s.error != null) ...[
+              AppCard(
+                child: AppErrorWidget(
+                  message: s.error!,
+                  onRetry: s.busy ? null : cubit.load,
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+            if (s.message != null) ...[
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  s.message!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            header(s, d),
+            const SizedBox(height: 24),
+            address(s, d),
+            const SizedBox(height: 20),
+            brand(s, d),
+            const SizedBox(height: 20),
+            editorSection(
+              2,
+              WebsiteSpacesSettings(
+                embedded: true,
+                settings: d,
+                busy: s.busy,
+                photosLocked: s.dirty,
+                onToggleBusiness: cubit.toggleBusiness,
+                onBusiness: (id, b) => cubit.updateBusiness(id, (_) => b),
+                onSpace: cubit.updateSpace,
+                onCopyRules: cubit.copyRulesToAll,
+                onUpload: (kind, businessId, resourceId) => cubit.photo(
+                  kind: kind,
+                  businessId: businessId,
+                  resourceId: resourceId,
+                ),
+                onRemovePhoto: (id) => cubit.photo(removeId: id),
+              ),
+            ),
+            const SizedBox(height: 20),
+            social(d),
+            const SizedBox(height: 20),
+            policies(d),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      desktop = isDesktopWidth(context) && box.maxWidth >= AppPage.wideWidth;
+      return BlocBuilder<WebsiteSettingsCubit, WebsiteSettingsState>(
+        bloc: cubit,
+        builder: (context, s) {
+          final d = s.draft;
+          return AppPage(
+            title: 'Design website',
+            subtitle: 'Make your booking website feel like your venue.',
+            back: true,
+            showAppBar: true,
+            compactHeader: true,
+            maxWidth: 1260,
+            bottomBar: d == null ? null : saveBar(s),
+            fixedBody: s.loading
+                ? const Center(child: CircularProgressIndicator())
+                : d == null
+                ? Center(
+                    child: AppErrorWidget(
+                      message: s.error ?? 'Could not load website settings.',
+                      onRetry: cubit.load,
+                    ),
+                  )
+                : desktop
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(width: 252, child: navigation()),
+                      const SizedBox(width: 28),
+                      Expanded(child: editor(s, d)),
+                    ],
+                  )
+                : editor(s, d),
+            children: const [],
+          );
+        },
       );
     },
   );

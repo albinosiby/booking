@@ -138,8 +138,9 @@ void main() {
     WidgetTester tester,
     Widget screen,
     TestAgentCalls repo,
-    TestSaver saver,
-  ) async {
+    TestSaver saver, {
+    double width = 320,
+  }) async {
     final w = await workspace();
     registerFeatureDependencies(getIt);
     await getIt.unregister<AgentCallRepository>();
@@ -149,7 +150,7 @@ void main() {
     final router = GoRouter(
       routes: [GoRoute(path: '/', builder: (c, s) => screen)],
     );
-    tester.view.physicalSize = const Size(320, 800);
+    tester.view.physicalSize = Size(width, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
@@ -181,6 +182,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Request service'), findsOneWidget);
     expect(find.textContaining('Sarvam'), findsNothing);
+    await tester.ensureVisible(find.text('Request service'));
     await tester.tap(find.text('Request service'));
     await tester.pumpAndSettle();
     expect(repo.requests, hasLength(1));
@@ -197,6 +199,7 @@ void main() {
     await tester.tap(find.byType(AppCard).first);
     await tester.pumpAndSettle();
     final sheet = find.byType(Scrollable).last;
+    await tester.ensureVisible(find.text('Save recording'));
     await tester.tap(find.text('Save recording'));
     await tester.pumpAndSettle();
     expect(saver.names.single, 'call-20260920-a71c352f-11-03-08-e6013eb8.wav');
@@ -210,4 +213,95 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
+  for (final width in [320.0, 1440.0]) {
+    for (final status in [
+      'requested',
+      'in_review',
+      'setting_up',
+      'paused',
+      'active',
+    ]) {
+      testWidgets('request status $status is readable at $width pixels', (
+        tester,
+      ) async {
+        final repo = TestAgentCalls()
+          ..value = AgentServiceStatus(
+            status: status,
+            message: 'We are preparing your venue’s call service.',
+            requestedAt: DateTime(2026, 10, 20),
+            updatedAt: DateTime(2026, 10, 22),
+          );
+        await pump(
+          tester,
+          const AgentServiceScreen(),
+          repo,
+          TestSaver(),
+          width: width,
+        );
+        expect(find.text('Request status'), findsOneWidget);
+        expect(find.text('Request received'), findsWidgets);
+        expect(find.text('Under review'), findsWidgets);
+        expect(find.textContaining('Requested '), findsOneWidget);
+        expect(
+          find.text('We are preparing your venue’s call service.'),
+          findsOneWidget,
+        );
+        expect(find.byType(SwitchListTile), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
+    testWidgets('ready call service toggles answering at $width pixels', (
+      tester,
+    ) async {
+      final repo = TestAgentCalls()
+        ..value = const AgentServiceStatus(status: 'active', ready: true);
+      await pump(
+        tester,
+        const AgentServiceScreen(),
+        repo,
+        TestSaver(),
+        width: width,
+      );
+      final toggle = find.byType(SwitchListTile);
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(repo.value.enabled, isTrue);
+      expect(find.text('Answering calls'), findsOneWidget);
+      expect(find.text('Call logs'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets(
+    'desktop calls select details and close without losing the list',
+    (tester) async {
+      final repo = TestAgentCalls();
+      await pump(
+        tester,
+        const CallLogsScreen(),
+        repo,
+        TestSaver(),
+        width: 1440,
+      );
+      expect(find.text('Select a call'), findsOneWidget);
+      final row = find.byKey(
+        const ValueKey('call-row-20260920/a71c352f-11:03:08-e6013eb8'),
+      );
+      await tester.ensureVisible(row);
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(find.text('Call summary'), findsOneWidget);
+      expect(find.text('Book a court for 8 PM.'), findsOneWidget);
+      await tester.ensureVisible(find.byTooltip('Close'));
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.text('Select a call'), findsOneWidget);
+      expect(row, findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

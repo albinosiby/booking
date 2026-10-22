@@ -45,17 +45,36 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
     if (picked != null) cubit.load(picked);
   }
 
-  void open(AgentCall call) => showAdaptiveSheet<void>(
-    context: context,
-    scrollable: false,
-    showClose: false,
-    showDragHandle: false,
-    maxWidth: 640,
-    builder: (_) => BlocProvider.value(
-      value: context.read<WorkspaceCubit>(),
-      child: CallDetailSheet(call: call),
-    ),
-  );
+  void open(AgentCall call) {
+    final workspace = context.read<WorkspaceCubit>();
+    if (MediaQuery.sizeOf(context).width < adaptiveSheetDialogWidth) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (_) => BlocProvider.value(
+            value: workspace,
+            child: Scaffold(
+              body: SafeArea(
+                child: CallDetailSheet(call: call, fullScreen: true),
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    showAdaptiveSheet<void>(
+      context: context,
+      scrollable: false,
+      showClose: false,
+      showDragHandle: false,
+      maxWidth: 640,
+      builder: (_) => BlocProvider.value(
+        value: workspace,
+        child: CallDetailSheet(call: call),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -65,7 +84,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
         if (isDesktopWidth(context) && box.maxWidth >= AppPage.wideWidth) {
           return desktop(context, s);
         }
-        final t = Theme.of(context), c = t.colorScheme;
+        final t = Theme.of(context);
         return AppPage(
           title: 'Call logs',
           subtitle: 'Calls answered by your agent call service.',
@@ -83,6 +102,26 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
           children: [
             dayChips(context, s),
             const SizedBox(height: 16),
+            if (s.page.items.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Wrap(
+                  spacing: 20,
+                  runSpacing: 8,
+                  children: [
+                    Text(
+                      '${s.page.total} ${s.page.total == 1 ? 'call' : 'calls'}',
+                      style: t.textTheme.titleMedium,
+                    ),
+                    Text(
+                      '${talkTime(s.page.items.fold<double>(0, (sum, call) => sum + call.durationSeconds))} talk time in calls shown',
+                      style: t.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (s.loading) const AppRefreshIndicator(label: 'Loading calls…'),
             if (s.error != null)
               AppErrorWidget(message: s.error!, onRetry: () => cubit.load()),
@@ -104,46 +143,9 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: AppCard(
-                  onTap: () => open(call),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            call.direction == 'outbound'
-                                ? Icons.call_made_rounded
-                                : Icons.call_received_rounded,
-                            size: 18,
-                            color: c.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              call.title,
-                              style: t.textTheme.titleSmall,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (call.summary.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          call.summary,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                      const SizedBox(height: 6),
-                      Text(
-                        meta(context, call),
-                        style: t.textTheme.bodySmall?.copyWith(
-                          color: c.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
+                  key: ValueKey('mobile-call-${call.id}'),
+                  padding: EdgeInsets.zero,
+                  child: callRow(context, call, false, onTap: () => open(call)),
                 ),
               ),
           ],
@@ -157,6 +159,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         ChoiceChip(
           label: const Text('Today'),
@@ -184,7 +187,6 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
     if (call.startedAt != null) clock(context, call.startedAt!),
     call.duration,
     call.language,
-    call.disposition.replaceAll('_', ' '),
   ].where((v) => v.isNotEmpty).join(' · ');
 
   static String talkTime(double seconds) {
@@ -209,7 +211,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
       title: 'Call logs',
       back: true,
       showAppBar: true,
-      maxWidth: 1200,
+      maxWidth: 1320,
       scrollId: 'agent-call-logs',
       header: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -270,7 +272,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
               ),
               AppStatTile(
                 icon: Icons.timer_outlined,
-                label: 'Talk time',
+                label: 'Talk time shown',
                 value: talkTime(
                   calls.fold<double>(0, (sum, x) => sum + x.durationSeconds),
                 ),
@@ -281,14 +283,14 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
                 icon: Icons.call_received_rounded,
                 label: 'Inbound · outbound',
                 value: '$inbound · ${calls.length - inbound}',
-                caption: 'By call direction',
+                caption: 'Across the calls shown',
               ),
               AppStatTile(
                 icon: Icons.translate_rounded,
                 label: 'Languages',
                 value: '${languages.length}',
                 caption: languages.isEmpty
-                    ? 'Not reported'
+                    ? 'Not reported in calls shown'
                     : languages.join(', '),
               ),
             ],
@@ -299,7 +301,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
             primary: [
               AppPanel(
                 title: 'Calls',
-                subtitle: 'Select a call to read its transcript',
+                subtitle: 'Summaries, outcomes and conversation history',
                 child: AppListCard(
                   children: [
                     for (final call in calls)
@@ -359,13 +361,18 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
     );
   }
 
-  Widget callRow(BuildContext context, AgentCall call, bool active) {
+  Widget callRow(
+    BuildContext context,
+    AgentCall call,
+    bool active, {
+    VoidCallback? onTap,
+  }) {
     final t = Theme.of(context), c = t.colorScheme;
     return Material(
       color: active ? c.primary.withValues(alpha: .07) : Colors.transparent,
       child: InkWell(
         key: ValueKey('call-row-${call.id}'),
-        onTap: () => setState(() => selected = call.id),
+        onTap: onTap ?? () => setState(() => selected = call.id),
         child: Container(
           decoration: BoxDecoration(
             border: Border(
@@ -399,6 +406,27 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
                       call.title,
                       style: t.textTheme.titleSmall,
                       overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        AppStatusBadge(
+                          label: call.direction == 'outbound'
+                              ? 'Outbound'
+                              : 'Inbound',
+                          icon: call.direction == 'outbound'
+                              ? Icons.call_made_rounded
+                              : Icons.call_received_rounded,
+                        ),
+                        if (call.disposition.isNotEmpty)
+                          AppStatusBadge(
+                            label: call.disposition.replaceAll('_', ' '),
+                            icon: Icons.notes_rounded,
+                            color: c.onSurfaceVariant,
+                          ),
+                      ],
                     ),
                     if (call.summary.isNotEmpty) ...[
                       const SizedBox(height: 4),
@@ -437,12 +465,14 @@ class CallDetailSheet extends StatefulWidget {
     super.key,
     required this.call,
     this.embedded = false,
+    this.fullScreen = false,
     this.onClose,
   });
   final AgentCall call;
 
   /// Desktop side pane: a plain column instead of a draggable sheet.
   final bool embedded;
+  final bool fullScreen;
   final VoidCallback? onClose;
   @override
   State<CallDetailSheet> createState() => _CallDetailSheetState();
@@ -504,8 +534,26 @@ class _CallDetailSheetState extends State<CallDetailSheet> {
               style: t.textTheme.bodySmall,
             ),
           if (call.summary.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(call.summary),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: c.primary.withValues(alpha: .07),
+                border: Border.all(color: c.primary.withValues(alpha: .18)),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Call summary',
+                    style: t.textTheme.titleSmall?.copyWith(color: c.primary),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(call.summary),
+                ],
+              ),
+            ),
           ],
           const SizedBox(height: 8),
           Text(
@@ -516,17 +564,19 @@ class _CallDetailSheetState extends State<CallDetailSheet> {
           const SizedBox(height: 8),
           for (final (label, value) in facts)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: '$label: ',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: t.textTheme.labelMedium?.copyWith(
+                      color: c.onSurfaceVariant,
                     ),
-                    TextSpan(text: value),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 3),
+                  SelectableText(value, style: t.textTheme.bodyMedium),
+                ],
               ),
             ),
           const SizedBox(height: 12),
@@ -545,6 +595,11 @@ class _CallDetailSheetState extends State<CallDetailSheet> {
             const AppRefreshIndicator(label: 'Loading transcript…'),
           if (s.error != null && s.lines.isEmpty && !s.loading)
             AppErrorWidget(message: s.error!, onRetry: cubit.load),
+          if (!s.loading && s.error == null && s.lines.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Text('No transcript is available for this call yet.'),
+            ),
           for (final line in s.lines)
             Align(
               alignment: line.agent
@@ -579,6 +634,12 @@ class _CallDetailSheetState extends State<CallDetailSheet> {
         if (widget.embedded) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          );
+        }
+        if (widget.fullScreen) {
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
             children: children,
           );
         }

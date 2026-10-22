@@ -13,6 +13,8 @@ import 'package:eden_booking/modules/booking_website/models/website_settings.dar
 import 'package:eden_booking/modules/booking_website/repositories/website_repository.dart';
 import 'package:eden_booking/modules/booking_website/repositories/rest_website_repository.dart';
 import 'package:eden_booking/modules/booking_website/screens/website_settings_screen.dart';
+import 'package:eden_booking/modules/booking_website/widgets/website_editor_section.dart';
+import 'package:eden_booking/design_system/design_system.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_session.dart';
@@ -479,7 +481,16 @@ void main() {
         expect(repo.value.status, 'published');
         expect(
           tester.getTopLeft(header).dy,
-          lessThan(tester.getTopLeft(find.text('Website address')).dy),
+          lessThan(
+            tester
+                .getTopLeft(
+                  find.descendant(
+                    of: find.byType(WebsiteEditorSection).first,
+                    matching: find.text('Website address'),
+                  ),
+                )
+                .dy,
+          ),
         );
         expect(tester.widget<FilledButton>(save).onPressed, isNull);
         expect(tester.takeException(), isNull);
@@ -511,17 +522,22 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      final editor = find.byKey(const PageStorageKey('website-editor-content'));
       final list = find
-          .descendant(
-            of: find.byType(ListView),
-            matching: find.byType(Scrollable),
-          )
+          .descendant(of: editor, matching: find.byType(Scrollable))
           .first;
+      Finder heading(String label) =>
+          find.descendant(of: editor, matching: find.text(label));
       expect(find.text('Design website'), findsOneWidget);
-      expect(find.text('Website address'), findsOneWidget);
+      expect(heading('Website address'), findsOneWidget);
       expect(find.text('.bookingos.online'), findsOneWidget);
-      expect(find.text('Brand & homepage'), findsOneWidget);
-      expect(find.text('Spaces on your website'), findsOneWidget);
+      expect(heading('Brand & homepage'), findsOneWidget);
+      expect(heading('Services & spaces'), findsOneWidget);
+      await tester.ensureVisible(heading('Services & spaces'));
+      if (width < 1180) {
+        await tester.tap(heading('Services & spaces'));
+        await tester.pumpAndSettle();
+      }
       expect(find.text('Homepage card'), findsNWidgets(2));
       await tester.scrollUntilVisible(
         find.text('Court 1'),
@@ -539,14 +555,140 @@ void main() {
       );
       expect(find.text('Copy these rules to all spaces'), findsOneWidget);
       await tester.scrollUntilVisible(
-        find.text('Social media'),
+        heading('Social media'),
         300,
         scrollable: list,
       );
+      if (width < 1180) {
+        await tester.tap(heading('Social media'));
+        await tester.pumpAndSettle();
+      }
       expect(find.text('Instagram'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await workspace.close();
     });
+  }
+  for (final width in [320.0, 1440.0]) {
+    testWidgets(
+      'editor retains edits and reveals invalid collapsed fields at $width pixels',
+      (tester) async {
+        tester.view.physicalSize = Size(width, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final workspace = WorkspaceCubit(BookingSource());
+        await workspace.load();
+        final repo = TestWebsiteRepository();
+        getIt
+            .registerFactoryParam<WebsiteSettingsCubit, WorkspaceSession, void>(
+              (s, _) => WebsiteSettingsCubit(s, repo),
+            );
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox());
+          await workspace.close();
+        });
+        await tester.pumpWidget(
+          BlocProvider.value(
+            value: workspace,
+            child: ScreenUtilInit(
+              designSize: const Size(390, 844),
+              builder: (_, _) => MaterialApp(
+                theme: darkTheme(),
+                home: const WebsiteSettingsScreen(),
+                builder: (c, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    c,
+                  ).copyWith(textScaler: const TextScaler.linear(1.3)),
+                  child: child!,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final editor = find.byKey(
+          const PageStorageKey('website-editor-content'),
+        );
+        Finder heading(String text) =>
+            find.descendant(of: editor, matching: find.text(text));
+        Future<void> open(int index, String label) async {
+          if (width >= 1180) {
+            final nav = find.byKey(ValueKey('website-nav-$index'));
+            if (nav.hitTestable().evaluate().isEmpty) {
+              await tester.ensureVisible(nav);
+            }
+            await tester.tap(nav);
+          } else {
+            await tester.ensureVisible(heading(label));
+            await tester.tap(heading(label));
+          }
+          await tester.pumpAndSettle();
+        }
+
+        final save = find.widgetWithText(AppButton, 'Save changes');
+        final saveTop = tester.getTopLeft(save);
+        await open(1, 'Brand & homepage');
+        final title = find.widgetWithText(TextFormField, 'Website title');
+        await tester.ensureVisible(title);
+        await tester.enterText(title, 'Fresh venue');
+        await tester.pumpAndSettle();
+        final phone = find.widgetWithText(
+          TextFormField,
+          'Public contact phone',
+        );
+        await tester.ensureVisible(phone);
+        await tester.enterText(phone, 'bad');
+        await tester.pumpAndSettle();
+        expect(find.text('You have unsaved changes'), findsOneWidget);
+        expect(
+          tester
+              .widget<AppButton>(find.widgetWithText(AppButton, 'Preview'))
+              .onPressed,
+          isNull,
+        );
+        if (width < 1180) {
+          await tester.ensureVisible(heading('Brand & homepage'));
+          await tester.tap(heading('Brand & homepage'));
+          await tester.pumpAndSettle();
+          expect(title, findsNothing);
+        } else {
+          final nav = find.byKey(const ValueKey('website-nav-3'));
+          await tester.ensureVisible(nav);
+          await tester.pumpAndSettle();
+          final navTop = tester.getTopLeft(nav);
+          await tester.tap(nav);
+          await tester.pumpAndSettle();
+          expect(tester.getTopLeft(nav), navTop);
+          expect(
+            find.widgetWithText(TextFormField, 'Instagram').hitTestable(),
+            findsOneWidget,
+          );
+        }
+        expect(tester.getTopLeft(save), saveTop);
+        await tester.tap(save);
+        await tester.pumpAndSettle();
+        expect(repo.saves, 0);
+        expect(
+          find.text('Enter a valid phone number.').hitTestable(),
+          findsOneWidget,
+        );
+        final titleField = tester.widget<TextFormField>(title);
+        expect(titleField.initialValue, 'Fresh venue');
+        await tester.enterText(phone, '+919876543210');
+        await tester.pumpAndSettle();
+        await tester.tap(save);
+        await tester.pumpAndSettle();
+        expect(repo.saves, 1);
+        expect(repo.value.title, 'Fresh venue');
+        expect(find.text('All changes saved'), findsOneWidget);
+        expect(
+          tester
+              .widget<AppButton>(find.widgetWithText(AppButton, 'Preview'))
+              .onPressed,
+          isNotNull,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 }

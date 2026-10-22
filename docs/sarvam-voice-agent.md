@@ -172,3 +172,9 @@ COMMIT;
 Bookings remain valid. Use the app for normal reconnection and cleanup. Do not drop the integration table while the API uses it.
 
 Remaining constraints: caller identity relies on provider-reported caller ID rather than OTP; recordings remain downloadable; call logs retain the existing first-page pagination limit. Setup does not add payment collection or automatic messaging. Monitor failed setup stages, cleanup-pending integrations, tool errors/latency and actual booking outcomes using the existing audit history, backend logs and Sarvam analytics. Do not log request bodies, OAuth callback queries or tokens.
+
+## Owner call-service interface
+
+The Agent call service screen uses a two-column overview and action/status layout on wide windows. Phones show the current request or answering controls first, followed by the service overview. Request progress includes stage descriptions, supplied request/update dates and a separate latest-update message. Paused requests show the hold without claiming that earlier stages completed; an active response still awaiting readiness stays at setup. Refresh, request/re-request, owner restrictions and the automatic-answering switch retain their existing contracts.
+
+Call logs use direction/outcome badges and call summaries. Desktop users select a call beside the list; phones open a full-screen conversation with recording download, caller details, transcript, retry and an explicit empty transcript state. Talk-time and direction summaries describe the calls shown, since analytics still use the existing first page. These UI changes need no migration or backend deployment.

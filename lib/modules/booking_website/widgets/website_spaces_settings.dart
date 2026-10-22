@@ -16,8 +16,10 @@ class WebsiteSpacesSettings extends StatelessWidget {
     required this.onCopyRules,
     required this.onUpload,
     required this.onRemovePhoto,
+    this.embedded = false,
   });
   final WebsiteSettings settings;
+  final bool embedded;
 
   /// [photosLocked] while there are unsaved edits; photo changes save immediately.
   final bool busy, photosLocked;
@@ -33,51 +35,52 @@ class WebsiteSpacesSettings extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final photosDisabled = busy || photosLocked;
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!embedded) ...[
           Text('Spaces on your website', style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
-          const Text(
-            'Choose the services and spaces visitors can book. Each service is a card on your homepage; each space has its own photos and booking rules.',
-          ),
-          const SizedBox(height: 6),
-          Text(
-            photosLocked
-                ? 'Save your changes before uploading photos.'
-                : 'Photo changes save immediately and are visible on your published website.',
-            style: TextStyle(color: theme.colorScheme.primary),
-          ),
-          if (settings.businesses.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 16),
-              child: Text('Add and configure a business first.'),
-            ),
-          for (final business in settings.businesses)
-            _BusinessTile(
-              key: ValueKey('website-business-${business.id}'),
-              settings: settings,
-              business: business,
-              enabled: settings.businessIds.contains(business.id),
-              busy: busy,
-              photosDisabled: photosDisabled,
-              onToggle: (v) => onToggleBusiness(business.id, v),
-              onChanged: (b) => onBusiness(business.id, b),
-              onSpace: (s) => onSpace(business.id, s),
-              onCopyRules: onCopyRules,
-              onUpload: (kind, resourceId) =>
-                  onUpload(kind, business.id, resourceId),
-              onRemovePhoto: onRemovePhoto,
-            ),
-          WebsiteUnusedPhotos(
-            settings: settings,
-            disabled: photosDisabled,
-            onRemove: onRemovePhoto,
-          ),
         ],
-      ),
+        const Text(
+          'Choose the services and spaces visitors can book. Each service is a card on your homepage; each space has its own photos and booking rules.',
+        ),
+        const SizedBox(height: 6),
+        Text(
+          photosLocked
+              ? 'Save your changes before uploading photos.'
+              : 'Photo changes save immediately and are visible on your published website.',
+          style: TextStyle(color: theme.colorScheme.primary),
+        ),
+        if (settings.businesses.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 16),
+            child: Text('Add and configure a business first.'),
+          ),
+        for (final business in settings.businesses)
+          _BusinessTile(
+            key: ValueKey('website-business-${business.id}'),
+            settings: settings,
+            business: business,
+            enabled: settings.businessIds.contains(business.id),
+            busy: busy,
+            photosDisabled: photosDisabled,
+            onToggle: (v) => onToggleBusiness(business.id, v),
+            onChanged: (b) => onBusiness(business.id, b),
+            onSpace: (s) => onSpace(business.id, s),
+            onCopyRules: onCopyRules,
+            onUpload: (kind, resourceId) =>
+                onUpload(kind, business.id, resourceId),
+            onRemovePhoto: onRemovePhoto,
+          ),
+        WebsiteUnusedPhotos(
+          settings: settings,
+          disabled: photosDisabled,
+          onRemove: onRemovePhoto,
+        ),
+      ],
     );
+    return embedded ? content : AppCard(child: content);
   }
 }
 
@@ -249,6 +252,7 @@ class _SpaceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ExpansionTile(
+    maintainState: true,
     tilePadding: EdgeInsets.zero,
     childrenPadding: const EdgeInsets.only(bottom: 16),
     leading: Icon(

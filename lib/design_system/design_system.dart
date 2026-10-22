@@ -8,6 +8,7 @@ export 'components/app_text_field.dart';
 export 'components/app_picker.dart';
 export 'components/app_time_picker.dart';
 export 'components/app_card.dart';
+export 'components/app_status_badge.dart';
 export 'components/app_empty_state.dart';
 export 'components/app_error_widget.dart';
 export 'layouts/adaptive_scaffold.dart';
