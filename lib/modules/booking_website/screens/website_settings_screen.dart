@@ -25,6 +25,10 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   final form = GlobalKey<FormState>();
   final addressField = GlobalKey<FormFieldState<String>>();
   final sectionKeys = List.generate(5, (_) => GlobalKey());
+  final editorScroll = ScrollController();
+  bool sectionSyncScheduled = false;
+  bool jumpingToSection = false;
+  int sectionJump = 0;
   final expanded = <int>{0};
   int selectedSection = 0;
   bool desktop = false;
@@ -42,11 +46,13 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    editorScroll.addListener(scheduleSectionSync);
     cubit.load();
   }
 
   @override
   void dispose() {
+    editorScroll.dispose();
     cubit.close();
     super.dispose();
   }
@@ -584,19 +590,47 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     ),
   );
 
+  void scheduleSectionSync() {
+    if (sectionSyncScheduled) return;
+    sectionSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      sectionSyncScheduled = false;
+      if (!mounted || !desktop || jumpingToSection) return;
+      final viewport = form.currentContext?.findRenderObject();
+      if (viewport is! RenderBox || !viewport.hasSize) return;
+      final top = viewport.localToGlobal(Offset.zero).dy + 48;
+      var active = 0;
+      for (final (index, key) in sectionKeys.indexed) {
+        final box = key.currentContext?.findRenderObject();
+        if (box is RenderBox &&
+            box.hasSize &&
+            box.localToGlobal(Offset.zero).dy <= top) {
+          active = index;
+        }
+      }
+      if (selectedSection != active) setState(() => selectedSection = active);
+    });
+  }
+
   void jumpTo(int index) {
+    final jump = ++sectionJump;
+    jumpingToSection = true;
     setState(() {
       selectedSection = index;
       expanded.add(index);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final target = sectionKeys[index].currentContext;
       if (mounted && target != null) {
-        Scrollable.ensureVisible(
+        await Scrollable.ensureVisible(
           target,
           duration: const Duration(milliseconds: 280),
           alignment: .03,
         );
+      }
+      if (mounted && jump == sectionJump) {
+        jumpingToSection = false;
+        scheduleSectionSync();
       }
     });
   }
@@ -647,6 +681,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     key: form,
     child: SingleChildScrollView(
       key: const PageStorageKey('website-editor-content'),
+      controller: editorScroll,
       primary: false,
       padding: const EdgeInsets.only(bottom: 28),
       child: KeyedSubtree(

@@ -583,6 +583,17 @@ void main() {
           await tester.tap(find.byKey(const ValueKey('website-nav-1')));
           await tester.pumpAndSettle();
           expect(summary.hitTestable(), findsNothing);
+          // Scrolling without using the sidebar must update its selection too.
+          await tester.ensureVisible(
+            find.widgetWithText(TextFormField, 'Card description').first,
+          );
+          await tester.pumpAndSettle();
+          expect(
+            tester
+                .widget<ListTile>(find.byKey(const ValueKey('website-nav-2')))
+                .selected,
+            isTrue,
+          );
           await tester.tap(find.byKey(const ValueKey('website-nav-0')));
           await tester.pumpAndSettle();
           expect(summary.hitTestable(), findsOneWidget);
@@ -663,6 +674,108 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await workspace.close();
     });
+  }
+  for (final width in [320.0, 1440.0]) {
+    testWidgets(
+      'service spaces survive enabling after scroll and saving at $width',
+      (tester) async {
+        tester.view.physicalSize = Size(width, 1100);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final workspace = WorkspaceCubit(BookingSource());
+        await workspace.load();
+        final repo = TestWebsiteRepository();
+        repo.value = repo.value.copyWith(businessIds: []);
+        getIt
+            .registerFactoryParam<WebsiteSettingsCubit, WorkspaceSession, void>(
+              (s, _) => WebsiteSettingsCubit(s, repo),
+            );
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox());
+          await workspace.close();
+        });
+        await tester.pumpWidget(
+          BlocProvider.value(
+            value: workspace,
+            child: ScreenUtilInit(
+              designSize: const Size(390, 844),
+              builder: (_, _) => MaterialApp(
+                theme: darkTheme(),
+                home: const WebsiteSettingsScreen(),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final editor = find.byKey(
+          const PageStorageKey('website-editor-content'),
+        );
+        if (width >= 1180) {
+          await tester.tap(find.byKey(const ValueKey('website-nav-2')));
+        } else {
+          final heading = find.descendant(
+            of: editor,
+            matching: find.text('Services & spaces'),
+          );
+          await tester.ensureVisible(heading);
+          await tester.pumpAndSettle();
+          await tester.tap(heading);
+        }
+        await tester.pumpAndSettle();
+        final badminton = find.widgetWithText(CheckboxListTile, 'Badminton');
+        await tester.ensureVisible(badminton);
+        await tester.pumpAndSettle();
+        // A nonzero scroll offset is now persisted before the space tiles mount.
+        final scroll = tester.widget<SingleChildScrollView>(editor);
+        expect(
+          Scrollable.of(tester.element(badminton)).position.pixels,
+          greaterThan(0),
+        );
+        expect(scroll.key, const PageStorageKey('website-editor-content'));
+        await tester.tap(badminton);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final court = find.widgetWithText(ExpansionTile, 'Court 1');
+        await tester.ensureVisible(court);
+        await tester.tap(find.text('Court 1'));
+        await tester.pumpAndSettle();
+        final rules = find.widgetWithText(
+          TextFormField,
+          'Space rules for visitors',
+        );
+        await tester.ensureVisible(rules);
+        await tester.enterText(rules, 'Wear court shoes.');
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(AppButton, 'Save changes'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(
+          repo.value.businesses.first.spaces.first.rules,
+          'Wear court shoes.',
+        );
+        expect(
+          tester.widget<TextFormField>(rules).initialValue,
+          'Wear court shoes.',
+        );
+        expect(find.byType(ErrorWidget), findsNothing);
+        // The rebuilt scroll view must still restore a number, not expansion state.
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpWidget(
+          BlocProvider.value(
+            value: workspace,
+            child: ScreenUtilInit(
+              designSize: const Size(390, 844),
+              builder: (_, _) => MaterialApp(
+                theme: darkTheme(),
+                home: const WebsiteSettingsScreen(),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
   for (final width in [320.0, 1440.0]) {
     testWidgets(

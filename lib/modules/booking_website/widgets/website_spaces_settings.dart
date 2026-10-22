@@ -252,6 +252,8 @@ class _SpaceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ExpansionTile(
+    // Keep expansion state separate from the editor's stored scroll offset.
+    key: PageStorageKey('website-space-expansion-$businessId-${space.id}'),
     maintainState: true,
     tilePadding: EdgeInsets.zero,
     childrenPadding: const EdgeInsets.only(bottom: 16),
