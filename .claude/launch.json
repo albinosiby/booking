@@ -4,8 +4,32 @@
     {
       "name": "web-release",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8088", "--directory", "build/web"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8088",
+        "--directory",
+        "build/web"
+      ],
       "port": 8088
+    },
+    {
+      "name": "website-preview-api",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd backend && WEBSITE_PREVIEW_PORT=3111 exec node --import tsx scripts/website-preview.ts"
+      ],
+      "port": 3111
+    },
+    {
+      "name": "booking-website",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd booking-website && BOOKING_API_BASE_URL=http://127.0.0.1:3111 BOOKING_SITE_DOMAIN=localhost exec npx next start --hostname 127.0.0.1 --port 3010"
+      ],
+      "port": 3010
     }
   ]
 }

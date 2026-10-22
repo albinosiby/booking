@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { OrganisationHome } from "../../components/organisation-home";
+import { headers } from "next/headers";
 import { loadWebsite } from "../../lib/server-api";
+import { siteBasePath } from "../../lib/site-links";
+import { SITE_HOST_HEADER } from "../../lib/site-host";
 export const dynamic = "force-dynamic";
 type Props = {
   params: Promise<{ slug: string }>;
@@ -35,6 +38,7 @@ export default async function SitePage({ params, searchParams }: Props) {
     { preview } = await searchParams;
   return (
     <OrganisationHome
+      base={siteBasePath(slug, (await headers()).get(SITE_HOST_HEADER))}
       preview={preview}
       site={await loadWebsite(slug, preview)}
     />

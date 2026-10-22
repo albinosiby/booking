@@ -24,6 +24,7 @@ import { BookingSelection } from "../bookings/booking.validation";
 import {
   ensureWebsiteDraft,
   websiteSlug,
+  websiteSubdomain,
   websiteSettingsSchema,
   publicAvailabilitySchema,
   publicQuoteSchema,
@@ -31,6 +32,12 @@ import {
 } from "./website.validation";
 import { websiteImage, websiteImageSchema } from "./website.images";
 type Row = Record<string, any>;
+type SpaceRules = {
+  visible: boolean;
+  notice_minutes: number;
+  advance_days: number;
+  rules: string;
+};
 const hash = (v: string) => createHash("sha256").update(v).digest("hex");
 
 /** A public projection, never raw business configuration, memberships or finance. */
@@ -144,6 +151,28 @@ export class WebsiteService {
     ).rows[0];
     return site;
   }
+  /**
+   * Each website is served from `https://<slug>.<BOOKING_WEBSITE_DOMAIN>`.
+   * BOOKING_WEBSITE_URL remains a path-based fallback (`<origin>/<slug>`).
+   */
+  private siteUrl(slug: string) {
+    const domain = process.env.BOOKING_WEBSITE_DOMAIN?.trim().toLowerCase();
+    if (domain) {
+      const local =
+        process.env.NODE_ENV !== "production" &&
+        /^localhost(:\d+)?$/.test(domain);
+      if (
+        !local &&
+        !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)
+      )
+        throw new Error(
+          "BOOKING_WEBSITE_DOMAIN must be a domain such as bookingos.online",
+        );
+      return `${local ? "http" : "https"}://${slug}.${domain}`;
+    }
+    const base = this.publicBase();
+    return base ? `${base}/${slug}` : null;
+  }
   private publicBase() {
     const value = process.env.BOOKING_WEBSITE_URL;
     if (value) {
@@ -160,24 +189,65 @@ export class WebsiteService {
     }
     return null;
   }
+  /** Space rows only hold overrides; a space without one is shown with the site defaults. */
+  private async spaceRows(
+    db: Queryable,
+    websiteId: string,
+    businessId?: string,
+  ) {
+    return (
+      await db.query<Row>(
+        `SELECT business_id,resource_id,visible,notice_minutes,advance_days,rules FROM booking_website_spaces
+        WHERE website_id=$1${businessId ? " AND business_id=$2" : ""}`,
+        businessId ? [websiteId, businessId] : [websiteId],
+      )
+    ).rows;
+  }
+  private spaceRules(
+    site: Row,
+    rows: Row[],
+    businessId: string,
+    resourceId: string,
+  ): SpaceRules {
+    const row = rows.find(
+      (r) => r.business_id === businessId && r.resource_id === resourceId,
+    );
+    return {
+      visible: row?.visible ?? true,
+      notice_minutes: row?.notice_minutes ?? site.notice_minutes,
+      advance_days: row?.advance_days ?? site.advance_days,
+      rules: row?.rules ?? "",
+    };
+  }
   private async settingsProjection(site: Row) {
     const businesses = (
       await this.db.query<Row>(
-        `SELECT b.id,b.name,b.type,b.status,b.configuration,
-      EXISTS(SELECT 1 FROM booking_website_businesses wb WHERE wb.website_id=$1 AND wb.business_id=b.id) AS enabled
-      FROM businesses b WHERE b.organization_id=$2 ORDER BY b.display_order,b.id`,
+        `SELECT b.id,b.name,b.type,b.status,b.configuration,wb.business_id IS NOT NULL AS enabled,
+      COALESCE(wb.card_description,'') AS card_description
+      FROM businesses b LEFT JOIN booking_website_businesses wb ON wb.website_id=$1 AND wb.business_id=b.id
+      WHERE b.organization_id=$2 ORDER BY b.display_order,b.id`,
         [site.id, site.organization_id],
       )
     ).rows;
+    const spaces = await this.spaceRows(this.db, site.id);
     const { preview_hash, preview_expires_at, ...safe } = site;
     return {
       ...safe,
       businesses: businesses.map(({ configuration, ...b }) => ({
         ...b,
-        resources: websiteResources({ ...b, configuration }).map((r: Row) => ({
-          id: r.id,
-          name: r.name,
-        })),
+        resources: websiteResources({ ...b, configuration }).map((r: Row) => {
+          const row = spaces.find(
+            (v) => v.business_id === b.id && v.resource_id === r.id,
+          );
+          return {
+            id: r.id,
+            name: r.name,
+            visible: row?.visible ?? true,
+            notice_minutes: row?.notice_minutes ?? null,
+            advance_days: row?.advance_days ?? null,
+            rules: row?.rules ?? "",
+          };
+        }),
       })),
       images: (
         await this.db.query<Row>(
@@ -185,7 +255,8 @@ export class WebsiteService {
           [site.id],
         )
       ).rows,
-      url: this.publicBase() ? `${this.publicBase()}/${site.slug}` : null,
+      url: this.siteUrl(site.slug),
+      domain: process.env.BOOKING_WEBSITE_DOMAIN?.trim().toLowerCase() || null,
     };
   }
   async settings(actor: Actor) {
@@ -205,6 +276,17 @@ export class WebsiteService {
         throw new BadRequestException(
           "The address is fixed after first publication so shared links keep working.",
         );
+      if (old.slug !== v.slug) {
+        websiteSubdomain.parse(v.slug);
+        const taken = await db.query(
+          "SELECT 1 FROM booking_websites WHERE slug=$1 AND id<>$2",
+          [v.slug, old.id],
+        );
+        if (taken.rows.length)
+          throw new ConflictException(
+            "This website address is already taken. Choose another.",
+          );
+      }
       const businessRows = (
         await db.query<Row>(
           "SELECT * FROM businesses WHERE organization_id=$1 AND id=ANY($2::uuid[])",
@@ -224,19 +306,70 @@ export class WebsiteService {
         throw new BadRequestException(
           "A published website needs an active business with normal booking options.",
         );
+      if (v.spaces) {
+        const all = (
+          await db.query<Row>(
+            "SELECT * FROM businesses WHERE organization_id=$1",
+            [old.organization_id],
+          )
+        ).rows;
+        for (const space of v.spaces) {
+          const b = all.find((x) => x.id === space.business_id);
+          if (
+            !b ||
+            !websiteResources(b).some((r: Row) => r.id === space.resource_id)
+          )
+            throw new BadRequestException(
+              "Choose normal booking spaces from this organisation.",
+            );
+        }
+        await db.query(
+          "DELETE FROM booking_website_spaces WHERE website_id=$1",
+          [old.id],
+        );
+        for (const space of v.spaces)
+          await db.query(
+            `INSERT INTO booking_website_spaces(website_id,organization_id,business_id,resource_id,visible,notice_minutes,advance_days,rules)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [
+              old.id,
+              old.organization_id,
+              space.business_id,
+              space.resource_id,
+              space.visible,
+              space.notice_minutes,
+              space.advance_days,
+              space.rules,
+            ],
+          );
+      }
+      const previous = (
+        await db.query<Row>(
+          "SELECT business_id,card_description FROM booking_website_businesses WHERE website_id=$1",
+          [old.id],
+        )
+      ).rows;
       await db.query(
         "DELETE FROM booking_website_businesses WHERE website_id=$1",
         [old.id],
       );
       for (const [order, id] of v.business_ids.entries())
         await db.query(
-          "INSERT INTO booking_website_businesses(website_id,organization_id,business_id,display_order) VALUES($1,$2,$3,$4)",
-          [old.id, old.organization_id, id, order],
+          "INSERT INTO booking_website_businesses(website_id,organization_id,business_id,display_order,card_description) VALUES($1,$2,$3,$4,$5)",
+          [
+            old.id,
+            old.organization_id,
+            id,
+            order,
+            v.card_descriptions?.[id] ??
+              previous.find((p) => p.business_id === id)?.card_description ??
+              "",
+          ],
         );
       const row = (
         await db.query<Row>(
           `UPDATE booking_websites SET slug=$1,title=$2,description=$3,contact_phone=$4,instructions=$5,cancellation_policy=$6,
-        publish_logo=$7,notice_minutes=$8,advance_days=$9,version=version+1,updated_at=now(),preview_hash=NULL,preview_expires_at=NULL
+        publish_logo=$7,notice_minutes=$8,advance_days=$9,hero_heading=$11,social_links=$12,version=version+1,updated_at=now(),preview_hash=NULL,preview_expires_at=NULL
         WHERE id=$10 RETURNING *`,
           [
             v.slug,
@@ -249,6 +382,14 @@ export class WebsiteService {
             v.notice_minutes,
             v.advance_days,
             old.id,
+            v.hero_heading ?? old.hero_heading,
+            JSON.stringify(
+              v.social_links
+                ? Object.fromEntries(
+                    Object.entries(v.social_links).filter(([, url]) => url),
+                  )
+                : old.social_links,
+            ),
           ],
         )
       ).rows[0];
@@ -272,18 +413,25 @@ export class WebsiteService {
         throw new ConflictException(
           "Website settings changed. Reload before uploading.",
         );
-      if (v.kind === "space") {
+      if (v.kind === "space" || v.kind === "card") {
         const b = (
           await db.query<Row>(
             "SELECT * FROM businesses WHERE id=$1 AND organization_id=$2",
             [v.business_id, old.organization_id],
           )
         ).rows[0];
-        if (!b || !websiteResources(b).some((r: Row) => r.id === v.resource_id))
+        if (
+          !b ||
+          !websiteResources(b).some(
+            (r: Row) => v.kind === "card" || r.id === v.resource_id,
+          )
+        )
           throw new BadRequestException(
             "Choose a normal booking space from this organisation.",
           );
       }
+      // Hero, logo and card photos have a single slot and are replaced.
+      const single = v.kind !== "space";
       const images = (
         await db.query<Row>(
           "SELECT id,kind,business_id,resource_id,position FROM booking_website_images WHERE website_id=$1",
@@ -294,21 +442,22 @@ export class WebsiteService {
         (i) =>
           i.kind === v.kind &&
           (v.kind === "hero" ||
+            v.kind === "logo" ||
             (i.business_id === v.business_id &&
-              i.resource_id === v.resource_id)),
+              i.resource_id === (v.resource_id ?? null))),
       );
       if (v.kind === "space" && same.length >= 4)
         throw new BadRequestException(
           "Each space can have up to 4 photos. Remove one first.",
         );
-      if (images.length - (v.kind === "hero" ? same.length : 0) >= 40)
+      if (images.length - (single ? same.length : 0) >= 40)
         throw new BadRequestException(
           "A website can have up to 40 photos. Remove an unused photo first.",
         );
-      if (v.kind === "hero")
+      for (const image of single ? same : [])
         await db.query(
-          "DELETE FROM booking_website_images WHERE website_id=$1 AND kind='hero'",
-          [old.id],
+          "DELETE FROM booking_website_images WHERE website_id=$1 AND id=$2",
+          [old.id, image.id],
         );
       const position =
         [0, 1, 2, 3].find((n) => !same.some((i) => i.position === n)) ?? 0;
@@ -323,7 +472,7 @@ export class WebsiteService {
           v.kind,
           v.business_id ?? null,
           v.resource_id ?? null,
-          v.kind === "hero" ? 0 : position,
+          single ? 0 : position,
           v.content_type,
           data,
         ],
@@ -399,7 +548,7 @@ export class WebsiteService {
       )
     ).rows[0];
     if (!image) throw new NotFoundException("Photo not found.");
-    if (image.kind === "space") {
+    if (image.kind === "space" || image.kind === "card") {
       const b = (
         await this.db.query<Row>(
           `SELECT b.* FROM businesses b JOIN booking_website_businesses wb ON wb.business_id=b.id AND wb.organization_id=b.organization_id
@@ -407,9 +556,14 @@ export class WebsiteService {
           [site.id, image.business_id],
         )
       ).rows[0];
+      const spaces = b ? await this.spaceRows(this.db, site.id, b.id) : [];
       if (
         !b ||
-        !websiteResources(b).some((r: Row) => r.id === image.resource_id)
+        !websiteResources(b).some(
+          (r: Row) =>
+            (image.kind === "card" || r.id === image.resource_id) &&
+            this.spaceRules(site, spaces, b.id, r.id).visible,
+        )
       )
         throw new NotFoundException("Photo not found.");
     }
@@ -442,9 +596,9 @@ export class WebsiteService {
           throw new BadRequestException(
             "Enable at least one active business with normal booking options.",
           );
-        if (!this.publicBase())
+        if (!this.siteUrl(old.slug))
           throw new BadRequestException(
-            "Configure BOOKING_WEBSITE_URL on the API before publishing.",
+            "Configure BOOKING_WEBSITE_DOMAIN on the API before publishing.",
           );
       }
       const row = (
@@ -469,16 +623,19 @@ export class WebsiteService {
     return this.db.transaction(async (db) => {
       const site = await this.ownerSite(actor, db, true),
         token = randomBytes(32).toString("hex");
-      if (!this.publicBase())
+      const url = this.siteUrl(site.slug);
+      if (!url)
         throw new BadRequestException(
-          "Configure BOOKING_WEBSITE_URL on the API to preview the website.",
+          "Configure BOOKING_WEBSITE_DOMAIN on the API to preview the website.",
         );
       await db.query(
         "UPDATE booking_websites SET preview_hash=$1,preview_expires_at=now()+interval '1 hour' WHERE id=$2",
         [hash(token), site.id],
       );
+      const link = new URL(url);
+      link.searchParams.set("preview", token);
       return {
-        url: `${this.publicBase()}/${site.slug}?preview=${token}`,
+        url: link.toString(),
         expires_in_seconds: 3600,
       };
     });
@@ -493,7 +650,8 @@ export class WebsiteService {
     websiteSlug.parse(slug);
     const site = (
       await db.query<Row>(
-        `SELECT w.*,o.currency,EXISTS(SELECT 1 FROM logo_assets a WHERE a.organization_id=w.organization_id) AS logo_available FROM booking_websites w JOIN organizations o ON o.id=w.organization_id WHERE w.slug=$1${lock ? " FOR SHARE OF w" : ""}`,
+        `SELECT w.*,o.currency,EXISTS(SELECT 1 FROM logo_assets a WHERE a.organization_id=w.organization_id) AS logo_available,
+        EXISTS(SELECT 1 FROM booking_website_images i WHERE i.website_id=w.id AND i.kind='logo') AS website_logo FROM booking_websites w JOIN organizations o ON o.id=w.organization_id WHERE w.slug=$1${lock ? " FOR SHARE OF w" : ""}`,
         [slug],
       )
     ).rows[0];
@@ -552,9 +710,10 @@ export class WebsiteService {
         [site.id],
       )
     ).rows;
+    const spaces = await this.spaceRows(this.db, site.id);
     const businesses = (
       await this.db.query<Row>(
-        `SELECT b.*,l.name AS location_name,l.timezone,l.address_line_1,l.address_line_2,l.city,l.state_code,l.country_code,l.postal_code
+        `SELECT b.*,wb.card_description,l.name AS location_name,l.timezone,l.address_line_1,l.address_line_2,l.city,l.state_code,l.country_code,l.postal_code
       FROM booking_website_businesses wb JOIN businesses b ON b.id=wb.business_id AND b.organization_id=wb.organization_id
       JOIN locations l ON l.id=b.location_id WHERE wb.website_id=$1 AND b.status='ready' ORDER BY wb.display_order,b.display_order,b.id`,
         [site.id],
@@ -576,17 +735,30 @@ export class WebsiteService {
         ]
           .filter(Boolean)
           .join(", "),
-        resources: websiteResources(b).map((r: Row) => ({
-          ...r,
-          images: images
-            .filter(
-              (i) =>
-                i.kind === "space" &&
-                i.business_id === b.id &&
-                i.resource_id === r.id,
-            )
-            .map((i) => i.id),
-        })),
+        description: b.card_description,
+        card_image:
+          images.find((i) => i.kind === "card" && i.business_id === b.id)?.id ??
+          null,
+        resources: websiteResources(b)
+          .map((r: Row) => ({
+            r,
+            rules: this.spaceRules(site, spaces, b.id, r.id),
+          }))
+          .filter(({ rules }: { rules: SpaceRules }) => rules.visible)
+          .map(({ r, rules }: { r: Row; rules: SpaceRules }) => ({
+            ...r,
+            notice_minutes: rules.notice_minutes,
+            advance_days: rules.advance_days,
+            rules: rules.rules,
+            images: images
+              .filter(
+                (i) =>
+                  i.kind === "space" &&
+                  i.business_id === b.id &&
+                  i.resource_id === r.id,
+              )
+              .map((i) => i.id),
+          })),
       }))
       .filter((b) => b.resources.length);
     return {
@@ -599,8 +771,10 @@ export class WebsiteService {
       currency: site.currency,
       status: site.status,
       is_preview: site.is_preview,
-      has_logo: site.publish_logo && site.logo_available,
+      has_logo: site.website_logo || (site.publish_logo && site.logo_available),
       hero_image: images.find((i) => i.kind === "hero")?.id ?? null,
+      hero_heading: site.hero_heading,
+      social_links: site.social_links ?? {},
       notice_minutes: site.notice_minutes,
       advance_days: site.advance_days,
       businesses,
@@ -608,6 +782,13 @@ export class WebsiteService {
   }
   async logo(slug: string, preview?: string) {
     const site = await this.publicSite(slug, preview);
+    const own = (
+      await this.db.query<Row>(
+        "SELECT data,content_type FROM booking_website_images WHERE website_id=$1 AND kind='logo'",
+        [site.id],
+      )
+    ).rows[0];
+    if (own) return own;
     if (!site.publish_logo) throw new NotFoundException("Logo not published.");
     const logo = (
       await this.db.query<Row>(
@@ -636,10 +817,16 @@ export class WebsiteService {
       throw new NotFoundException(
         "This business is not available for online booking.",
       );
+    const rules = this.spaceRules(
+      site,
+      await this.spaceRows(db, site.id, b.id),
+      b.id,
+      selection.resource_id,
+    );
     const option = websiteResources(b)
       .find((r: Row) => r.id === selection.resource_id)
       ?.options.find((o: Row) => o.id === selection.option_id);
-    if (!option)
+    if (!option || !rules.visible)
       throw new BadRequestException(
         "Only normal bookings are available on this website.",
       );
@@ -650,15 +837,18 @@ export class WebsiteService {
     const today = localStamp(Date.now(), b.timezone).slice(0, 10);
     if (
       selection.date < today ||
-      selection.date > addDate(today, site.advance_days)
+      selection.date > addDate(today, rules.advance_days)
     )
       throw new BadRequestException(
         "Choose a date within the online booking window.",
       );
-    return b;
+    return Object.assign(b, { website_rules: rules });
   }
-  private notice(site: Row, q: ReturnType<typeof buildQuote>) {
-    if (Date.parse(q.starts_at) < Date.now() + site.notice_minutes * 60000)
+  private notice(b: Row, q: ReturnType<typeof buildQuote>) {
+    if (
+      Date.parse(q.starts_at) <
+      Date.now() + b.website_rules.notice_minutes * 60000
+    )
       throw new BadRequestException(
         "This time is too soon. Choose a later slot.",
       );
@@ -684,7 +874,7 @@ export class WebsiteService {
       const b = await this.business(db, site, v.selection);
       const result = await bookingAvailability(db, b, v.selection, v.end_times);
       const threshold = localStamp(
-        Date.now() + site.notice_minutes * 60000,
+        Date.now() + b.website_rules.notice_minutes * 60000,
         b.timezone,
       );
       for (const slot of result.slots)
@@ -703,7 +893,7 @@ export class WebsiteService {
     return this.db.transaction(async (db) => {
       const b = await this.business(db, site, v.selection),
         q = buildQuote(b, v.selection, b.timezone);
-      this.notice(site, q);
+      this.notice(b, q);
       checkInventory(
         q,
         await inventoryAllocations(db, b.id, q.occupied_from, q.occupied_until),
@@ -749,7 +939,7 @@ export class WebsiteService {
         );
       const b = await this.business(db, site, v.selection, true),
         q = buildQuote(b, v.selection, b.timezone);
-      this.notice(site, q);
+      this.notice(b, q);
       if (q.quote_token !== v.quote_token)
         throw new ConflictException(
           "Pricing changed. Review the updated price before confirming.",

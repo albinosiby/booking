@@ -139,8 +139,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           _Destination(
             Icons.language_outlined,
-            'Booking website',
-            'Public page, online bookings and website settings',
+            'Design website',
+            'Your booking website address, photos, spaces and rules',
             Routes.bookingWebsite,
           ),
           _Destination(

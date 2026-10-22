@@ -21,6 +21,9 @@ export type BookingOption = {
 };
 export type Resource = {
   images: string[];
+  notice_minutes: number;
+  advance_days: number;
+  rules: string;
   id: string;
   name: string;
   capacity: number;
@@ -36,8 +39,17 @@ export type Business = {
   today: string;
   location_name: string;
   address: string;
+  description: string;
+  card_image: string | null;
   resources: Resource[];
 };
+export type SocialNetwork =
+  | "instagram"
+  | "facebook"
+  | "x"
+  | "youtube"
+  | "linkedin"
+  | "whatsapp";
 export type Website = {
   slug: string;
   title: string;
@@ -50,6 +62,8 @@ export type Website = {
   is_preview: boolean;
   has_logo: boolean;
   hero_image: string | null;
+  hero_heading: string;
+  social_links: Partial<Record<SocialNetwork, string>>;
   notice_minutes: number;
   advance_days: number;
   businesses: Business[];

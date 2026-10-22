@@ -11,6 +11,7 @@ import 'package:eden_booking/di/injection.dart';
 import 'package:eden_booking/modules/booking_website/cubit/website_settings_cubit.dart';
 import 'package:eden_booking/modules/booking_website/models/website_settings.dart';
 import 'package:eden_booking/modules/booking_website/repositories/website_repository.dart';
+import 'package:eden_booking/modules/booking_website/repositories/rest_website_repository.dart';
 import 'package:eden_booking/modules/booking_website/screens/website_settings_screen.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
@@ -38,14 +39,26 @@ class TestWebsiteRepository implements WebsiteRepository {
         type: 'badminton',
         status: 'ready',
         enabled: true,
-        spaces: [WebsiteSpace(id: 'court-1', name: 'Court 1')],
+        spaces: [
+          WebsiteSpace(id: 'court-1', name: 'Court 1'),
+          WebsiteSpace(id: 'court-2', name: 'Court 2'),
+        ],
+      ),
+      WebsiteBusiness(
+        id: 'pool',
+        name: 'Pool',
+        type: 'pool',
+        status: 'ready',
+        enabled: true,
+        spaces: [WebsiteSpace(id: 'lane', name: 'Lane')],
       ),
     ],
-    businessIds: ['business'],
-    url: 'http://localhost:3000/eden-sports',
+    businessIds: ['business', 'pool'],
+    domain: 'bookingos.online',
+    url: 'https://eden-sports.bookingos.online',
   );
   int reads = 0, saves = 0, uploads = 0, picks = 0;
-  String? uploadedBusiness, uploadedResource;
+  String? uploadedBusiness, uploadedResource, uploadedKind;
   Completer<LogoSelection?>? delayedPick;
   LogoSelection? selectedPhoto;
   final actions = <String>[];
@@ -79,10 +92,12 @@ class TestWebsiteRepository implements WebsiteRepository {
   Future<WebsiteSettings> uploadImage(
     LogoSelection image,
     int version, {
+    required String kind,
     String? businessId,
     String? resourceId,
   }) async {
     uploads++;
+    uploadedKind = kind;
     uploadedBusiness = businessId;
     uploadedResource = resourceId;
     return value;
@@ -180,6 +195,13 @@ void main() {
       expect(repo.uploads, 1);
       expect(repo.uploadedBusiness, 'business');
       expect(repo.uploadedResource, 'court-1');
+      expect(repo.uploadedKind, 'space');
+      await cubit.photo(kind: 'card', businessId: 'pool');
+      expect(repo.uploadedKind, 'card');
+      expect(repo.uploadedResource, isNull);
+      await cubit.photo(kind: 'logo');
+      expect(repo.uploadedKind, 'logo');
+      expect(repo.uploadedBusiness, isNull);
       expect(cubit.state.message, 'Website photo saved.');
       expect(cubit.state.dirty, isFalse);
       expect(cubit.state.busy, isFalse);
@@ -210,6 +232,55 @@ void main() {
       await scopedWorkspace.close();
     },
   );
+  test(
+    'one space\'s booking rules can be copied to every space and saved',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository();
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      await cubit.load();
+      final source = cubit.state.draft!.businesses.first.spaces.first.copyWith(
+        noticeMinutes: () => 60,
+        advanceDays: () => 7,
+        rules: 'Non-marking shoes only.',
+      );
+      cubit.updateSpace('business', source);
+      cubit.updateSpace(
+        'business',
+        cubit.state.draft!.businesses.first.spaces.last.copyWith(
+          visible: false,
+        ),
+      );
+      final revision = cubit.state.revision;
+      cubit.copyRulesToAll(source);
+      expect(cubit.state.revision, revision + 1);
+      final spaces = [
+        for (final b in cubit.state.draft!.businesses) ...b.spaces,
+      ];
+      expect(spaces.map((s) => s.advanceDays), everyElement(7));
+      expect(spaces.map((s) => s.noticeMinutes), everyElement(60));
+      expect(
+        spaces.map((s) => s.rules),
+        everyElement('Non-marking shoes only.'),
+      );
+      // Visibility is a per-space choice and is not copied.
+      expect(spaces.where((s) => !s.visible).map((s) => s.id), ['court-2']);
+      await cubit.save();
+      expect(repo.value.businesses.last.spaces.single.advanceDays, 7);
+      expect(cubit.state.dirty, isFalse);
+      await cubit.close();
+      await workspace.close();
+    },
+  );
+  test('social links accept pasted addresses without a scheme', () {
+    expect(
+      normaliseSocialLink(' instagram.com/eden '),
+      'https://instagram.com/eden',
+    );
+    expect(normaliseSocialLink('https://wa.me/91900'), 'https://wa.me/91900');
+    expect(normaliseSocialLink('  '), '');
+  });
   test('photo encoding resizes images and strips camera metadata', () {
     final original = img.Image(width: 2000, height: 20);
     original.exif.imageIfd.make = 'Private camera';
@@ -254,10 +325,39 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Booking website'), findsOneWidget);
-      expect(find.text('Businesses available online'), findsOneWidget);
-      expect(find.text('Upload hero image'), findsOneWidget);
-      expect(find.text('Booking space photos'), findsOneWidget);
+      final list = find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      expect(find.text('Design website'), findsOneWidget);
+      expect(find.text('Website address'), findsOneWidget);
+      expect(find.text('.bookingos.online'), findsOneWidget);
+      expect(find.text('Brand & homepage'), findsOneWidget);
+      expect(find.text('Spaces on your website'), findsOneWidget);
+      expect(find.text('Homepage card'), findsNWidgets(2));
+      await tester.scrollUntilVisible(
+        find.text('Court 1'),
+        300,
+        scrollable: list,
+      );
+      await tester.ensureVisible(find.text('Court 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Court 1'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Copy these rules to all spaces'),
+        300,
+        scrollable: list,
+      );
+      expect(find.text('Copy these rules to all spaces'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Social media'),
+        300,
+        scrollable: list,
+      );
+      expect(find.text('Instagram'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await workspace.close();

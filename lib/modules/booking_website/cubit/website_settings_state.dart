@@ -9,10 +9,14 @@ class WebsiteSettingsState extends Equatable {
     this.busy = false,
     this.error,
     this.message,
+    this.revision = 0,
   });
   final WebsiteSettings? saved, draft;
   final bool loading, busy;
   final String? error, message;
+
+  /// Bumped when an action rewrites several fields at once so their inputs refresh.
+  final int revision;
   bool get dirty => saved != draft;
   WebsiteSettingsState copyWith({
     WebsiteSettings? saved,
@@ -21,6 +25,7 @@ class WebsiteSettingsState extends Equatable {
     bool? busy,
     String? error,
     String? message,
+    int? revision,
   }) => WebsiteSettingsState(
     saved: saved ?? this.saved,
     draft: draft ?? this.draft,
@@ -28,7 +33,16 @@ class WebsiteSettingsState extends Equatable {
     busy: busy ?? this.busy,
     error: error,
     message: message,
+    revision: revision ?? this.revision,
   );
   @override
-  List<Object?> get props => [saved, draft, loading, busy, error, message];
+  List<Object?> get props => [
+    saved,
+    draft,
+    loading,
+    busy,
+    error,
+    message,
+    revision,
+  ];
 }

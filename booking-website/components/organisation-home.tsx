@@ -3,6 +3,7 @@ import type { Business, Website } from "../lib/types";
 import { Icon } from "./icons";
 import { SiteHeader } from "./site-header";
 import { SpaceIllustration } from "./space-illustration";
+import { SocialLinks } from "./social-links";
 import { imageLink, siteLink } from "../lib/site-links";
 
 const descriptions: Record<string, string> = {
@@ -33,9 +34,11 @@ function startingTariff(b: Business, currency: string) {
 }
 export function OrganisationHome({
   site,
+  base,
   preview,
 }: {
   site: Website | null;
+  base: string;
   preview?: string;
 }) {
   if (!site)
@@ -54,7 +57,7 @@ export function OrganisationHome({
       <a className="skip-link" href="#services">
         Skip to services
       </a>
-      <SiteHeader site={site} preview={preview} />
+      <SiteHeader site={site} base={base} preview={preview} />
       <main className="home-shell">
         {site.is_preview && (
           <div className="notice">
@@ -83,9 +86,13 @@ export function OrganisationHome({
           <div className="hero-copy">
             <p className="eyebrow">Welcome to {site.title}</p>
             <h1 id="hero-title">
-              A space for your
-              <br />
-              next great moment.
+              {site.hero_heading || (
+                <>
+                  A space for your
+                  <br />
+                  next great moment.
+                </>
+              )}
             </h1>
             <p>
               {site.description ||
@@ -141,12 +148,13 @@ export function OrganisationHome({
           )}
           <div className="service-grid">
             {site.businesses.map((b) => {
-              const photo = b.resources.flatMap((r) => r.images)[0];
+              const photo =
+                b.card_image ?? b.resources.flatMap((r) => r.images)[0];
               return (
                 <Link
                   className="service-card"
                   key={b.id}
-                  href={siteLink(site.slug, `/book/${b.id}`, preview)}
+                  href={siteLink(base, `/book/${b.id}`, preview)}
                   aria-label={`Book ${b.name}`}
                 >
                   <div className={`service-card-image service-${b.type}`}>
@@ -168,7 +176,8 @@ export function OrganisationHome({
                   <div className="service-card-copy">
                     <h3>{b.name}</h3>
                     <p>
-                      {descriptions[b.type] ||
+                      {b.description ||
+                        descriptions[b.type] ||
                         `Explore ${b.name} and find your next available booking.`}
                     </p>
                     <div className="service-tariff">
@@ -201,6 +210,7 @@ export function OrganisationHome({
               <Icon name="phone" size={19} />
               {site.contact_phone}
             </a>
+            <SocialLinks links={site.social_links} />
           </div>
           <div className="venue-addresses">
             {addresses.map((a) => (
@@ -212,6 +222,7 @@ export function OrganisationHome({
       </main>
       <footer className="home-footer">
         <span>{site.title}</span>
+        <SocialLinks links={site.social_links} compact />
         <span>Find your space. Make it your time.</span>
       </footer>
     </>

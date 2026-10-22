@@ -1,207 +1,235 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import '../../../design_system/design_system.dart';
 import '../models/website_settings.dart';
 
-class WebsitePhotoSettings extends StatelessWidget {
-  const WebsitePhotoSettings({
+/// Website photo limits enforced by the API.
+const websitePhotoLimit = 40, websiteSpacePhotoLimit = 4;
+
+class WebsitePhotoTile extends StatelessWidget {
+  const WebsitePhotoTile({
     super.key,
+    required this.image,
+    required this.disabled,
+    required this.onRemove,
+    this.wide = false,
+    this.height,
+  });
+  final WebsiteImage image;
+  final bool disabled, wide;
+  final double? height;
+  final ValueChanged<String> onRemove;
+  @override
+  Widget build(BuildContext context) {
+    final h = height ?? (wide ? 190.0 : 100.0);
+    return SizedBox(
+      width: wide ? double.infinity : 150.w.clamp(110, 180).toDouble(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12.r),
+            child: image.bytes == null
+                ? SizedBox(
+                    height: h,
+                    child: const Center(
+                      child: Icon(Icons.broken_image_outlined),
+                    ),
+                  )
+                : Image.memory(
+                    image.bytes!,
+                    height: h,
+                    fit: BoxFit.cover,
+                    cacheWidth: wide ? 1000 : 320,
+                    errorBuilder: (_, _, _) => SizedBox(
+                      height: h,
+                      child: const Center(
+                        child: Icon(Icons.broken_image_outlined),
+                      ),
+                    ),
+                  ),
+          ),
+          TextButton.icon(
+            onPressed: disabled ? null : () => onRemove(image.id),
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: const Text('Remove photo'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A single-photo slot (hero, logo or service card) with upload/replace.
+class WebsitePhotoSlot extends StatelessWidget {
+  const WebsitePhotoSlot({
+    super.key,
+    required this.title,
+    required this.help,
+    required this.image,
     required this.settings,
     required this.disabled,
-    required this.dirty,
+    required this.onUpload,
+    required this.onRemove,
+    this.wide = false,
+    this.height,
+  });
+  final String title, help;
+  final WebsiteImage? image;
+  final WebsiteSettings settings;
+  final bool disabled, wide;
+  final double? height;
+  final VoidCallback onUpload;
+  final ValueChanged<String> onRemove;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(title, style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: 4),
+      Text(help, style: Theme.of(context).textTheme.bodySmall),
+      const SizedBox(height: 10),
+      if (image != null)
+        WebsitePhotoTile(
+          image: image!,
+          disabled: disabled,
+          onRemove: onRemove,
+          wide: wide,
+          height: height,
+        ),
+      OutlinedButton.icon(
+        onPressed:
+            disabled ||
+                image == null && settings.images.length >= websitePhotoLimit
+            ? null
+            : onUpload,
+        icon: const Icon(Icons.add_photo_alternate_outlined),
+        label: Text(image == null ? 'Upload photo' : 'Replace photo'),
+      ),
+    ],
+  );
+}
+
+/// Booking page gallery for one space (up to four photos, the first is the cover).
+class WebsiteSpaceGallery extends StatelessWidget {
+  const WebsiteSpaceGallery({
+    super.key,
+    required this.settings,
+    required this.businessId,
+    required this.spaceId,
+    required this.disabled,
     required this.onUpload,
     required this.onRemove,
   });
   final WebsiteSettings settings;
-  final bool disabled, dirty;
-  final void Function(String? businessId, String? resourceId) onUpload;
+  final String businessId, spaceId;
+  final bool disabled;
+  final VoidCallback onUpload;
   final ValueChanged<String> onRemove;
-
-  Widget photo(WebsiteImage image, {bool hero = false}) => SizedBox(
-    width: hero ? double.infinity : 150.w.clamp(110, 180).toDouble(),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12.r),
-          child: image.bytes == null
-              ? const SizedBox(
-                  height: 120,
-                  child: Center(child: Icon(Icons.broken_image_outlined)),
-                )
-              : Image.memory(
-                  image.bytes!,
-                  height: hero ? 190 : 100,
-                  fit: BoxFit.cover,
-                  cacheWidth: hero ? 1000 : 320,
-                  errorBuilder: (_, _, _) => const SizedBox(
-                    height: 100,
-                    child: Center(child: Icon(Icons.broken_image_outlined)),
-                  ),
-                ),
-        ),
-        TextButton.icon(
-          onPressed: disabled ? null : () => onRemove(image.id),
-          icon: const Icon(Icons.delete_outline, size: 18),
-          label: const Text('Remove photo'),
-        ),
-      ],
-    ),
-  );
-
   @override
   Widget build(BuildContext context) {
-    final hero = settings.images.where((i) => i.kind == 'hero').firstOrNull;
+    final images = settings.images
+        .where(
+          (i) =>
+              i.kind == 'space' &&
+              i.businessId == businessId &&
+              i.resourceId == spaceId,
+        )
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Booking page photos',
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Shown in the gallery when visitors book this space. The first photo is the cover.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 10),
+        if (images.isNotEmpty)
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final image in images)
+                WebsitePhotoTile(
+                  image: image,
+                  disabled: disabled,
+                  onRemove: onRemove,
+                ),
+            ],
+          ),
+        OutlinedButton.icon(
+          onPressed:
+              disabled ||
+                  images.length >= websiteSpacePhotoLimit ||
+                  settings.images.length >= websitePhotoLimit
+              ? null
+              : onUpload,
+          icon: const Icon(Icons.add_photo_alternate_outlined),
+          label: Text(
+            'Add space photo (${images.length}/$websiteSpacePhotoLimit)',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Photos left behind by spaces that no longer exist; hidden from visitors.
+class WebsiteUnusedPhotos extends StatelessWidget {
+  const WebsiteUnusedPhotos({
+    super.key,
+    required this.settings,
+    required this.disabled,
+    required this.onRemove,
+  });
+  final WebsiteSettings settings;
+  final bool disabled;
+  final ValueChanged<String> onRemove;
+  @override
+  Widget build(BuildContext context) {
     final unused = settings.images
         .where(
           (image) =>
-              image.kind == 'space' &&
+              (image.kind == 'space' || image.kind == 'card') &&
               !settings.businesses.any(
                 (b) =>
                     b.id == image.businessId &&
-                    b.spaces.any((s) => s.id == image.resourceId),
+                    (image.kind == 'card' ||
+                        b.spaces.any((s) => s.id == image.resourceId)),
               ),
         )
         .toList();
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Homepage & space photos',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Visitors first see your organisation homepage, then choose a service to open its booking page.',
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Choose JPEG, PNG or WebP images up to 2 MB. Photos are optimised for the website. Up to 4 photos per space and 40 per website.',
-          ),
-          const SizedBox(height: 8),
-          Text(
-            dirty
-                ? 'Save your changes before uploading photos.'
-                : 'Photo changes save immediately and are visible on your published website.',
-            style: TextStyle(color: Theme.of(context).colorScheme.primary),
-          ),
-          const SizedBox(height: 22),
-          Text(
-            'Homepage hero image',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Use a wide photo of your venue. The homepage places its heading and description over this image.',
-          ),
-          const SizedBox(height: 12),
-          if (hero != null) photo(hero, hero: true),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed:
-                  disabled || hero == null && settings.images.length >= 40
-                  ? null
-                  : () => onUpload(null, null),
-              icon: const Icon(Icons.add_photo_alternate_outlined),
-              label: Text(
-                hero == null ? 'Upload hero image' : 'Replace hero image',
+    if (unused.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        Text(
+          'Photos of removed spaces',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'These photos are hidden from visitors. Remove them to free up space.',
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final image in unused)
+              WebsitePhotoTile(
+                image: image,
+                disabled: disabled,
+                onRemove: onRemove,
               ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Divider(),
-          const SizedBox(height: 12),
-          Text(
-            'Booking space photos',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Photos appear on the service card and on the booking page for that space. The first photo is the cover.',
-          ),
-          const SizedBox(height: 10),
-          for (final business in settings.businesses.where(
-            (b) => b.spaces.isNotEmpty,
-          ))
-            ExpansionTile(
-              key: PageStorageKey('website-photos-${business.id}'),
-              tilePadding: EdgeInsets.zero,
-              title: Text(business.name),
-              subtitle: Text('${business.spaces.length} booking spaces'),
-              children: [
-                for (final space in business.spaces)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Builder(
-                      builder: (_) {
-                        final images = settings.images
-                            .where(
-                              (i) =>
-                                  i.businessId == business.id &&
-                                  i.resourceId == space.id,
-                            )
-                            .toList();
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              space.name,
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
-                            const SizedBox(height: 12),
-                            if (images.isNotEmpty)
-                              Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
-                                children: [
-                                  for (final image in images) photo(image),
-                                ],
-                              ),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: OutlinedButton.icon(
-                                onPressed:
-                                    disabled ||
-                                        images.length >= 4 ||
-                                        settings.images.length >= 40
-                                    ? null
-                                    : () => onUpload(business.id, space.id),
-                                icon: const Icon(
-                                  Icons.add_photo_alternate_outlined,
-                                ),
-                                label: Text(
-                                  'Add space photo (${images.length}/4)',
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          if (unused.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            Text(
-              'Photos of removed spaces',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'These photos are hidden from visitors. Remove them to free up space.',
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [for (final image in unused) photo(image)],
-            ),
           ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

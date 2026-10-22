@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { Database } from "../src/common/database";
 import { createHandler } from "../edge/handler";
 import { seedWebsite } from "./website-fixtures";
+const port = Number(process.env.WEBSITE_PREVIEW_PORT ?? 3101);
 async function main() {
   // This process cannot use a persistent or remote database, even through inherited env.
   delete process.env.DATABASE_URL;
@@ -11,6 +12,7 @@ async function main() {
   process.env.PGLITE_PATH = "memory://";
   process.env.NODE_ENV = "test";
   process.env.BOOKING_WEBSITE_URL = "http://localhost:3000";
+  process.env.BOOKING_WEBSITE_DOMAIN ??= "localhost:3000";
   const db = new Database();
   await db.onModuleInit();
   const { website } = await seedWebsite(db, "eden-sports");
@@ -37,7 +39,7 @@ async function main() {
         chunks.push(chunk);
       }
       const response = await handler(
-        new Request(`http://127.0.0.1:3101${req.url}`, {
+        new Request(`http://127.0.0.1:${port}${req.url}`, {
           method: req.method,
           headers: req.headers as Record<string, string>,
           body: chunks.length ? Buffer.concat(chunks) : undefined,
@@ -51,9 +53,9 @@ async function main() {
         .end(JSON.stringify({ message: "Local preview request failed." }));
     }
   });
-  server.listen(3101, "127.0.0.1", () =>
+  server.listen(port, "127.0.0.1", () =>
     console.log(
-      "Isolated booking API: http://127.0.0.1:3101\nWebsite: http://localhost:3000/eden-sports\nAll records are in memory and disappear when this process stops.",
+      `Isolated booking API: http://127.0.0.1:${port}\nWebsite: http://eden-sports.localhost:3000 (BOOKING_SITE_DOMAIN=localhost) or http://localhost:3000/eden-sports\nAll records are in memory and disappear when this process stops.`,
     ),
   );
   const close = () => {

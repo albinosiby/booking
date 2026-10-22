@@ -12,7 +12,7 @@ import {
 import type { ReceiptDetails } from "./booking-receipt";
 
 export function BookingConfirmation(
-  props: ReceiptDetails & { booking: Confirmation },
+  props: ReceiptDetails & { booking: Confirmation; base: string },
 ) {
   const { site, booking, name } = props;
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
@@ -87,7 +87,7 @@ export function BookingConfirmation(
           <Icon name="print" size={18} />
           Print booking
         </button>
-        <Link className="primary" href={siteLink(site.slug)}>
+        <Link className="primary" href={siteLink(props.base)}>
           Make another booking
           <Icon name="arrow" size={18} />
         </Link>

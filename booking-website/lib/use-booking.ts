@@ -188,6 +188,9 @@ export function useBooking(
     setOptionId(
       (r.options.find((o) => o.sport === option?.sport) ?? r.options[0]).id,
     );
+    // Each space can have its own advance booking window.
+    if (business && date > dateAfter(business.today, r.advance_days))
+      setDate(business.today);
     setPeople(1);
   }
   function chooseOption(id: string) {
@@ -198,7 +201,10 @@ export function useBooking(
   function chooseDate(value: string) {
     if (pending || !business) return;
     const first = business.today,
-      last = dateAfter(first, site?.advance_days ?? 30);
+      last = dateAfter(
+        first,
+        resource?.advance_days ?? site?.advance_days ?? 30,
+      );
     if (value < first || value > last) return;
     reset();
     setDate(value);

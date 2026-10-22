@@ -7,9 +7,12 @@ abstract interface class WebsiteRepository {
   Future<WebsiteSettings> publication(String action, int version);
   Future<String> preview();
   Future<LogoSelection?> pickImage();
+
+  /// [kind] is `hero`, `logo`, `card` (needs [businessId]) or `space` (needs both ids).
   Future<WebsiteSettings> uploadImage(
     LogoSelection image,
     int version, {
+    required String kind,
     String? businessId,
     String? resourceId,
   });

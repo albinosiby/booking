@@ -21,6 +21,23 @@ const reserved = new Set([
   "favicon",
   "robots",
   "sitemap",
+  "www",
+  "app",
+  "mail",
+  "email",
+  "smtp",
+  "status",
+  "support",
+  "help",
+  "docs",
+  "blog",
+  "static",
+  "assets",
+  "cdn",
+  "dashboard",
+  "book",
+  "booking",
+  "bookingos",
 ]);
 export const websiteSlug = z
   .string()
@@ -32,6 +49,42 @@ export const websiteSlug = z
     "Use lowercase letters, numbers and single hyphens",
   )
   .refine((v) => !reserved.has(v), "This address is reserved");
+/** A new or changed address must also be a valid DNS label for `<slug>.<domain>`. */
+export const websiteSubdomain = websiteSlug.refine(
+  (v) => v.length <= 63,
+  "Use up to 63 characters",
+);
+export const socialNetworks = [
+  "instagram",
+  "facebook",
+  "x",
+  "youtube",
+  "linkedin",
+  "whatsapp",
+] as const;
+const socialUrl = z
+  .string()
+  .trim()
+  .max(300)
+  .refine((v) => {
+    if (!v) return true;
+    try {
+      const u = new URL(v);
+      return u.protocol === "https:" && !u.username && !u.password;
+    } catch {
+      return false;
+    }
+  }, "Use a full https:// link");
+export const websiteSpaceSchema = z
+  .object({
+    business_id: z.uuid(),
+    resource_id: z.string().min(1).max(100),
+    visible: z.boolean(),
+    notice_minutes: z.number().int().min(0).max(10080).nullable(),
+    advance_days: z.number().int().min(1).max(365).nullable(),
+    rules: z.string().trim().max(1000),
+  })
+  .strict();
 export const websiteSettingsSchema = z
   .object({
     version: z.number().int().positive(),
@@ -44,6 +97,22 @@ export const websiteSettingsSchema = z
     publish_logo: z.boolean(),
     notice_minutes: z.number().int().min(0).max(10080),
     advance_days: z.number().int().min(1).max(365),
+    // Optional so older app versions can still save; omitted values are kept.
+    hero_heading: z.string().trim().max(120).optional(),
+    social_links: z.partialRecord(z.enum(socialNetworks), socialUrl).optional(),
+    card_descriptions: z
+      .record(z.uuid(), z.string().trim().max(300))
+      .optional(),
+    spaces: z
+      .array(websiteSpaceSchema)
+      .max(500)
+      .refine(
+        (v) =>
+          new Set(v.map((s) => `${s.business_id}/${s.resource_id}`)).size ===
+          v.length,
+        "Duplicate spaces",
+      )
+      .optional(),
     business_ids: z
       .array(z.uuid())
       .max(100)
@@ -78,7 +147,7 @@ export async function ensureWebsiteDraft(
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
-      .slice(0, 35) || "organisation";
+      .slice(0, 30) || "organisation";
   for (const suffix of [org.id.slice(0, 8), org.id.replace(/-/g, "")]) {
     await db.query(
       `INSERT INTO booking_websites(id,organization_id,slug,title,contact_phone)

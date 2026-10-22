@@ -1,25 +1,24 @@
 import Link from "next/link";
 import { Icon } from "./icons";
 import type { Website } from "../lib/types";
-import { siteLink } from "../lib/site-links";
+import { logoLink, siteLink } from "../lib/site-links";
 
 export function SiteHeader({
   site,
+  base,
   preview,
 }: {
   site: Website;
+  base: string;
   preview?: string;
 }) {
   return (
     <header className="site-header">
       <div className="header-inner">
-        <Link className="site-brand" href={siteLink(site.slug, "", preview)}>
+        <Link className="site-brand" href={siteLink(base, "", preview)}>
           <span className="brand-logo">
             {site.has_logo ? (
-              <img
-                src={`/api/sites/${site.slug}/logo${preview ? `?preview=${preview}` : ""}`}
-                alt=""
-              />
+              <img src={logoLink(site.slug, preview)} alt="" />
             ) : (
               <Icon name="calendar" size={23} />
             )}

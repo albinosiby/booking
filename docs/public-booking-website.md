@@ -1,10 +1,10 @@
 # Public booking website
 
-One organisation has one public website at `/<organisation-slug>`. Its enabled, active businesses share the existing booking inventory with the owner/staff app and phone bookings. The organisation homepage introduces the venue with its description, an optional uploaded hero image and service cards with starting tariffs. Each card opens a dedicated booking page at `/<slug>/book/<business-id>`. The screenshot-based booking interface uses navy/teal cards, a horizontal date strip, illustrated turf/court/pool spaces, uploaded space galleries, start/finish selection, and a reservation summary. Courts have no duration chips or increment controls.
+One organisation has one public website at `https://<organisation-slug>.bookingos.online` (see [Subdomains and Design website](#subdomains-and-design-website--deployment-update)); `/<organisation-slug>` path routing remains for local/IP hosts and old links on the main domain redirect to the subdomain. Its enabled, active businesses share the existing booking inventory with the owner/staff app and phone bookings. The organisation homepage introduces the venue with its description, an optional uploaded hero image and service cards with starting tariffs. Each card opens a dedicated booking page at `/<slug>/book/<business-id>`. The screenshot-based booking interface uses navy/teal cards, a horizontal date strip, illustrated turf/court/pool spaces, uploaded space galleries, start/finish selection, and a reservation summary. Courts have no duration chips or increment controls.
 
 ## Included
 
-- Profile → **Booking website** (native app and Flutter web): title, organisation description, public phone, explicit logo publication, homepage hero upload, per-space photo uploads/removal, URL, enabled businesses, notice/window rules, venue instructions and cancellation policy.
+- Profile → **Design website** (native app and Flutter web): subdomain address, title, hero heading, description, public phone, website logo upload (or the organisation logo), homepage hero image, enabled services with homepage card photo and description, per-space show/hide, booking page photos and booking rules (notice, window, visitor rules, copy to all spaces), social media links, default rules, venue instructions and cancellation policy.
 - Automatic private draft for new organisations; existing organisations get their draft on first opening settings. Select businesses and publish explicitly.
 - Preview links expire after one hour, are read-only and are revoked by settings/publication changes or another preview. Treat them as private capabilities. Redact `preview` query parameters from hosting/access logs; never log request bodies. Next development request logging is disabled.
 - Publish, pause/resume, unpublish, open and copy-link actions. After first publication, the URL is fixed so shared links and confirmation retries remain usable.
@@ -335,3 +335,144 @@ The existing client/server validation and booking state remain in place. Details
 The homepage service cards and booking space selectors now share dedicated vector illustrations for basketball, tennis and halls. Basketball has a wood floor, hoops, painted keys, free-throw circles, three-point arcs and a centre circle. Tennis has a blue playing surface, green surround, singles/doubles lines, service boxes and a centre net. The hall shows a stage, tables/chairs, a central aisle and an entrance. These are decorative illustrations, not configured floor plans, seat maps or representations of bookable capacity.
 
 Labels sit outside the playing/room area, with responsive SVG proportions and the existing selected-card treatment. The booking API, prices, availability and capacity rules are unchanged. Browser checks verified all three homepage cards, their dedicated booking pages and selecting another court/hall; the production build and TypeScript checks passed. Screenshot: `screenshots/public-booking-venue-layouts.png`. No migration is required.
+
+## Subdomains and Design website — deployment update
+
+Every organisation's website is served from its own subdomain, `https://<slug>.bookingos.online`. The slug is the address the owner chooses in **Design website → Website address**; it must be 3–63 lowercase letters, numbers or single hyphens, unique, and not reserved (`www`, `api`, `app`, `admin`, `book`, `mail`, …). It stays fixed after first publication.
+
+How a request is resolved (`booking-website/proxy.ts`, `lib/site-host.ts`):
+
+| Request | Result |
+| --- | --- |
+| `eden.bookingos.online/` | Rewritten internally to `/eden` (homepage) |
+| `eden.bookingos.online/book/<business-id>` | Rewritten to `/eden/book/<business-id>` |
+| `eden.bookingos.online/eden/...` | 308 to the clean subdomain path |
+| `bookingos.online/eden/...` or `www.` | 308 to `https://eden.bookingos.online/...` (keeps old links working) |
+| `bookingos.online/` | Generic landing page |
+| Any other host (IP, hosting preview URL) | Unchanged `/<slug>` path routing |
+
+`/api/sites/<slug>/...` is never rewritten. The proxy sets an internal `x-booking-site-host` header to render subdomain-relative links and strips any client-supplied copy on path-routed hosts. The host is read from `X-Forwarded-Host` (first value) or `Host`, so the hosting layer must pass the visitor's host through.
+
+### What the owner configures
+
+- **Address:** subdomain with live preview of the final URL.
+- **Brand & homepage:** website logo (square, header of every page; falls back to the organisation profile logo when that switch is on), website title, hero heading (empty keeps the default), description, contact phone, hero image.
+- **Spaces on your website:** per service — show on website, homepage card photo (falls back to the first space photo) and card description (falls back to the standard text). Per space — show/hide (hidden spaces disappear from the catalog, cannot be quoted or booked, and their photos are not served), up to 4 booking page photos, minimum notice, advance window and visitor rules. Empty rule fields use the website defaults. **Copy these rules to all spaces** copies notice, window and rules (not visibility) to every space; save to apply.
+- **Social media:** Instagram, Facebook, X, YouTube, LinkedIn, WhatsApp. Only full `https://` links are accepted; the app adds `https://` to pasted addresses such as `instagram.com/venue`.
+- **Default booking rules & policies:** the defaults every space inherits, venue instructions and cancellation policy.
+
+Photo uploads still save immediately and require saved form edits first. Per-space rules are enforced by the API for availability, quotes and confirmations, not only in the browser. Older app versions that do not send the new fields keep the saved design values.
+
+### Hosting prerequisites (one-time)
+
+1. **DNS** at the `bookingos.online` registrar/DNS provider: point both the apex `bookingos.online` and the wildcard `*.bookingos.online` at the Next.js website host (for example the records your host gives for a custom domain). `www` is covered by the wildcard.
+2. **TLS:** issue a certificate covering `bookingos.online` and `*.bookingos.online`. Wildcard certificates need a DNS-01 challenge; managed hosts such as Vercel do this automatically when the domain uses their nameservers. With your own reverse proxy (Caddy, nginx + certbot, Cloudflare), enable a wildcard certificate and forward the original `Host`/`X-Forwarded-Host` to `next start`.
+3. **Website environment:** `BOOKING_SITE_DOMAIN=bookingos.online` (the default when unset) plus the existing `BOOKING_API_BASE_URL` and `BOOKING_API_PUBLISHABLE_KEY`.
+4. **API/Edge secret:** set `BOOKING_WEBSITE_DOMAIN=bookingos.online`. Settings, preview links and publishing then use `https://<slug>.bookingos.online`. `BOOKING_WEBSITE_URL` is now only a path-based fallback when the domain is not set.
+
+Check DNS before announcing addresses:
+
+```sh
+dig +short eden-sports.bookingos.online
+curl -sI https://eden-sports.bookingos.online | head -1
+curl -sI https://bookingos.online/eden-sports | grep -i '^location'
+```
+
+The first should return your host's address, the second `HTTP/2 200` (an unknown or unpublished slug shows the “isn’t available yet” page), the third `location: https://eden-sports.bookingos.online/`.
+
+### Database migration — user applies
+
+**Not applied by this implementation.** Cloud handoff file:
+
+`supabase/migrations/20261022140000_booking_website_design.sql`
+
+(`backend/migrations/20261022140000_booking_website_design.sql` is the equivalent DDL for isolated/local databases.) It adds `hero_heading` and `social_links` to `booking_websites`, `card_description` to `booking_website_businesses`, a new server-only `booking_website_spaces` table (per-space visibility and rule overrides; spaces without a row stay visible with the defaults, so existing websites are unchanged), and widens `booking_website_images.kind` to `hero`, `logo`, `card` and `space` with one logo per website and one card photo per service. No existing rows are rewritten.
+
+Prerequisites:
+
+1. Take a current database backup and keep the currently deployed `booking-api` and website builds. Confirm how to restore the backup.
+2. `20261022034634_public_booking_websites.sql` and `20261022045215_booking_website_images.sql` must already be applied. Run as an administrator capable of DDL and grants.
+3. Confirm the state before running:
+
+```sql
+SELECT name FROM booking_app.schema_migrations
+WHERE name IN ('20261022045215_booking_website_images.sql','20261022140000_booking_website_design.sql');
+SELECT to_regclass('booking_app.booking_website_spaces');
+SELECT conname FROM pg_constraint
+WHERE conrelid='booking_app.booking_website_images'::regclass AND contype='c' ORDER BY conname;
+SELECT kind,count(*) FROM booking_app.booking_website_images GROUP BY kind;
+SELECT slug FROM booking_app.booking_websites
+WHERE length(slug)>63 OR slug IN ('www','app','api','admin','book','booking','bookingos','mail','email','support','help','status','docs','blog','static','assets','cdn','dashboard');
+```
+
+Expect only the images migration in the first result, `null` for the new table, `booking_website_images_kind_check` and `booking_website_images_check` among the constraint names (the migration drops exactly these two and fails safely if either is missing), only `hero`/`space` kinds, and no slugs in the last query. A slug listed there cannot be served as a subdomain: if that site is unpublished, change its address in Design website after deploying; if it was already published, contact support/rename deliberately before switching to subdomains. If any check differs, stop and investigate.
+
+4. Open the reviewed file in the Supabase SQL editor and run its entire contents once (single transaction, 10-second lock timeout), or:
+
+```sh
+psql "$BOOKING_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f "/Users/albinosiby/Tatos Dev/booking/supabase/migrations/20261022140000_booking_website_design.sql"
+```
+
+5. Validate before deploying the new API:
+
+```sql
+SELECT name,applied_at FROM booking_app.schema_migrations
+WHERE name='20261022140000_booking_website_design.sql';
+SELECT table_name,column_name FROM information_schema.columns
+WHERE table_schema='booking_app'
+AND (table_name,column_name) IN (('booking_websites','hero_heading'),('booking_websites','social_links'),('booking_website_businesses','card_description'));
+SELECT tablename,rowsecurity FROM pg_tables
+WHERE schemaname='booking_app' AND tablename='booking_website_spaces';
+SELECT grantee,privilege_type FROM information_schema.role_table_grants
+WHERE table_schema='booking_app' AND table_name='booking_website_spaces'
+AND grantee IN ('anon','authenticated','booking_api') ORDER BY grantee,privilege_type;
+SELECT conname,pg_get_constraintdef(oid) FROM pg_constraint
+WHERE conrelid='booking_app.booking_website_images'::regclass
+AND conname IN ('booking_website_images_kind_check','booking_website_images_scope_check');
+SELECT indexname FROM pg_indexes
+WHERE schemaname='booking_app' AND indexname IN ('website_logo_image_idx','website_card_image_idx');
+SELECT kind,count(*) FROM booking_app.booking_website_images GROUP BY kind;
+```
+
+Expect the migration entry, all three columns, RLS enabled on `booking_website_spaces`, only `booking_api` with `DELETE`, `INSERT`, `SELECT`, both constraints (kind lists the four kinds), both indexes, and the same image counts as before.
+
+### Deployment order
+
+1. User applies and validates the migration above.
+2. Configure DNS, the wildcard certificate and `BOOKING_SITE_DOMAIN` on the website host.
+3. Set `BOOKING_WEBSITE_DOMAIN=bookingos.online` on the API/Edge function, then deploy the regenerated `supabase/functions/booking-api/index.ts` (`npm run build && npm run edge:check && npm run edge:build` in `backend/`).
+4. Deploy the website (`npm run build` in `booking-website/`) and the Flutter app.
+5. In Profile → Design website, set the subdomain, logo, hero, spaces, photos, rules and links; save, preview, then publish. Open `https://<slug>.bookingos.online` to confirm.
+
+Deploying the API before the migration fails safely on website reads/saves (missing columns); keep the order above.
+
+### Recovery
+
+- A failed migration rolls back as a unit; confirm its history row is absent, fix the cause and rerun the full file. Never mark it applied manually.
+- Code rollback: redeploy the previous API/website/app. The schema change is additive and the previous API keeps working with it (it only uses `hero`/`space` photos). Do not drop the new table or columns; logo/card photos and space rules simply stop being used until redeployed.
+- If subdomains misbehave, unset `BOOKING_WEBSITE_DOMAIN` on the API to fall back to `BOOKING_WEBSITE_URL/<slug>` links, and serve the website on a host outside `BOOKING_SITE_DOMAIN` so path routing applies.
+- To hide one space quickly without a deploy, switch it off in Design website. Emergency stop for a whole site is unchanged (Pause bookings / Unpublish).
+
+### Local testing
+
+```sh
+cd "/Users/albinosiby/Tatos Dev/booking/backend"
+WEBSITE_PREVIEW_PORT=3101 node --import tsx scripts/website-preview.ts
+```
+
+```sh
+cd "/Users/albinosiby/Tatos Dev/booking/booking-website"
+BOOKING_API_BASE_URL=http://127.0.0.1:3101 BOOKING_SITE_DOMAIN=localhost npm run dev
+```
+
+Open `http://eden-sports.localhost:3000` (browsers resolve `*.localhost` to this machine); `http://localhost:3000/eden-sports` redirects there. Fixture data only.
+
+Verification:
+
+```sh
+cd "/Users/albinosiby/Tatos Dev/booking/backend"
+node --import tsx --test test/website.test.ts test/website-images.test.ts test/website-design.test.ts test/website-edge.test.ts test/bookings.test.ts test/edge.test.ts
+cd ../booking-website && npm test && npm run typecheck && npm run build
+cd .. && flutter test test/booking_website_test.dart
+```

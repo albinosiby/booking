@@ -9,6 +9,13 @@ import '../../../utils/services/rest_api_service.dart';
 import '../models/website_settings.dart';
 import 'website_repository.dart';
 
+/// Owners often paste `instagram.com/venue`; the API only accepts full https links.
+String normaliseSocialLink(String value) {
+  final v = value.trim();
+  if (v.isEmpty || v.contains('://')) return v;
+  return 'https://$v';
+}
+
 class RestWebsiteRepository implements WebsiteRepository {
   RestWebsiteRepository(this.api);
   final RestApiService api;
@@ -25,11 +32,16 @@ class RestWebsiteRepository implements WebsiteRepository {
             type: b['type'] as String,
             status: b['status'] as String,
             enabled: b['enabled'] == true,
+            description: b['card_description'] as String? ?? '',
             spaces: List.unmodifiable(
               (b['resources'] as List? ?? []).map(
                 (r) => WebsiteSpace(
                   id: r['id'] as String,
                   name: r['name'] as String,
+                  visible: r['visible'] != false,
+                  noticeMinutes: r['notice_minutes'] as int?,
+                  advanceDays: r['advance_days'] as int?,
+                  rules: r['rules'] as String? ?? '',
                 ),
               ),
             ),
@@ -74,6 +86,15 @@ class RestWebsiteRepository implements WebsiteRepository {
       publishLogo: v['publish_logo'] == true,
       noticeMinutes: v['notice_minutes'] as int,
       advanceDays: v['advance_days'] as int,
+      heroHeading: v['hero_heading'] as String? ?? '',
+      socialLinks: Map.unmodifiable({
+        for (final e in Map<String, dynamic>.from(
+          v['social_links'] as Map? ?? {},
+        ).entries)
+          if (websiteSocialNetworks.containsKey(e.key) && e.value is String)
+            e.key: e.value as String,
+      }),
+      domain: v['domain'] as String?,
       addressLocked: v['first_published_at'] != null,
       businesses: List.unmodifiable(businesses),
       businessIds: List.unmodifiable(
@@ -103,6 +124,29 @@ class RestWebsiteRepository implements WebsiteRepository {
         'publish_logo': d.publishLogo,
         'notice_minutes': d.noticeMinutes,
         'advance_days': d.advanceDays,
+        'hero_heading': d.heroHeading.trim(),
+        'social_links': {
+          for (final key in websiteSocialNetworks.keys)
+            key: normaliseSocialLink(d.socialLinks[key] ?? ''),
+        },
+        'card_descriptions': {
+          for (final b in d.businesses)
+            if (d.businessIds.contains(b.id)) b.id: b.description.trim(),
+        },
+        // Only overrides are stored; untouched spaces follow the website defaults.
+        'spaces': [
+          for (final b in d.businesses)
+            for (final s in b.spaces)
+              if (s.customised)
+                {
+                  'business_id': b.id,
+                  'resource_id': s.id,
+                  'visible': s.visible,
+                  'notice_minutes': s.noticeMinutes,
+                  'advance_days': s.advanceDays,
+                  'rules': s.rules.trim(),
+                },
+        ],
         'business_ids': d.businessIds,
       },
     ),
@@ -133,6 +177,7 @@ class RestWebsiteRepository implements WebsiteRepository {
   Future<WebsiteSettings> uploadImage(
     LogoSelection image,
     int version, {
+    required String kind,
     String? businessId,
     String? resourceId,
   }) async => _map(
@@ -141,7 +186,7 @@ class RestWebsiteRepository implements WebsiteRepository {
       method: 'POST',
       data: {
         'version': version,
-        'kind': businessId == null ? 'hero' : 'space',
+        'kind': kind,
         'business_id': ?businessId,
         'resource_id': ?resourceId,
         'content_type': image.contentType,

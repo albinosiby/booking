@@ -44,10 +44,12 @@ function Step({
 }
 export function BookingPage({
   slug,
+  base,
   preview,
   initialSite = null,
 }: {
   slug: string;
+  base: string;
   preview?: string;
   initialSite?: Website | null;
 }) {
@@ -93,7 +95,9 @@ export function BookingPage({
   const selectedQuote = confirmation ?? quote;
   const reviewQuote = quote ?? b.pending?.quote;
   const canContinue = !!quote && !b.quoting && !b.pending;
-  const lastDate = business ? dateAfter(business.today, site.advance_days) : "";
+  const lastDate = business
+    ? dateAfter(business.today, resource?.advance_days ?? site.advance_days)
+    : "";
   const firstDate =
     b.date || business?.today || new Date().toISOString().slice(0, 10);
   const remaining = Math.min(
@@ -190,7 +194,7 @@ export function BookingPage({
       <a className="skip-link" href="#booking-content">
         Skip to booking
       </a>
-      <SiteHeader site={site} preview={preview} />
+      <SiteHeader site={site} base={base} preview={preview} />
       <main className="booking-shell" id="booking-content">
         {site.is_preview && (
           <div className="notice">
@@ -205,7 +209,7 @@ export function BookingPage({
         )}
         {b.mode !== "success" && (
           <nav className="booking-breadcrumb" aria-label="Breadcrumb">
-            <Link href={siteLink(slug, "", preview)}>
+            <Link href={siteLink(base, "", preview)}>
               <Icon name="back" size={17} /> All services
             </Link>
             <span>/</span>
@@ -238,6 +242,25 @@ export function BookingPage({
             preview={preview}
           />
         )}
+        {b.mode === "slots" &&
+          resource &&
+          (resource.rules || resource.notice_minutes > 0) && (
+            <section className="space-rules" aria-label="Booking rules">
+              <span className="step-icon">
+                <Icon name="check" />
+              </span>
+              <div>
+                <h2>Before you book {selectedName(resource)}</h2>
+                {resource.rules && <p>{resource.rules}</p>}
+                {resource.notice_minutes > 0 && (
+                  <p>
+                    Book at least {durationLabel(resource.notice_minutes)}{" "}
+                    before your start time.
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
         {site.businesses.length > 1 && b.mode === "slots" && (
           <nav className="business-tabs" aria-label="Choose a business">
             {site.businesses.map((v) => (
@@ -687,6 +710,7 @@ export function BookingPage({
               {b.mode === "success" && confirmation && (
                 <BookingConfirmation
                   key={confirmation.reference}
+                  base={base}
                   site={site}
                   business={business}
                   booking={confirmation}

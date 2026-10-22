@@ -73,6 +73,43 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
     update(draft.copyWith(businessIds: ids));
   }
 
+  void updateBusiness(String id, WebsiteBusiness Function(WebsiteBusiness) f) {
+    final draft = state.draft;
+    if (draft == null) return;
+    update(
+      draft.copyWith(
+        businesses: [for (final b in draft.businesses) b.id == id ? f(b) : b],
+      ),
+    );
+  }
+
+  void updateSpace(String businessId, WebsiteSpace space) => updateBusiness(
+    businessId,
+    (b) => b.copyWith(
+      spaces: [for (final s in b.spaces) s.id == space.id ? space : s],
+    ),
+  );
+
+  /// Applies one space's booking rules to every space on the website.
+  void copyRulesToAll(WebsiteSpace source) {
+    final draft = state.draft;
+    if (draft == null || !owner || state.busy || state.loading) return;
+    emit(
+      state.copyWith(
+        draft: draft.copyWith(
+          businesses: [
+            for (final b in draft.businesses)
+              b.copyWith(
+                spaces: [for (final s in b.spaces) s.withRulesOf(source)],
+              ),
+          ],
+        ),
+        revision: state.revision + 1,
+        message: 'Booking rules copied to all spaces. Save to apply them.',
+      ),
+    );
+  }
+
   Future<void> save({String? action}) async {
     if (!owner || state.busy || state.draft == null) return;
     final g = ++generation, draft = state.draft!;
@@ -113,7 +150,9 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
     }
   }
 
+  /// Uploads a `hero` (default), `logo`, `card` or `space` photo, or removes [removeId].
   Future<void> photo({
+    String? kind,
     String? businessId,
     String? resourceId,
     String? removeId,
@@ -136,6 +175,13 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
         saved = await repository.uploadImage(
           image,
           version,
+          kind:
+              kind ??
+              (resourceId != null
+                  ? 'space'
+                  : businessId != null
+                  ? 'card'
+                  : 'hero'),
           businessId: businessId,
           resourceId: resourceId,
         );

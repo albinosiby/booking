@@ -4,7 +4,7 @@ import { z } from "zod";
 export const websiteImageSchema = z
   .object({
     version: z.number().int().positive(),
-    kind: z.enum(["hero", "space"]),
+    kind: z.enum(["hero", "logo", "card", "space"]),
     business_id: z.uuid().optional(),
     resource_id: z.string().min(1).max(100).optional(),
     content_type: z.enum(["image/jpeg", "image/png", "image/webp"]),
@@ -19,10 +19,12 @@ export const websiteImageSchema = z
   .strict()
   .refine(
     (v) =>
-      v.kind === "hero"
-        ? !v.business_id && !v.resource_id
-        : !!v.business_id && !!v.resource_id,
-    "Choose the business and booking space for a space photo.",
+      v.kind === "space"
+        ? !!v.business_id && !!v.resource_id
+        : v.kind === "card"
+          ? !!v.business_id && !v.resource_id
+          : !v.business_id && !v.resource_id,
+    "Choose the business and booking space for this photo.",
   );
 
 /** Bound both transfer size and decoded pixels. Only JPEG, PNG and WebP raster content is accepted. */

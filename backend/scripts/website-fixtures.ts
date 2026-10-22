@@ -130,6 +130,12 @@ export async function seedWebsite(
     publish_logo: false,
     notice_minutes: 0,
     advance_days: 30,
+    hero_heading: "A space for your next great moment.",
+    social_links: {
+      instagram: "https://www.instagram.com/edensportsarena",
+      facebook: "https://www.facebook.com/edensportsarena",
+      whatsapp: "https://wa.me/919876543210",
+    },
     business_ids: ids,
   });
   await website.publication(owner, "published", { version: saved.version });
