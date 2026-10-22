@@ -15,10 +15,11 @@ import '../modules/messages/models/message_template.dart';
 import '../modules/messages/repositories/message_repository.dart';
 import '../modules/messages/repositories/rest_message_repository.dart';
 import '../modules/messages/repositories/device_message_share.dart';
-import '../modules/sarvam/cubit/sarvam_cubits.dart';
-import '../modules/sarvam/models/sarvam_models.dart';
-import '../modules/sarvam/repositories/sarvam_repository.dart';
-import '../modules/sarvam/repositories/rest_sarvam_repository.dart';
+import '../modules/agent_calls/cubit/agent_call_cubits.dart';
+import '../modules/support/support_module.dart';
+import '../modules/agent_calls/models/agent_call_models.dart';
+import '../modules/agent_calls/repositories/agent_call_repository.dart';
+import '../modules/agent_calls/repositories/rest_agent_call_repository.dart';
 import '../modules/coaching/cubit/coach_classes_cubit.dart';
 import '../modules/coaching/repositories/coach_api.dart';
 import '../modules/team/cubit/team_coaches_cubit.dart';
@@ -123,15 +124,16 @@ void registerFeatureDependencies(GetIt di) {
     WorkspaceSession,
     MessageTemplate?
   >((s, t) => TemplateEditorCubit(s, di(), t));
-  di.registerLazySingleton<SarvamRepository>(() => RestSarvamRepository(di()));
+  di.registerLazySingleton<AgentCallRepository>(() => RestAgentCallRepository(di()));
   di.registerLazySingleton<RecordingSaver>(() => DeviceRecordingSaver());
-  di.registerFactoryParam<SarvamSettingsCubit, WorkspaceSession, void>(
-    (s, _) => SarvamSettingsCubit(s, di()),
+  di.registerFactoryParam<AgentServiceCubit, WorkspaceSession, void>(
+    (s, _) => AgentServiceCubit(s, di()),
   );
+  di.registerLazySingleton<SupportRepository>(() => RestSupportRepository(di()));
   di.registerFactoryParam<CallLogsCubit, WorkspaceSession, void>(
     (s, _) => CallLogsCubit(s, di()),
   );
-  di.registerFactoryParam<CallDetailCubit, WorkspaceSession, SarvamCall>(
+  di.registerFactoryParam<CallDetailCubit, WorkspaceSession, AgentCall>(
     (s, call) => CallDetailCubit(s, di(), di(), call),
   );
   di.registerFactoryParam<MessagePreviewCubit, WorkspaceSession, String>(

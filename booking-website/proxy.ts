@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   SITE_HOST_HEADER,
+  appRedirect,
   legacySitePath,
   resolveSiteHost,
   siteDomain,
@@ -18,8 +19,14 @@ export function proxy(request: NextRequest) {
       request.headers.get("x-forwarded-host")?.split(",")[0].trim() ||
       request.headers.get("host") ||
       "",
-    host = resolveSiteHost(hostHeader, domain),
+    host = process.env.BOOKING_ROUTING_MODE === "path"
+      ? { kind: "other" as const }
+      : resolveSiteHost(hostHeader, domain),
     { pathname, search } = request.nextUrl;
+  if (host.kind !== "other") {
+    const app = appRedirect(pathname, domain);
+    if (app) return NextResponse.redirect(app, 307);
+  }
   if (host.kind === "site" && !pathname.startsWith("/api/")) {
     const prefix = `/${host.slug}`,
       prefixed = pathname === prefix || pathname.startsWith(`${prefix}/`);

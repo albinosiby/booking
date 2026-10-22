@@ -1,3 +1,10 @@
+import { SupportService } from "./support/support.service";
+import { SupportController } from "./support/support.controller";
+import { AgentCallService } from "./agent-calls/agent-calls.service";
+import { AgentCallController } from "./agent-calls/agent-calls.controller";
+import { AdminService } from "./admin/admin.service";
+import { AdminController } from "./admin/admin.controller";
+import { AdminGuard } from "./admin/admin.guard";
 import { WebsiteService } from "./website/website.service";
 import {
   WebsiteSettingsController,
@@ -11,7 +18,6 @@ import { MessagesService } from "./messages/messages.service";
 import { SarvamService } from "./sarvam/sarvam.service";
 import { VoiceService } from "./sarvam/voice.service";
 import {
-  SarvamController,
   SarvamOAuthController,
   VoiceController,
 } from "./sarvam/sarvam.controller";
@@ -47,12 +53,14 @@ import {
 @Module({
   imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }])],
   controllers: [
+    AdminController,
     WebsiteSettingsController,
     PublicWebsiteController,
     SlotBlocksController,
     AdmissionController,
     MessagesController,
-    SarvamController,
+    SupportController,
+    AgentCallController,
     SarvamOAuthController,
     VoiceController,
     ExpensesController,
@@ -68,6 +76,10 @@ import {
     PoolController,
   ],
   providers: [
+    AdminGuard,
+    AdminService,
+    SupportService,
+    AgentCallService,
     WebsiteService,
     SlotBlocksService,
     AdmissionService,

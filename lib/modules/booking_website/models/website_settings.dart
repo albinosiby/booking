@@ -108,6 +108,16 @@ const websiteSocialNetworks = {
   'whatsapp': 'WhatsApp',
 };
 
+String? websiteAddressError(String? value) {
+  final slug = (value ?? '').trim().toLowerCase();
+  if (slug.length < 3 ||
+      slug.length > 63 ||
+      !RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$').hasMatch(slug)) {
+    return 'Use 3–63 lowercase letters, numbers or single hyphens.';
+  }
+  return null;
+}
+
 class WebsiteSettings extends Equatable {
   const WebsiteSettings({
     required this.version,
@@ -121,7 +131,6 @@ class WebsiteSettings extends Equatable {
     required this.publishLogo,
     required this.noticeMinutes,
     required this.advanceDays,
-    required this.addressLocked,
     required this.businesses,
     required this.businessIds,
     this.heroHeading = '',
@@ -139,7 +148,7 @@ class WebsiteSettings extends Equatable {
       cancellationPolicy,
       status,
       heroHeading;
-  final bool publishLogo, addressLocked;
+  final bool publishLogo;
 
   /// Wildcard domain, e.g. `bookingos.online`; null when the API uses path links.
   final String? domain, url;
@@ -148,6 +157,9 @@ class WebsiteSettings extends Equatable {
   final List<WebsiteBusiness> businesses;
   final List<String> businessIds;
   WebsiteSettings copyWith({
+    int? version,
+    String? url,
+    String? status,
     String? slug,
     String? title,
     String? description,
@@ -162,7 +174,7 @@ class WebsiteSettings extends Equatable {
     List<WebsiteBusiness>? businesses,
     List<String>? businessIds,
   }) => WebsiteSettings(
-    version: version,
+    version: version ?? this.version,
     slug: slug ?? this.slug,
     title: title ?? this.title,
     description: description ?? this.description,
@@ -171,15 +183,14 @@ class WebsiteSettings extends Equatable {
     cancellationPolicy: cancellationPolicy ?? this.cancellationPolicy,
     heroHeading: heroHeading ?? this.heroHeading,
     socialLinks: Map.unmodifiable(socialLinks ?? this.socialLinks),
-    status: status,
+    status: status ?? this.status,
     publishLogo: publishLogo ?? this.publishLogo,
     noticeMinutes: noticeMinutes ?? this.noticeMinutes,
     advanceDays: advanceDays ?? this.advanceDays,
-    addressLocked: addressLocked,
     businesses: List.unmodifiable(businesses ?? this.businesses),
     businessIds: List.unmodifiable(businessIds ?? this.businessIds),
     domain: domain,
-    url: url,
+    url: url ?? this.url,
     images: images,
   );
 
@@ -211,7 +222,6 @@ class WebsiteSettings extends Equatable {
     publishLogo,
     noticeMinutes,
     advanceDays,
-    addressLocked,
     businesses,
     businessIds,
     images,

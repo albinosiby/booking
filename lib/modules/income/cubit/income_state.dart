@@ -5,6 +5,7 @@ import '../models/income_models.dart';
 class IncomeState extends Equatable {
   IncomeState({
     required this.filter,
+    this.selectedDay,
     this.catalog,
     Iterable<IncomeCategory> categories = const [],
     this.summary,
@@ -18,6 +19,8 @@ class IncomeState extends Equatable {
   }) : categories = List.unmodifiable(categories),
        items = List.unmodifiable(items);
   final IncomeFilter filter;
+  final int? selectedDay;
+  IncomeFilter get listFilter => filter.copy(day: selectedDay);
   final FinanceCatalog? catalog;
   final List<IncomeCategory> categories;
   final IncomeSummary? summary;
@@ -36,6 +39,7 @@ class IncomeState extends Equatable {
   @override
   List<Object?> get props => [
     filter,
+    selectedDay,
     catalog,
     categories,
     summary,
@@ -49,6 +53,8 @@ class IncomeState extends Equatable {
   ];
   IncomeState copy({
     IncomeFilter? filter,
+    int? selectedDay,
+    bool clearDay = false,
     FinanceCatalog? catalog,
     List<IncomeCategory>? categories,
     IncomeSummary? summary,
@@ -62,6 +68,7 @@ class IncomeState extends Equatable {
     String? message,
   }) => IncomeState(
     filter: filter ?? this.filter,
+    selectedDay: clearDay ? null : selectedDay ?? this.selectedDay,
     catalog: catalog ?? this.catalog,
     categories: categories ?? this.categories,
     summary: summary ?? this.summary,

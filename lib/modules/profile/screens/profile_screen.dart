@@ -53,6 +53,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     (
       null,
       [
+        const _Destination(
+          Icons.help_outline,
+          'Help & support',
+          'Report a problem and read our replies',
+          Routes.support,
+        ),
         if (w.isCoach)
           const _Destination(
             Icons.sports_outlined,
@@ -145,9 +151,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           _Destination(
             Icons.support_agent_outlined,
-            'Automated Call Bookings',
-            'Phone bookings, call logs and transcripts',
-            Routes.sarvam,
+            'Agent call service',
+            'Request, track and control automated call answering',
+            Routes.agentCalls,
           ),
         ],
       ),

@@ -35,3 +35,63 @@ jobs:
       - run: npm run edge:check
       - run: npm test
       - run: npm run edge:build
+  web-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build all four frontends
+        run: docker build -t bookingos:ci .
+      - name: Start isolated frontend container
+        run: |
+          docker run -d --name bookingos-web -p 127.0.0.1:8080:8080 \
+            -e SUPABASE_URL=http://127.0.0.1:3199 \
+            -e SUPABASE_PUBLISHABLE_KEY=sb_publishable_fixture \
+            -e BOOKING_API_BASE_URL=http://127.0.0.1:3199 \
+            -e BOOKING_API_PUBLISHABLE_KEY=sb_publishable_fixture \
+            -e ADMIN_PANEL_PASSWORD=fixture-panel-password \
+            -e ADMIN_SESSION_SECRET=fixture-session-secret-not-for-production \
+            bookingos:ci
+          docker cp deploy/test/mock-api.mjs bookingos-web:/tmp/mock-api.mjs
+          docker exec -d bookingos-web node /tmp/mock-api.mjs
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/_health; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Verify routing and admin sessions
+        env:
+          SMOKE_ADMIN_PANEL_PASSWORD: fixture-panel-password
+        run: |
+          node deploy/smoke.mjs http://127.0.0.1:8080 railway-smoke
+          node deploy/test/auth-smoke.mjs http://127.0.0.1:8080
+      - name: Verify process failure shuts down the service
+        run: |
+          docker exec -i bookingos-web node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import fs from "node:fs";
+          let stopped = false;
+          for (const pid of fs.readdirSync("/proc")) {
+            if (!/^\d+$/.test(pid)) continue;
+            let env;
+            try { env = fs.readFileSync(`/proc/${pid}/environ`, "utf8").split("\0"); }
+            catch { continue; }
+            if (env.includes("PORT=3000"))
+              assert.ok(!env.some(value => value.startsWith("ADMIN_")), "booking server received admin credentials");
+            if (env.includes("PORT=3100")) {
+              process.kill(Number(pid), "SIGTERM");
+              stopped = true;
+            }
+          }
+          assert.ok(stopped, "fixture admin process must exist");
+          NODE
+          test "$(docker wait bookingos-web)" = "1"
+      - name: Container logs
+        if: failure()
+        run: docker logs bookingos-web
+      - name: Clean up local container
+        if: always()
+        run: docker rm -f bookingos-web || true

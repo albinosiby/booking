@@ -113,7 +113,10 @@ test("guest booking uses existing inventory and creates no payment entries", asy
     ])
   ).rows[0];
   assert.equal(row.booking_source, "website");
-  const detail = await new BookingService(db, f.workspace).detail(f.owner, row.id);
+  const detail = await new BookingService(db, f.workspace).detail(
+    f.owner,
+    row.id,
+  );
   assert.equal(detail.history[0].actor_name, "Booking website");
   assert.equal(
     (
@@ -259,7 +262,7 @@ test("pool capacity and shared turf footprints remain authoritative", async () =
     /available|booked/i,
   );
 });
-test("preview is read-only, slug is stable, stale settings conflict and pausing blocks new writes", async () => {
+test("preview is read-only, stale settings conflict and pausing blocks new writes", async () => {
   let settings = await f.website.settings(f.owner);
   const token = new URL(
     (await f.website.preview(f.owner)).url,

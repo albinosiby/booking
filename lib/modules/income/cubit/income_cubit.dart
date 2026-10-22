@@ -35,21 +35,43 @@ class IncomeCubit extends FinanceCubit<IncomeState> {
 
   @override
   void onAccessRestored() => unawaited(load());
-  Future<void> load({bool refresh = false, IncomeFilter? filter}) async {
+  Future<void> load({
+    bool refresh = false,
+    IncomeFilter? filter,
+    int? selectedDay,
+    bool clearDay = false,
+  }) async {
     if (!authorized) return;
+    final period = filter ?? state.filter;
+    final periodChanged =
+        period.yearly ||
+        period.anchor.year != state.filter.anchor.year ||
+        period.anchor.month != state.filter.anchor.month;
+    final day = clearDay || periodChanged
+        ? null
+        : selectedDay ?? state.selectedDay;
+    final dayChanged = day != state.selectedDay;
     final g = ++epoch;
     if (refresh) repository.refresh();
     emit(
       filter == null
-          ? state.copy(loading: true)
+          ? state.copy(
+              loading: true,
+              more: false,
+              selectedDay: day,
+              clearDay: day == null,
+              items: dayChanged ? [] : null,
+              clearNext: dayChanged,
+            )
           // Keep the previous figures visible (faded) until the new period
           // arrives, instead of collapsing the page to a loader.
           : IncomeState(
               filter: filter,
+              selectedDay: day,
               catalog: state.catalog,
               categories: state.categories,
               summary: state.summary,
-              items: state.items,
+              items: dayChanged ? [] : state.items,
               loading: true,
               exporting: state.exporting,
             ),
@@ -77,13 +99,14 @@ class IncomeCubit extends FinanceCubit<IncomeState> {
       }
       final result = await Future.wait([
         repository.overview(f),
-        repository.list(f),
+        repository.list(f.copy(day: day)),
       ]);
       if (current(g)) {
         final page = result[1] as IncomePage;
         emit(
           IncomeState(
             filter: f,
+            selectedDay: day,
             catalog: catalog,
             categories: categories,
             summary: result[0] as IncomeSummary,
@@ -92,7 +115,7 @@ class IncomeCubit extends FinanceCubit<IncomeState> {
             exporting: state.exporting,
           ),
         );
-        unawaited(prefetch(f));
+        if (!dayChanged) unawaited(prefetch(f));
       }
     } catch (e) {
       if (current(g)) {
@@ -102,6 +125,7 @@ class IncomeCubit extends FinanceCubit<IncomeState> {
               ? state.copy(loading: false, error: financeError(e))
               : IncomeState(
                   filter: state.filter,
+                  selectedDay: day,
                   catalog: state.catalog,
                   categories: state.categories,
                   exporting: state.exporting,
@@ -130,6 +154,20 @@ class IncomeCubit extends FinanceCubit<IncomeState> {
   }
 
   void setFilter(IncomeFilter f) => unawaited(load(filter: f));
+  Future<void> selectDay(int? day) async {
+    final f = state.filter;
+    if (!authorized ||
+        f.yearly ||
+        state.loading ||
+        state.summary == null ||
+        day == state.selectedDay) {
+      return;
+    }
+    final last = DateTime(f.anchor.year, f.anchor.month + 1, 0).day;
+    if (day != null && (day < 1 || day > last)) return;
+    await load(selectedDay: day, clearDay: day == null);
+  }
+
   Future<void> more() async {
     if (state.next == null || state.more || state.loading || !authorized) {
       return;
@@ -137,7 +175,7 @@ class IncomeCubit extends FinanceCubit<IncomeState> {
     final g = epoch;
     emit(state.copy(more: true));
     try {
-      final p = await repository.list(state.filter, cursor: state.next!);
+      final p = await repository.list(state.listFilter, cursor: state.next!);
       if (current(g)) {
         emit(
           state.copy(

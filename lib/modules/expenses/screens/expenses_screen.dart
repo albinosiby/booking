@@ -340,6 +340,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                       AppCard(
                         child: ExpenseChart(
                           values: summary.bars(f),
+                          selectedDay: s.selectedDay,
+                          onDay: cubit.selectDay,
+                          onClearDay: () => cubit.selectDay(null),
                           filter: f,
                           currency: catalog.currency,
                           onMonth: (m) => cubit.setFilter(
@@ -368,19 +371,29 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                               cubit.setFilter(f.copy(categoryId: id)),
                         ),
                       ],
-                      const FinanceSection('All expenses'),
+                      FinanceSection(
+                        s.selectedDay == null
+                            ? 'All expenses'
+                            : 'Selected day’s expenses',
+                      ),
                       if (s.items.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 48),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 48),
                           child: Center(
                             child: Column(
                               children: [
                                 Icon(Icons.receipt_long_outlined, size: 36),
                                 SizedBox(height: 12),
-                                Text('No expenses in this period'),
+                                Text(
+                                  s.selectedDay == null
+                                      ? 'No expenses in this period'
+                                      : 'No expenses on this day',
+                                ),
                                 SizedBox(height: 6),
                                 Text(
-                                  'Choose another period or add an expense.',
+                                  s.selectedDay == null
+                                      ? 'Choose another period or add an expense.'
+                                      : 'Select another day or show all days.',
                                   textAlign: TextAlign.center,
                                 ),
                               ],
@@ -631,6 +644,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         child: AppCard(
                           child: ExpenseChart(
                             values: summary.bars(f),
+                            selectedDay: s.selectedDay,
+                            onDay: cubit.selectDay,
+                            onClearDay: () => cubit.selectDay(null),
                             filter: f,
                             currency: catalog!.currency,
                             onMonth: (m) => cubit.setFilter(
@@ -643,15 +659,20 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         ),
                       ),
                       AppPanel(
-                        title: 'All expenses',
+                        title: s.selectedDay == null
+                            ? 'All expenses'
+                            : 'Selected day’s expenses',
                         subtitle:
                             '${s.items.length} shown${s.next != null ? ' · more available' : ''}',
                         child: s.items.isEmpty
-                            ? const FinanceEmptyCard(
+                            ? FinanceEmptyCard(
                                 icon: Icons.receipt_long_outlined,
-                                title: 'No expenses in this period',
-                                message:
-                                    'Choose another period or add an expense.',
+                                title: s.selectedDay == null
+                                    ? 'No expenses in this period'
+                                    : 'No expenses on this day',
+                                message: s.selectedDay == null
+                                    ? 'Choose another period or add an expense.'
+                                    : 'Select another day or show all days.',
                               )
                             : Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -15,9 +15,9 @@ import 'package:eden_booking/modules/messages/screens/template_editor_screen.dar
 import 'package:eden_booking/modules/messages/screens/templates_screen.dart';
 import 'package:eden_booking/modules/messages/widgets/message_chat_preview.dart';
 import 'package:eden_booking/modules/messages/widgets/message_phone_preview.dart';
-import 'package:eden_booking/modules/sarvam/repositories/sarvam_repository.dart';
-import 'package:eden_booking/modules/sarvam/screens/call_logs_screen.dart';
-import 'package:eden_booking/modules/sarvam/screens/sarvam_settings_screen.dart';
+import 'package:eden_booking/modules/agent_calls/repositories/agent_call_repository.dart';
+import 'package:eden_booking/modules/agent_calls/screens/call_logs_screen.dart';
+import 'package:eden_booking/modules/agent_calls/screens/sarvam_settings_screen.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'accounts_module_test.dart' show FakeAccountsRepository;
 import 'booking_module_test.dart' show BookingSource;

@@ -14,6 +14,7 @@ class ExpenseFilter {
   const ExpenseFilter({
     required this.anchor,
     this.yearly = false,
+    this.day,
     this.categoryId,
     this.businessId,
     this.spaceId,
@@ -22,18 +23,24 @@ class ExpenseFilter {
   });
   final DateTime anchor;
   final bool yearly;
+
+  /// Optional calendar day for fetching a single day's ledger.
+  final int? day;
   final String? categoryId, businessId, spaceId, accountId;
   final String query;
   String get from =>
-      expenseDate(DateTime(anchor.year, yearly ? 1 : anchor.month));
-  String get until => expenseDate(
-    yearly
-        ? DateTime(anchor.year + 1, 1, 0)
-        : DateTime(anchor.year, anchor.month + 1, 0),
-  );
+      expenseDate(DateTime(anchor.year, yearly ? 1 : anchor.month, day ?? 1));
+  String get until => day != null
+      ? from
+      : expenseDate(
+          yearly
+              ? DateTime(anchor.year + 1, 1, 0)
+              : DateTime(anchor.year, anchor.month + 1, 0),
+        );
   ExpenseFilter copy({
     DateTime? anchor,
     bool? yearly,
+    int? day,
     String? categoryId,
     String? businessId,
     String? spaceId,
@@ -45,6 +52,7 @@ class ExpenseFilter {
   }) => ExpenseFilter(
     anchor: anchor ?? this.anchor,
     yearly: yearly ?? this.yearly,
+    day: day ?? this.day,
     categoryId: clearCategory ? null : categoryId ?? this.categoryId,
     businessId: clearScope ? businessId : businessId ?? this.businessId,
     spaceId: clearScope ? spaceId : spaceId ?? this.spaceId,

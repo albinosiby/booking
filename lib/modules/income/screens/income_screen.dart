@@ -391,6 +391,10 @@ class _IncomeScreenState extends State<IncomeScreen> {
                       AppCard(
                         child: FinancePeriodChart(
                           values: summary.bars(f),
+                          selectedDay: s.selectedDay,
+                          onDay: cubit.selectDay,
+                          onClearDay: () => cubit.selectDay(null),
+                          anchor: f.anchor,
                           yearly: f.yearly,
                           currency: catalog.currency,
                           yearlyTitle:
@@ -423,19 +427,29 @@ class _IncomeScreenState extends State<IncomeScreen> {
                           onSelect: (id) => cubit.setFilter(f.copy(source: id)),
                         ),
                       ],
-                      const FinanceSection('All income'),
+                      FinanceSection(
+                        s.selectedDay == null
+                            ? 'All income'
+                            : 'Selected day’s income',
+                      ),
                       if (s.items.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 48),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 48),
                           child: Center(
                             child: Column(
                               children: [
                                 Icon(Icons.savings_outlined, size: 36),
                                 SizedBox(height: 12),
-                                Text('No income in this period'),
+                                Text(
+                                  s.selectedDay == null
+                                      ? 'No income in this period'
+                                      : 'No income on this day',
+                                ),
                                 SizedBox(height: 6),
                                 Text(
-                                  'Choose another period or add income.',
+                                  s.selectedDay == null
+                                      ? 'Choose another period or add income.'
+                                      : 'Select another day or show all days.',
                                   textAlign: TextAlign.center,
                                 ),
                               ],
@@ -653,6 +667,10 @@ class _IncomeScreenState extends State<IncomeScreen> {
                         child: AppCard(
                           child: FinancePeriodChart(
                             values: summary.bars(f),
+                            selectedDay: s.selectedDay,
+                            onDay: cubit.selectDay,
+                            onClearDay: () => cubit.selectDay(null),
+                            anchor: f.anchor,
                             yearly: f.yearly,
                             currency: catalog!.currency,
                             yearlyTitle:
@@ -670,14 +688,20 @@ class _IncomeScreenState extends State<IncomeScreen> {
                         ),
                       ),
                       AppPanel(
-                        title: 'All income',
+                        title: s.selectedDay == null
+                            ? 'All income'
+                            : 'Selected day’s income',
                         subtitle:
                             '${s.items.length} shown${s.next != null ? ' · more available' : ''}',
                         child: s.items.isEmpty
-                            ? const FinanceEmptyCard(
+                            ? FinanceEmptyCard(
                                 icon: Icons.savings_outlined,
-                                title: 'No income in this period',
-                                message: 'Choose another period or add income.',
+                                title: s.selectedDay == null
+                                    ? 'No income in this period'
+                                    : 'No income on this day',
+                                message: s.selectedDay == null
+                                    ? 'Choose another period or add income.'
+                                    : 'Select another day or show all days.',
                               )
                             : Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,

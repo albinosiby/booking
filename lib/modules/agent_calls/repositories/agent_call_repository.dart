@@ -1,29 +1,13 @@
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
-import '../models/sarvam_models.dart';
+import '../models/agent_call_models.dart';
 
-abstract interface class SarvamRepository {
-  Future<SarvamSettings> settings();
+abstract interface class AgentCallRepository {
+  Future<AgentServiceStatus> status();
+  Future<AgentServiceStatus> request(String note);
+  Future<AgentServiceStatus> setEnabled(bool enabled);
 
-  /// Omitted API key keeps the backend credential.
-  Future<SarvamSettings> connect({
-    required int version,
-    required Set<String> businessIds,
-    required String orgId,
-    required String workspaceId,
-    required String appId,
-    String? apiKey,
-  });
-
-  Future<SarvamSettings> setupStep();
-  Future<SarvamSettings> disconnect();
-  Future<SarvamSettings> setBookingEnabled(int version, bool enabled);
-  Future<SarvamSettings> publish(int version, String deploymentId);
-  Future<bool> openAuthorization(String url);
-
-  /// Number of calls in the last 24 hours.
-  Future<int> test();
-  Future<SarvamCallPage> calls(DateTime start, DateTime end);
+  Future<AgentCallPage> calls(DateTime start, DateTime end);
   Future<List<TranscriptLine>> transcript(String interactionId);
   Future<List<int>> recording(String interactionId);
 }

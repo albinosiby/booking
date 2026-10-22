@@ -272,10 +272,6 @@ export class WebsiteService {
         throw new ConflictException(
           "Website settings changed. Reload before saving.",
         );
-      if (old.first_published_at && old.slug !== v.slug)
-        throw new BadRequestException(
-          "The address is fixed after first publication so shared links keep working.",
-        );
       if (old.slug !== v.slug) {
         websiteSubdomain.parse(v.slug);
         const taken = await db.query(

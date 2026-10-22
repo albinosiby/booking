@@ -5,6 +5,7 @@ Income is opened from **Profile → Income**, or from **Accounts → Income by p
 ## Using the feature
 
 - Switch Monthly/Yearly, use ‹ › or the calendar to change the period, and tap a month in the yearly graph to open it.
+- Tap a daily bar to highlight it and list only transactions on that day. The selected date and chart total appear below the graph; **Show all days** restores the full period. Category/source, business, space and account filters still apply. **Load more** stays within the selected day. The selection survives refresh and clears when changing month/year or switching to Yearly. Totals, graphs and PDF/Excel reports continue to cover the selected full month/year. Dates follow the organization timezone, including refunds and reversals on their recorded day.
 - **Source** filter: Bookings, Admissions, or one extra-income category. The filter sheet (tune icon) adds business, space and "Received into" account.
 - The total card shows total income, the number of entries, refunds, and net after refunds. Totals use the same rule as "Total income" on Accounts: booking payments + admission payments + extra income. Refunds are listed separately and subtracted for the net. Reversals reduce income on the date they were recorded. Transfers are excluded.
 - **By source** lists Bookings, Admissions and each category. Tap a row to filter by it.

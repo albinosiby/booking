@@ -1,7 +1,41 @@
 /** Request header the proxy sets after resolving `<slug>.<domain>`; never trusted from clients. */
 export const SITE_HOST_HEADER = "x-booking-site-host";
 const label = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const reserved = new Set(["www", "api", "app", "admin", "book"]);
+const reserved = new Set([
+  "www",
+  "api",
+  "app",
+  "admin",
+  "book",
+  "login",
+  "sign-in",
+  "register",
+]);
+
+/** Owner/staff entry points that live in the Flutter app, not on booking websites. */
+const appPaths: Record<string, string> = {
+  "/login": "/sign-in",
+  "/sign-in": "/sign-in",
+  "/register": "/register",
+  "/signup": "/register",
+};
+
+/** `https://app.<domain>` unless BOOKING_APP_URL says otherwise. */
+export function appOrigin(
+  domain: string,
+  value = process.env.BOOKING_APP_URL,
+) {
+  if (value) return new URL(value).origin;
+  return domain === "localhost"
+    ? "http://localhost:8080"
+    : `https://app.${domain}`;
+}
+
+/** `/login` on the main domain or any booking website opens the app's sign-in page. */
+export function appRedirect(pathname: string, domain: string, value?: string) {
+  const path = appPaths[pathname.replace(/\/$/, "") || "/"];
+  return path ? `${appOrigin(domain, value)}${path}` : null;
+}
 
 export type SiteHost =
   | { kind: "site"; slug: string }

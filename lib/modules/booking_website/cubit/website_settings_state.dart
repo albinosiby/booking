@@ -7,22 +7,28 @@ class WebsiteSettingsState extends Equatable {
     this.draft,
     this.loading = true,
     this.busy = false,
+    this.savingAddress = false,
+    this.addressError,
     this.error,
     this.message,
     this.revision = 0,
   });
   final WebsiteSettings? saved, draft;
-  final bool loading, busy;
-  final String? error, message;
+  final bool loading, busy, savingAddress;
+  final String? error, message, addressError;
 
   /// Bumped when an action rewrites several fields at once so their inputs refresh.
   final int revision;
   bool get dirty => saved != draft;
+  bool get addressDirty =>
+      saved != null && draft != null && draft!.slug != saved!.slug;
   WebsiteSettingsState copyWith({
     WebsiteSettings? saved,
     WebsiteSettings? draft,
     bool? loading,
     bool? busy,
+    bool? savingAddress,
+    String? addressError,
     String? error,
     String? message,
     int? revision,
@@ -31,6 +37,8 @@ class WebsiteSettingsState extends Equatable {
     draft: draft ?? this.draft,
     loading: loading ?? this.loading,
     busy: busy ?? this.busy,
+    savingAddress: savingAddress ?? this.savingAddress,
+    addressError: addressError,
     error: error,
     message: message,
     revision: revision ?? this.revision,
@@ -41,6 +49,8 @@ class WebsiteSettingsState extends Equatable {
     draft,
     loading,
     busy,
+    savingAddress,
+    addressError,
     error,
     message,
     revision,

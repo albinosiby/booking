@@ -1,0 +1,94 @@
+worker_processes auto;
+pid "__RUNTIME__/nginx.pid";
+error_log /dev/stderr crit;
+
+events { worker_connections 1024; }
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    # Preview URLs can contain private capabilities; do not log request URLs.
+    access_log off;
+    server_tokens off;
+    sendfile on;
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml application/wasm;
+    client_body_temp_path "__RUNTIME__/client-body";
+    proxy_temp_path "__RUNTIME__/proxy";
+    fastcgi_temp_path "__RUNTIME__/fastcgi";
+    uwsgi_temp_path "__RUNTIME__/uwsgi";
+    scgi_temp_path "__RUNTIME__/scgi";
+
+    map $http_x_forwarded_proto $forwarded_scheme {
+        default $scheme;
+        https https;
+    }
+
+    server {
+        listen __PORT__;
+        server_name _;
+        absolute_redirect off;
+        client_max_body_size 16m;
+
+        location = /_health {
+            proxy_pass http://127.0.0.1:__HEALTH_PORT__/healthz;
+            include "__ROOT__/deploy/proxy.conf";
+        }
+
+        location ~ (^|/)\. { return 404; }
+        location ~ \.map$ { return 404; }
+
+        location = / {
+            root "__ROOT__/static/landing";
+            try_files /index.html =404;
+            include "__ROOT__/deploy/security-headers.conf";
+            add_header Cache-Control "no-cache" always;
+        }
+        location ^~ /_landing/_next/static/ {
+            root "__ROOT__/static/landing";
+            try_files $uri =404;
+            include "__ROOT__/deploy/security-headers.conf";
+            add_header Cache-Control "public, max-age=31536000, immutable";
+        }
+        location ^~ /_landing/ {
+            root "__ROOT__/static/landing";
+            try_files $uri =404;
+            include "__ROOT__/deploy/security-headers.conf";
+            add_header Cache-Control "no-cache" always;
+        }
+
+        location = /app { return 308 /app/$is_args$args; }
+        # Missing Flutter assets must return 404, never the SPA's index.html.
+        location ~ ^/app/(?:assets(?:/|$)|canvaskit(?:/|$)|icons(?:/|$)|.*\.[^/]+$) {
+            root "__ROOT__/static";
+            try_files $uri =404;
+            include "__ROOT__/deploy/security-headers.conf";
+            add_header Cache-Control "no-cache" always;
+        }
+        location /app/ {
+            root "__ROOT__/static";
+            try_files $uri $uri/ /app/index.html;
+            include "__ROOT__/deploy/security-headers.conf";
+            add_header Cache-Control "no-cache" always;
+        }
+
+        # Preserve the /admin prefix; Next.js is compiled with this basePath.
+        location = /admin {
+            proxy_pass http://127.0.0.1:__ADMIN_PORT__;
+            include "__ROOT__/deploy/proxy.conf";
+        }
+        location /admin/ {
+            proxy_pass http://127.0.0.1:__ADMIN_PORT__;
+            include "__ROOT__/deploy/proxy.conf";
+        }
+
+        location ~ ^/(?:login|sign-in)/?$ { return 307 /app/sign-in$is_args$args; }
+        location ~ ^/(?:register|signup|sign-up)/?$ { return 307 /app/register$is_args$args; }
+
+        # Organisation URLs, public API proxy and booking /_next assets.
+        location / {
+            proxy_pass http://127.0.0.1:__BOOKING_PORT__;
+            include "__ROOT__/deploy/proxy.conf";
+        }
+    }
+}

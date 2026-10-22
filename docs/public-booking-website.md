@@ -7,7 +7,7 @@ One organisation has one public website at `https://<organisation-slug>.bookingo
 - Profile → **Design website** (native app and Flutter web): subdomain address, title, hero heading, description, public phone, website logo upload (or the organisation logo), homepage hero image, enabled services with homepage card photo and description, per-space show/hide, booking page photos and booking rules (notice, window, visitor rules, copy to all spaces), social media links, default rules, venue instructions and cancellation policy.
 - Automatic private draft for new organisations; existing organisations get their draft on first opening settings. Select businesses and publish explicitly.
 - Preview links expire after one hour, are read-only and are revoked by settings/publication changes or another preview. Treat them as private capabilities. Redact `preview` query parameters from hosting/access logs; never log request bodies. Next development request logging is disabled.
-- Publish, pause/resume, unpublish, open and copy-link actions. After first publication, the URL is fixed so shared links and confirmation retries remain usable.
+- Publish, pause/resume, unpublish, open and copy-link actions. Owners can change the address after publication. The previous address stops resolving to the website after a rename; update shared links and ask visitors with an in-progress booking at the old address to contact the venue before retrying.
 - Normal turf, court, pool and hall bookings. Group offers, coaching, admissions, swimming plans and recurring purchases are excluded by the public server policy as well as the UI.
 - Name/phone checkout, review and confirmation. Pool bookings include participant count and per-person pricing. No online payments, customer login, OTP, public booking lookup, cancellation or rescheduling endpoint is exposed.
 - Booking confirmation is unpaid unless the price is zero. Collections remain in the existing staff flow. Browsing and quotes never hold inventory.
@@ -338,7 +338,7 @@ Labels sit outside the playing/room area, with responsive SVG proportions and th
 
 ## Subdomains and Design website — deployment update
 
-Every organisation's website is served from its own subdomain, `https://<slug>.bookingos.online`. The slug is the address the owner chooses in **Design website → Website address**; it must be 3–63 lowercase letters, numbers or single hyphens, unique, and not reserved (`www`, `api`, `app`, `admin`, `book`, `mail`, …). It stays fixed after first publication.
+Every organisation's website is served from its own subdomain, `https://<slug>.bookingos.online`. The slug is the address the owner chooses in **Design website → Website address**; it must be 3–63 lowercase letters, numbers or single hyphens, unique, and not reserved (`www`, `api`, `app`, `admin`, `book`, `mail`, …). The owner can rename it before or after publication. Saving a new name changes the public URL immediately without changing publication status, bookings or website design; the old address is released and has no redirect.
 
 How a request is resolved (`booking-website/proxy.ts`, `lib/site-host.ts`):
 
@@ -349,13 +349,14 @@ How a request is resolved (`booking-website/proxy.ts`, `lib/site-host.ts`):
 | `eden.bookingos.online/eden/...` | 308 to the clean subdomain path |
 | `bookingos.online/eden/...` or `www.` | 308 to `https://eden.bookingos.online/...` (keeps old links working) |
 | `bookingos.online/` | Generic landing page |
+| `/login`, `/sign-in`, `/register`, `/signup` on the main domain or any website | 307 to the owner app (`https://app.bookingos.online/sign-in` or `/register`; override with `BOOKING_APP_URL`) |
 | Any other host (IP, hosting preview URL) | Unchanged `/<slug>` path routing |
 
 `/api/sites/<slug>/...` is never rewritten. The proxy sets an internal `x-booking-site-host` header to render subdomain-relative links and strips any client-supplied copy on path-routed hosts. The host is read from `X-Forwarded-Host` (first value) or `Host`, so the hosting layer must pass the visitor's host through.
 
 ### What the owner configures
 
-- **Address:** subdomain with live preview of the final URL.
+- **Address:** a fixed `https://` prefix, editable website name and fixed `.bookingos.online` suffix (the configured domain is used). The fixed domain wraps below the input on narrow screens with enlarged text. **Save** updates only the address while preserving other unsaved design changes, and the saved URL appears in the summary above **Website address**. Validation and address conflicts appear beside the name; failed saves keep the existing saved link. The address remains editable after publication.
 - **Brand & homepage:** website logo (square, header of every page; falls back to the organisation profile logo when that switch is on), website title, hero heading (empty keeps the default), description, contact phone, hero image.
 - **Spaces on your website:** per service — show on website, homepage card photo (falls back to the first space photo) and card description (falls back to the standard text). Per space — show/hide (hidden spaces disappear from the catalog, cannot be quoted or booked, and their photos are not served), up to 4 booking page photos, minimum notice, advance window and visitor rules. Empty rule fields use the website defaults. **Copy these rules to all spaces** copies notice, window and rules (not visibility) to every space; save to apply.
 - **Social media:** Instagram, Facebook, X, YouTube, LinkedIn, WhatsApp. Only full `https://` links are accepted; the app adds `https://` to pasted addresses such as `instagram.com/venue`.
@@ -476,3 +477,13 @@ node --import tsx --test test/website.test.ts test/website-images.test.ts test/w
 cd ../booking-website && npm test && npm run typecheck && npm run build
 cd .. && flutter test test/booking_website_test.dart
 ```
+
+## Website address editing update
+
+This update removes the application/API lock on renaming previously published websites. It uses the existing version-checked `PUT /v1/booking-website` contract, owner authorization, reserved-name validation, DNS-label limit and unique slug constraint. No database migration or DNS change is required when wildcard hosting is already configured.
+
+Deploy the API change together with the updated Flutter app. Validate locally from `backend/` using `npm run build`, `npm run edge:check` and `npx tsx --test test/website-design.test.ts test/website.test.ts`; the tests use isolated in-memory databases. Build the hosted API with `npm run edge:build`, then deploy it using the existing hosting procedure. No live database schema, website address or production deployment was changed while implementing this feature.
+
+After deployment, open **Design website**, change only the website name and press its **Save** button. Confirm the summary above **Website address** shows the server-returned URL, the new URL opens the published website, and publication status and design settings are preserved. A taken or reserved name must fail without changing the saved URL. Saving an address with other draft changes must leave those changes unsaved until **Save changes** is pressed.
+
+The old address no longer opens the website and can be claimed by another owner. Update QR codes, bookmarks and shared links after renaming. Existing bookings remain in the owner/staff app; visitors with uncertain confirmations at the old address should contact the venue instead of starting another booking. To undo a rename, save the previous name again if it is still available. Rolling back the app/API does not automatically undo saved address changes.

@@ -122,7 +122,7 @@ class FinancePeriodBar extends StatelessWidget {
 }
 
 /// Bar per day (monthly) or per month (yearly), sized to fit the card.
-/// Tapping a month in the yearly view drills into it.
+/// Tapping a month drills into it; tapping a day selects its ledger.
 class FinancePeriodChart extends StatelessWidget {
   const FinancePeriodChart({
     super.key,
@@ -133,12 +133,20 @@ class FinancePeriodChart extends StatelessWidget {
     required this.yearlyTitle,
     required this.monthlyTitle,
     this.note,
+    this.onDay,
+    this.selectedDay,
+    this.anchor,
+    this.onClearDay,
   });
   final List<int> values;
   final bool yearly;
   final String currency, yearlyTitle, monthlyTitle;
   final String? note;
   final ValueChanged<int> onMonth;
+  final ValueChanged<int>? onDay;
+  final int? selectedDay;
+  final DateTime? anchor;
+  final VoidCallback? onClearDay;
 
   String _name(int i) => yearly ? financeMonths[i] : 'Day ${i + 1}';
 
@@ -175,28 +183,44 @@ class FinancePeriodChart extends StatelessWidget {
               return day == 1 || day % 5 == 0 ? '$day' : '';
             }
 
+            VoidCallback? select(int i) => yearly
+                ? () => onMonth(i + 1)
+                : onDay == null
+                ? null
+                : () => onDay!(i + 1);
+
             return Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 for (var i = 0; i < values.length; i++)
                   Expanded(
                     child: Semantics(
-                      button: yearly,
+                      button: yearly || onDay != null,
+                      selected: !yearly && selectedDay == i + 1,
                       label:
                           '${_name(i)}: ${financeMoney(values[i], currency)}',
                       excludeSemantics: true,
-                      onTap: yearly ? () => onMonth(i + 1) : null,
+                      onTap: select(i),
                       child: Tooltip(
                         message:
                             '${_name(i)} · ${financeMoney(values[i], currency)}',
                         child: InkWell(
                           key: ValueKey('finance-bar-$i'),
-                          onTap: yearly ? () => onMonth(i + 1) : null,
+                          onTap: select(i),
                           borderRadius: BorderRadius.circular(6),
                           child: Column(
                             children: [
-                              SizedBox(
+                              Container(
                                 height: height,
+                                decoration: BoxDecoration(
+                                  color: !yearly && selectedDay == i + 1
+                                      ? scheme.primary.withValues(alpha: .12)
+                                      : null,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: !yearly && selectedDay == i + 1
+                                      ? Border.all(color: scheme.primary)
+                                      : null,
+                                ),
                                 child: Align(
                                   alignment: Alignment.bottomCenter,
                                   child: Container(
@@ -231,7 +255,9 @@ class FinancePeriodChart extends StatelessWidget {
                                 textScaler: TextScaler.noScaling,
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   fontSize: 10,
-                                  color: scheme.onSurfaceVariant,
+                                  color: !yearly && selectedDay == i + 1
+                                      ? scheme.primary
+                                      : scheme.onSurfaceVariant,
                                 ),
                               ),
                             ],
@@ -244,6 +270,23 @@ class FinancePeriodChart extends StatelessWidget {
             );
           },
         ),
+        if (!yearly && onDay != null && selectedDay == null) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Tap a day to view its transactions.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+        if (!yearly &&
+            selectedDay != null &&
+            anchor != null &&
+            onClearDay != null)
+          FinanceDaySelection(
+            date: DateTime(anchor!.year, anchor!.month, selectedDay!),
+            total: values[selectedDay! - 1],
+            currency: currency,
+            onClear: onClearDay!,
+          ),
         if (note != null) ...[
           const SizedBox(height: 10),
           Text(note!, style: theme.textTheme.bodySmall),
@@ -251,4 +294,39 @@ class FinancePeriodChart extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Selected calendar date and chart total, independent of ledger pagination.
+class FinanceDaySelection extends StatelessWidget {
+  const FinanceDaySelection({
+    super.key,
+    required this.date,
+    required this.total,
+    required this.currency,
+    required this.onClear,
+  });
+  final DateTime date;
+  final int total;
+  final String currency;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Wrap(
+      spacing: 16,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Semantics(
+          liveRegion: true,
+          child: Text(
+            '${date.day} ${financeMonths[date.month - 1]} ${date.year} · ${financeMoney(total, currency)}',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        TextButton(onPressed: onClear, child: const Text('Show all days')),
+      ],
+    ),
+  );
 }

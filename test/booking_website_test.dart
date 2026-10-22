@@ -16,6 +16,7 @@ import 'package:eden_booking/modules/booking_website/screens/website_settings_sc
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_session.dart';
+import 'package:eden_booking/utils/exceptions/app_exception.dart';
 import 'booking_module_test.dart' show BookingSource;
 
 class TestWebsiteRepository implements WebsiteRepository {
@@ -31,7 +32,6 @@ class TestWebsiteRepository implements WebsiteRepository {
     publishLogo: false,
     noticeMinutes: 0,
     advanceDays: 30,
-    addressLocked: false,
     businesses: [
       WebsiteBusiness(
         id: 'business',
@@ -58,6 +58,8 @@ class TestWebsiteRepository implements WebsiteRepository {
     url: 'https://eden-sports.bookingos.online',
   );
   int reads = 0, saves = 0, uploads = 0, picks = 0;
+  String? saveError;
+  Completer<void>? delayedSave;
   String? uploadedBusiness, uploadedResource, uploadedKind;
   Completer<LogoSelection?>? delayedPick;
   LogoSelection? selectedPhoto;
@@ -72,7 +74,9 @@ class TestWebsiteRepository implements WebsiteRepository {
   @override
   Future<WebsiteSettings> save(WebsiteSettings draft) async {
     saves++;
-    value = draft;
+    if (delayedSave != null) await delayedSave!.future;
+    if (saveError != null) throw AppException(saveError!);
+    value = draft.copyWith(version: value.version + 1, url: draft.draftUrl);
     return value;
   }
 
@@ -134,6 +138,97 @@ void main() {
       await workspace.close();
     },
   );
+  test(
+    'address save updates a published URL and retains other unsaved design edits',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository();
+      repo.value = repo.value.copyWith(status: 'published');
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      cubit.update(
+        cubit.state.draft!.copyWith(slug: 'New-Venue', title: 'Unsaved title'),
+      );
+      await cubit.saveAddress();
+      expect(repo.value.slug, 'new-venue');
+      expect(repo.value.title, 'Eden Sports');
+      expect(repo.value.status, 'published');
+      expect(cubit.state.saved!.url, 'https://new-venue.bookingos.online');
+      expect(cubit.state.draft!.url, cubit.state.saved!.url);
+      expect(cubit.state.draft!.title, 'Unsaved title');
+      expect(cubit.state.draft!.version, cubit.state.saved!.version);
+      expect(cubit.state.addressDirty, isFalse);
+      expect(cubit.state.dirty, isTrue);
+      await cubit.save();
+      expect(repo.value.title, 'Unsaved title');
+      expect(repo.value.slug, 'new-venue');
+      expect(cubit.state.dirty, isFalse);
+    },
+  );
+
+  test(
+    'invalid and conflicting addresses retain the saved link and can be corrected',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository();
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      final original = cubit.state.saved!.url;
+      cubit.update(cubit.state.draft!.copyWith(slug: 'bad--name'));
+      await cubit.saveAddress();
+      expect(repo.saves, 0);
+      expect(cubit.state.addressError, contains('single hyphens'));
+      repo.saveError = 'This website address is already taken. Choose another.';
+      cubit.update(cubit.state.draft!.copyWith(slug: 'another-venue'));
+      await cubit.saveAddress();
+      expect(cubit.state.saved!.url, original);
+      expect(cubit.state.draft!.slug, 'another-venue');
+      expect(cubit.state.addressError, contains('already taken'));
+      expect(cubit.state.busy, isFalse);
+      repo.saveError = null;
+      await cubit.saveAddress();
+      expect(cubit.state.saved!.url, 'https://another-venue.bookingos.online');
+      expect(cubit.state.addressError, isNull);
+      expect(cubit.state.dirty, isFalse);
+    },
+  );
+
+  test(
+    'address save ignores a response after workspace access changes',
+    () async {
+      final source = BookingSource();
+      final workspace = WorkspaceCubit(source);
+      await workspace.load();
+      final repo = TestWebsiteRepository()..delayedSave = Completer<void>();
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      cubit.update(cubit.state.draft!.copyWith(slug: 'changed-address'));
+      final saving = cubit.saveAddress();
+      await cubit.saveAddress();
+      expect(repo.saves, 1);
+      source.value = const Workspace();
+      await workspace.load();
+      repo.delayedSave!.complete();
+      await saving;
+      expect(cubit.state.saved, isNull);
+      expect(cubit.state.draft, isNull);
+    },
+  );
+
   test('staff cannot read or edit website settings', () async {
     final source = BookingSource();
     source.value = Workspace(
@@ -300,6 +395,97 @@ void main() {
       throwsA(isA<Exception>()),
     );
   });
+  for (final width in [320.0, 390.0, 1440.0]) {
+    testWidgets(
+      'published address edits save and update the header at $width pixels',
+      (tester) async {
+        tester.view.physicalSize = Size(width, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final workspace = WorkspaceCubit(BookingSource());
+        await workspace.load();
+        final repo = TestWebsiteRepository();
+        repo.value = repo.value.copyWith(status: 'published');
+        getIt
+            .registerFactoryParam<WebsiteSettingsCubit, WorkspaceSession, void>(
+              (s, _) => WebsiteSettingsCubit(s, repo),
+            );
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox());
+          await workspace.close();
+        });
+        await tester.pumpWidget(
+          BlocProvider.value(
+            value: workspace,
+            child: ScreenUtilInit(
+              designSize: const Size(390, 844),
+              builder: (_, _) => MaterialApp(
+                home: const WebsiteSettingsScreen(),
+                builder: (c, child) => MediaQuery(
+                  data: MediaQuery.of(c).copyWith(
+                    textScaler: TextScaler.linear(width == 320 ? 1.3 : 1),
+                  ),
+                  child: child!,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final name = find.widgetWithText(TextFormField, 'Website name');
+        final save = find.byKey(const ValueKey('website-address-save'));
+        final header = find.byKey(const ValueKey('website-saved-url'));
+        expect(
+          tester.widget<SelectableText>(header).data,
+          'https://eden-sports.bookingos.online',
+        );
+        await tester.ensureVisible(name);
+        await tester.enterText(name, '');
+        await tester.pumpAndSettle();
+        // The fixed parts stay visible even when the editable name is empty.
+        expect(find.text('https://').hitTestable(), findsOneWidget);
+        expect(find.text('.bookingos.online'), findsOneWidget);
+        await tester.ensureVisible(save);
+        await tester.tap(save);
+        await tester.pumpAndSettle();
+        expect(repo.saves, 0);
+        expect(find.textContaining('Use 3–63'), findsOneWidget);
+        await tester.ensureVisible(name);
+        await tester.enterText(name, 'renamed-venue');
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<SelectableText>(header).data,
+          'https://eden-sports.bookingos.online',
+        );
+        repo.saveError =
+            'This website address is already taken. Choose another.';
+        await tester.ensureVisible(save);
+        await tester.tap(save);
+        await tester.pumpAndSettle();
+        expect(find.textContaining('already taken'), findsOneWidget);
+        expect(find.text('Reload settings'), findsOneWidget);
+        expect(
+          tester.widget<SelectableText>(header).data,
+          'https://eden-sports.bookingos.online',
+        );
+        repo.saveError = null;
+        await tester.tap(save);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<SelectableText>(header).data,
+          'https://renamed-venue.bookingos.online',
+        );
+        expect(repo.value.status, 'published');
+        expect(
+          tester.getTopLeft(header).dy,
+          lessThan(tester.getTopLeft(find.text('Website address')).dy),
+        );
+        expect(tester.widget<FilledButton>(save).onPressed, isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   for (final width in [390.0, 1440.0]) {
     testWidgets('website settings render without overflow at $width pixels', (
       tester,

@@ -110,6 +110,55 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
     );
   }
 
+  /// Saves the address against the last server version, retaining other edits.
+  Future<void> saveAddress() async {
+    if (!owner ||
+        state.busy ||
+        state.loading ||
+        state.saved == null ||
+        state.draft == null ||
+        !state.addressDirty) {
+      return;
+    }
+    final draft = state.draft!;
+    final slug = draft.slug.trim().toLowerCase();
+    final error = websiteAddressError(slug);
+    if (error != null) {
+      emit(state.copyWith(addressError: error));
+      return;
+    }
+    final g = ++generation;
+    emit(state.copyWith(busy: true, savingAddress: true));
+    try {
+      final saved = await repository.save(state.saved!.copyWith(slug: slug));
+      if (!valid(g)) return;
+      emit(
+        state.copyWith(
+          saved: saved,
+          draft: draft.copyWith(
+            slug: saved.slug,
+            version: saved.version,
+            url: saved.url,
+          ),
+          busy: false,
+          savingAddress: false,
+          revision: state.revision + 1,
+          message: 'Website address saved.',
+        ),
+      );
+    } catch (e) {
+      if (valid(g)) {
+        emit(
+          state.copyWith(
+            busy: false,
+            savingAddress: false,
+            addressError: failure(e),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> save({String? action}) async {
     if (!owner || state.busy || state.draft == null) return;
     final g = ++generation, draft = state.draft!;
@@ -142,6 +191,7 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
         emit(
           state.copyWith(
             busy: false,
+            addressError: state.addressDirty ? failure(e) : null,
             error:
                 '${failure(e)} Reload settings before retrying an uncertain save.',
           ),

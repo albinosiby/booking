@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
+  output: "standalone",
   poweredByHeader: false,
   // Local subdomain testing: http://<slug>.localhost:3000 with BOOKING_SITE_DOMAIN=localhost.
   allowedDevOrigins: ["localhost", "*.localhost"],

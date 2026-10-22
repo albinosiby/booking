@@ -1,0 +1,248 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../styles/tokens.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* shadcn semantic tokens, mapped onto the BookOS Figma palette so the preview
+   chrome matches the rest of the product. */
+:root {
+  --background: var(--c-surface-page);
+  --foreground: var(--c-text-primary);
+  --card: var(--c-surface-raised);
+  --card-foreground: var(--c-text-primary);
+  --popover: var(--c-surface-raised);
+  --popover-foreground: var(--c-text-primary);
+  --primary: var(--c-brand-navy);
+  --primary-foreground: #ffffff;
+  --secondary: var(--c-surface-sunken);
+  --secondary-foreground: var(--c-text-primary);
+  --muted: var(--c-surface-sunken);
+  --muted-foreground: var(--c-text-muted);
+  --accent: var(--c-brand-wash);
+  --accent-foreground: var(--c-brand-navy-ink);
+  --destructive: var(--c-accent-red);
+  --border: var(--c-line-default);
+  --input: var(--c-line-default);
+  --ring: var(--c-brand-navy);
+  --radius: 0.5rem;
+}
+
+/* Map BookOS tokens onto Tailwind's theme so utilities like `bg-surface-page`,
+   `text-ink-muted` and `border-line` resolve to the Figma palette. */
+@theme inline {
+  --color-brand: var(--c-brand-navy);
+  --color-brand-soft: var(--c-brand-navy-soft);
+  --color-brand-ink: var(--c-brand-navy-ink);
+  --color-brand-wash: var(--c-brand-wash);
+
+  --color-surface-page: var(--c-surface-page);
+  --color-surface-shell: var(--c-surface-shell);
+  --color-surface-raised: var(--c-surface-raised);
+  --color-surface-sunken: var(--c-surface-sunken);
+  --color-surface-inverse: var(--c-surface-inverse);
+
+  --color-ink: var(--c-text-primary);
+  --color-ink-secondary: var(--c-text-secondary);
+  --color-ink-muted: var(--c-text-muted);
+  --color-ink-inverse: var(--c-text-inverse);
+
+  --color-line: var(--c-line-default);
+  --color-line-soft: var(--c-line-soft);
+  --color-line-strong: var(--c-line-strong);
+
+  --color-teal: var(--c-accent-teal);
+  --color-teal-wash: var(--c-accent-teal-wash);
+  --color-lime: var(--c-accent-lime);
+  --color-amber: var(--c-accent-amber);
+  --color-amber-wash: var(--c-accent-amber-wash);
+  --color-danger: var(--c-accent-red);
+  --color-danger-wash: var(--c-accent-red-wash);
+
+  --color-res-stays: var(--c-resource-stays);
+  --color-res-sports: var(--c-resource-sports);
+  --color-res-events: var(--c-resource-events);
+  --color-res-blocked: var(--c-resource-blocked);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-display: ui-sans-serif, system-ui, sans-serif;
+  --font-body: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-drawer: var(--shadow-drawer);
+  --shadow-float: var(--shadow-float);
+
+  --color-background: var(--c-surface-raised);
+  --color-foreground: var(--c-text-primary);
+  --color-card: var(--c-surface-raised);
+  --color-card-foreground: var(--c-text-primary);
+  --color-popover: var(--c-surface-raised);
+  --color-popover-foreground: var(--c-text-primary);
+  --color-primary: var(--c-brand-navy);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--c-surface-sunken);
+  --color-secondary-foreground: var(--c-text-primary);
+  --color-muted: var(--c-surface-sunken);
+  --color-muted-foreground: var(--c-text-muted);
+  --color-accent: var(--c-brand-wash);
+  --color-accent-foreground: var(--c-brand-navy-ink);
+  --color-destructive: var(--c-accent-red);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--c-line-default);
+  --color-input: var(--c-line-default);
+  --color-ring: var(--c-brand-navy);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  /* A faint navy wash at the top gives the flat canvas depth without
+     departing from the token palette. */
+  background:
+    radial-gradient(900px 240px at 50% 0%, rgba(14, 68, 113, 0.045), transparent 70%),
+    var(--c-surface-page);
+  color: var(--c-text-primary);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The console is a fixed-chrome app surface: only inner panes scroll. */
+.app-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-line-default) transparent;
+}
+.app-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.app-scroll::-webkit-scrollbar-thumb {
+  background: var(--c-line-default);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 9999px;
+}
+.app-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-brand-navy);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes bo-slide-in {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.animate-drawer {
+  animation: bo-slide-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes bo-rise {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.animate-rise {
+  animation: bo-rise 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes bo-hero-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.hero-enter {
+  animation: bo-hero-enter 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes bo-phone-float {
+  0%, 100% { transform: rotate(5deg) translateY(0); }
+  50% { transform: rotate(5deg) translateY(-10px); }
+}
+.hero-phone-float {
+  animation: bo-phone-float 6s ease-in-out infinite;
+}
+
+@keyframes bo-phone-float-delayed {
+  0%, 100% { transform: rotate(-12deg) translateY(0); }
+  50% { transform: rotate(-12deg) translateY(-8px); }
+}
+.hero-phone-float-delayed {
+  animation: bo-phone-float-delayed 7s ease-in-out 900ms infinite;
+}
+
+
+.btn-premium {
+  background-image: linear-gradient(180deg, var(--c-brand-navy-soft) 0%, var(--c-brand-navy) 55%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(10,53,89,.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

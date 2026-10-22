@@ -5,6 +5,7 @@ import '../models/expense_models.dart';
 class ExpensesState extends Equatable {
   ExpensesState({
     required this.filter,
+    this.selectedDay,
     this.catalog,
     Iterable<ExpenseCategory> categories = const [],
     this.summary,
@@ -18,6 +19,8 @@ class ExpensesState extends Equatable {
   }) : categories = List.unmodifiable(categories),
        items = List.unmodifiable(items);
   final ExpenseFilter filter;
+  final int? selectedDay;
+  ExpenseFilter get listFilter => filter.copy(day: selectedDay);
   final FinanceCatalog? catalog;
   final List<ExpenseCategory> categories;
   final ExpenseSummary? summary;
@@ -28,6 +31,7 @@ class ExpensesState extends Equatable {
   @override
   List<Object?> get props => [
     filter,
+    selectedDay,
     catalog,
     categories,
     summary,
@@ -41,6 +45,8 @@ class ExpensesState extends Equatable {
   ];
   ExpensesState copy({
     ExpenseFilter? filter,
+    int? selectedDay,
+    bool clearDay = false,
     FinanceCatalog? catalog,
     List<ExpenseCategory>? categories,
     ExpenseSummary? summary,
@@ -54,6 +60,7 @@ class ExpensesState extends Equatable {
     String? message,
   }) => ExpensesState(
     filter: filter ?? this.filter,
+    selectedDay: clearDay ? null : selectedDay ?? this.selectedDay,
     catalog: catalog ?? this.catalog,
     categories: categories ?? this.categories,
     summary: summary ?? this.summary,

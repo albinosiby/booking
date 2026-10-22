@@ -95,7 +95,6 @@ class RestWebsiteRepository implements WebsiteRepository {
             e.key: e.value as String,
       }),
       domain: v['domain'] as String?,
-      addressLocked: v['first_published_at'] != null,
       businesses: List.unmodifiable(businesses),
       businessIds: List.unmodifiable(
         businesses.where((b) => b.enabled).map((b) => b.id),

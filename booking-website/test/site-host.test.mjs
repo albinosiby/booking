@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  appOrigin,
+  appRedirect,
   legacySitePath,
   resolveSiteHost,
   siteDomain,
@@ -55,4 +57,25 @@ test("old path links move to the subdomain", () => {
     siteOrigin("eden", "localhost", "localhost:3010"),
     "http://eden.localhost:3010",
   );
+});
+test("login and register open the owner app", () => {
+  assert.equal(
+    appRedirect("/login", domain, ""),
+    "https://app.bookingos.online/sign-in",
+  );
+  assert.equal(
+    appRedirect("/login/", domain, ""),
+    "https://app.bookingos.online/sign-in",
+  );
+  assert.equal(
+    appRedirect("/register", domain, ""),
+    "https://app.bookingos.online/register",
+  );
+  assert.equal(appRedirect("/eden-sports", domain, ""), null);
+  assert.equal(legacySitePath("/login"), null);
+  assert.equal(
+    appOrigin(domain, "https://my-app.up.railway.app/x"),
+    "https://my-app.up.railway.app",
+  );
+  assert.equal(appOrigin("localhost", ""), "http://localhost:8080");
 });

@@ -57,8 +57,9 @@ import '../../modules/team/screens/invitation_screen.dart';
 import 'routes.dart';
 import '../../modules/auth/screens/password_update_screen.dart';
 import 'route_guard.dart';
-import '../../modules/sarvam/screens/sarvam_settings_screen.dart';
-import '../../modules/sarvam/screens/call_logs_screen.dart';
+import '../../modules/agent_calls/screens/agent_service_screen.dart';
+import '../../modules/support/screens/support_screens.dart';
+import '../../modules/agent_calls/screens/call_logs_screen.dart';
 
 class RouterRefresh extends ChangeNotifier {
   RouterRefresh(List<Stream<Object?>> streams) {
@@ -107,8 +108,13 @@ GoRouter createRouter(
         builder: (c, s) => const WebsiteSettingsScreen(),
       ),
       GoRoute(
-        path: Routes.sarvam,
-        builder: (c, s) => const SarvamSettingsScreen(),
+        path: Routes.agentCalls,
+        builder: (c, s) => const AgentServiceScreen(),
+      ),
+      GoRoute(path: Routes.support, builder: (c, s) => const SupportScreen()),
+      GoRoute(
+        path: '${Routes.support}/:id',
+        builder: (c, s) => SupportThreadScreen(id: s.pathParameters['id']!),
       ),
       GoRoute(path: Routes.callLogs, builder: (c, s) => const CallLogsScreen()),
       GoRoute(

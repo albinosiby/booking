@@ -2,6 +2,8 @@
 
 A Flutter owner/staff app with a Supabase-hosted API for one organization operating multiple businesses. The approved palette is black `#0F0F0F`, charcoal `#202020`, lime `#5DD62C`, green `#337418`, and off-white `#F8F8F8`.
 
+The public marketing homepage lives in [`landing-page/`](landing-page/README.md), copied from the existing BookingOS landing design. The shared Railway container serves it at `/`, the owner app at `/app/`, the admin panel at `/admin/`, and organisation booking links through `booking-website/`. See [one-service Railway deployment](docs/railway-deployment.md) for required variables, Supabase settings, health checks and rollback.
+
 ## Implemented
 
 - Owner registration/sign-in, password reset, email verification, secure persistent Supabase sessions (legacy Firebase support remains selectable) and sign-out.

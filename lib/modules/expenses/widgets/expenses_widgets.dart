@@ -38,17 +38,27 @@ class ExpenseChart extends StatelessWidget {
     required this.filter,
     required this.currency,
     required this.onMonth,
+    this.onDay,
+    this.selectedDay,
+    this.onClearDay,
   });
   final List<int> values;
   final ExpenseFilter filter;
   final String currency;
   final ValueChanged<int> onMonth;
+  final ValueChanged<int>? onDay;
+  final int? selectedDay;
+  final VoidCallback? onClearDay;
   @override
   Widget build(BuildContext context) => FinancePeriodChart(
     values: values,
     yearly: filter.yearly,
     currency: currency,
     onMonth: onMonth,
+    onDay: onDay,
+    selectedDay: selectedDay,
+    anchor: filter.anchor,
+    onClearDay: onClearDay,
     yearlyTitle: 'Monthly expenses · tap a month to explore',
     monthlyTitle: 'Daily expenses',
     note: 'Reversals reduce the total on the date they were recorded.',

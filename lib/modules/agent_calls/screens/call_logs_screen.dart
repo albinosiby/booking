@@ -3,8 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
-import '../cubit/sarvam_cubits.dart';
-import '../models/sarvam_models.dart';
+import '../cubit/agent_call_cubits.dart';
+import '../models/agent_call_models.dart';
 
 String clock(BuildContext context, DateTime time) => MaterialLocalizations.of(
   context,
@@ -45,7 +45,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
     if (picked != null) cubit.load(picked);
   }
 
-  void open(SarvamCall call) => showAdaptiveSheet<void>(
+  void open(AgentCall call) => showAdaptiveSheet<void>(
     context: context,
     scrollable: false,
     showClose: false,
@@ -68,11 +68,11 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
         final t = Theme.of(context), c = t.colorScheme;
         return AppPage(
           title: 'Call logs',
-          subtitle: 'Calls answered by your Sarvam voice agent.',
+          subtitle: 'Calls answered by your agent call service.',
           back: true,
           showAppBar: true,
           compactHeader: true,
-          scrollId: 'sarvam-call-logs',
+          scrollId: 'agent-call-logs',
           actions: [
             IconButton(
               tooltip: 'Refresh calls',
@@ -180,7 +180,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
     );
   }
 
-  String meta(BuildContext context, SarvamCall call) => [
+  String meta(BuildContext context, AgentCall call) => [
     if (call.startedAt != null) clock(context, call.startedAt!),
     call.duration,
     call.language,
@@ -210,7 +210,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
       back: true,
       showAppBar: true,
       maxWidth: 1200,
-      scrollId: 'sarvam-call-logs',
+      scrollId: 'agent-call-logs',
       header: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -221,7 +221,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
                 Text('Call logs', style: t.textTheme.headlineLarge),
                 const SizedBox(height: 6),
                 Text(
-                  'Calls answered by your Sarvam voice agent.',
+                  'Calls answered by your agent call service.',
                   style: TextStyle(color: c.onSurface.withValues(alpha: .65)),
                 ),
               ],
@@ -359,7 +359,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
     );
   }
 
-  Widget callRow(BuildContext context, SarvamCall call, bool active) {
+  Widget callRow(BuildContext context, AgentCall call, bool active) {
     final t = Theme.of(context), c = t.colorScheme;
     return Material(
       color: active ? c.primary.withValues(alpha: .07) : Colors.transparent,
@@ -439,7 +439,7 @@ class CallDetailSheet extends StatefulWidget {
     this.embedded = false,
     this.onClose,
   });
-  final SarvamCall call;
+  final AgentCall call;
 
   /// Desktop side pane: a plain column instead of a draggable sheet.
   final bool embedded;

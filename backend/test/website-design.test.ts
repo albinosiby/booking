@@ -89,6 +89,72 @@ test("addresses must be free, unreserved DNS labels", async () => {
   assert.equal(saved.url, "https://draft-venue.bookingos.online");
 });
 
+test("owners can rename a published website without changing publication or design", async () => {
+  const venue = await seedWebsite(db, "rename-published", false);
+  const original = await venue.website.settings(venue.owner);
+  assert.equal(original.status, "published");
+  assert.ok(original.first_published_at);
+  const preview = new URL((await venue.website.preview(venue.owner)).url);
+  const oldToken = preview.searchParams.get("preview")!;
+
+  for (const [slug, error] of [
+    ["design-site", /already taken/],
+    ["www", /reserved/],
+    ["bad--name", /single hyphens/],
+    ["a".repeat(64), /63/],
+  ] as const) {
+    await assert.rejects(
+      () => venue.website.save(venue.owner, form(original, { slug })),
+      error,
+    );
+  }
+  const renamed = await venue.website.save(
+    venue.owner,
+    form(original, {
+      slug: "renamed-venue",
+    }),
+  );
+  assert.equal(renamed.url, "https://renamed-venue.bookingos.online");
+  assert.equal(renamed.status, "published");
+  assert.equal(renamed.id, original.id);
+  assert.equal(renamed.version, original.version + 1);
+  assert.equal(renamed.title, original.title);
+  assert.deepEqual(renamed.businesses, original.businesses);
+  assert.ok((await venue.website.catalog("renamed-venue")).businesses.length);
+  await assert.rejects(
+    () => venue.website.catalog("rename-published"),
+    /not available/,
+  );
+  await assert.rejects(
+    () => venue.website.catalog("renamed-venue", oldToken),
+    /not available/,
+  );
+  await assert.rejects(
+    () =>
+      venue.website.save(
+        venue.owner,
+        form(original, { slug: "stale-address" }),
+      ),
+    /changed/,
+  );
+  const freshPreview = new URL((await venue.website.preview(venue.owner)).url);
+  assert.equal(freshPreview.host, "renamed-venue.bookingos.online");
+
+  // A site that has previously been published stays renameable in every status.
+  let current = renamed;
+  for (const [status, action, slug] of [
+    ["paused", "paused", "renamed-paused"],
+    ["unpublished", "unpublished", "renamed-unpublished"],
+  ] as const) {
+    current = await venue.website.publication(venue.owner, action, {
+      version: current.version,
+    });
+    current = await venue.website.save(venue.owner, form(current, { slug }));
+    assert.equal(current.status, status);
+    assert.equal(current.url, `https://${slug}.bookingos.online`);
+  }
+});
+
 test("hero heading, social links and card descriptions are public; omitted fields are kept", async () => {
   let s = await settings();
   const turf = s.businesses.find((b: any) => b.type === "turf")!;

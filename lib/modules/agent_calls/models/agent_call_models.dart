@@ -1,154 +1,7 @@
 import 'package:equatable/equatable.dart';
 
-class SarvamBusiness extends Equatable {
-  const SarvamBusiness({
-    required this.id,
-    required this.name,
-    required this.ready,
-    required this.assigned,
-  });
-  factory SarvamBusiness.fromJson(Map<String, dynamic> j) => SarvamBusiness(
-    id: j['id'] as String,
-    name: j['name'] as String? ?? '',
-    ready: j['status'] == 'ready',
-    assigned: j['assigned'] == true,
-  );
-  final String id, name;
-  final bool ready, assigned;
-  @override
-  List<Object?> get props => [id, name, ready, assigned];
-}
-
-class SarvamDeployment extends Equatable {
-  const SarvamDeployment({required this.id, required this.name});
-  final String id, name;
-  @override
-  List<Object?> get props => [id, name];
-}
-
-class SarvamSettings extends Equatable {
-  const SarvamSettings({
-    this.version = 0,
-    this.enabled = false,
-    this.connected = false,
-    this.hasCredentials = false,
-    this.callLogsAvailable = false,
-    this.apiKeyLast4 = '',
-    this.orgId = '',
-    this.workspaceId = '',
-    this.appId = '',
-    this.status = 'disconnected',
-    this.step = '',
-    this.setupError = '',
-    this.authorizationUrl = '',
-    this.draftVersion,
-    this.publishedVersion,
-    this.deployments = const [],
-    this.businesses = const [],
-  });
-  factory SarvamSettings.fromJson(Map<String, dynamic> j) => SarvamSettings(
-    version: (j['version'] as num?)?.toInt() ?? 0,
-    enabled: j['enabled'] == true,
-    connected: j['connected'] == true,
-    hasCredentials: j['has_credentials'] == true,
-    callLogsAvailable: j['call_logs_available'] == true,
-    apiKeyLast4: j['api_key_last4'] as String? ?? '',
-    orgId: j['sarvam_org_id'] as String? ?? '',
-    workspaceId: j['workspace_id'] as String? ?? '',
-    appId: j['app_id'] as String? ?? '',
-    status: j['setup_status'] as String? ?? 'disconnected',
-    step: j['setup_step'] as String? ?? '',
-    setupError: j['setup_error'] as String? ?? '',
-    authorizationUrl: j['authorization_url'] as String? ?? '',
-    draftVersion: (j['draft_version'] as num?)?.toInt(),
-    publishedVersion: (j['published_version'] as num?)?.toInt(),
-    deployments: [
-      for (final d in j['deployments'] as List? ?? [])
-        SarvamDeployment(id: d['id'] as String, name: d['name'] as String),
-    ],
-    businesses: [
-      for (final b in j['businesses'] as List? ?? [])
-        SarvamBusiness.fromJson(Map<String, dynamic>.from(b as Map)),
-    ],
-  );
-  final int version;
-  final bool enabled, connected, hasCredentials, callLogsAvailable;
-  final String apiKeyLast4,
-      orgId,
-      workspaceId,
-      appId,
-      status,
-      step,
-      setupError,
-      authorizationUrl;
-  final int? draftVersion, publishedVersion;
-  final List<SarvamDeployment> deployments;
-  final List<SarvamBusiness> businesses;
-  bool get needsWork => [
-    'connecting',
-    'failed',
-    'publishing',
-    'cleanup_pending',
-  ].contains(status);
-  bool get canEnableBookings =>
-      status == 'legacy' || connected && publishedVersion != null;
-  bool get awaitingPublish => connected && draftVersion != publishedVersion;
-  String get statusLabel => switch (status) {
-    'connecting' => 'Connecting',
-    'authorization_required' => 'Authorize Sarvam',
-    'failed' => 'Setup failed — Retry',
-    'publishing' => 'Publishing',
-    'cleanup_pending' => 'Disconnected — cleanup pending',
-    'configured' =>
-      awaitingPublish ? 'Configured — awaiting publish' : 'Connected',
-    'legacy' => 'Connect to upgrade setup',
-    _ => 'Disconnected',
-  };
-  String get progressLabel => switch (step) {
-    'verify_credentials' => 'Verifying API key and IDs',
-    'authorize' =>
-      status == 'authorization_required'
-          ? 'Waiting for Sarvam sign-in'
-          : 'Preparing Sarvam sign-in',
-    'capabilities' => 'Checking authoring permissions',
-    'scope' => 'Verifying agent and workspace',
-    'secret' => 'Configuring secure tool authentication',
-    'variables' => 'Configuring agent variables',
-    'enable_tools' => 'Enabling booking tools',
-    'prompt' => 'Configuring booking instructions',
-    'verify' => 'Verifying booking configuration',
-    'deployments' => 'Loading phone deployments',
-    'commit' => 'Saving the reviewed agent version',
-    'deploy' => 'Updating the selected phone deployment',
-    'verify_publish' => 'Verifying the published version',
-    'cleanup_tools' => 'Disabling managed tools',
-    'cleanup_secret' => 'Revoking remote booking access',
-    _ => step.startsWith('tool_') ? 'Configuring booking tools' : '',
-  };
-  @override
-  List<Object?> get props => [
-    version,
-    enabled,
-    connected,
-    hasCredentials,
-    callLogsAvailable,
-    apiKeyLast4,
-    orgId,
-    workspaceId,
-    appId,
-    status,
-    step,
-    setupError,
-    authorizationUrl,
-    draftVersion,
-    publishedVersion,
-    deployments,
-    businesses,
-  ];
-}
-
-class SarvamCall extends Equatable {
-  const SarvamCall({
+class AgentCall extends Equatable {
+  const AgentCall({
     required this.id,
     this.startedAt,
     this.durationSeconds = 0,
@@ -162,12 +15,12 @@ class SarvamCall extends Equatable {
     this.requestedFacility = '',
     this.preferredDatetime = '',
   });
-  factory SarvamCall.fromJson(Map<String, dynamic> j) {
+  factory AgentCall.fromJson(Map<String, dynamic> j) {
     String s(String k) => j[k] as String? ?? '';
     final started = s('started_at');
-    return SarvamCall(
+    return AgentCall(
       id: s('interaction_id'),
-      // Sarvam omits the zone suffix; observed timestamps are UTC.
+      // The provider omits the zone suffix; observed timestamps are UTC.
       startedAt: started.isEmpty
           ? null
           : DateTime.tryParse(
@@ -206,16 +59,16 @@ class SarvamCall extends Equatable {
   List<Object?> get props => [id, startedAt, durationSeconds, summary];
 }
 
-class SarvamCallPage extends Equatable {
-  const SarvamCallPage({this.items = const [], this.total = 0});
-  factory SarvamCallPage.fromJson(Map<String, dynamic> j) => SarvamCallPage(
+class AgentCallPage extends Equatable {
+  const AgentCallPage({this.items = const [], this.total = 0});
+  factory AgentCallPage.fromJson(Map<String, dynamic> j) => AgentCallPage(
     items: [
       for (final c in j['items'] as List? ?? const [])
-        SarvamCall.fromJson(Map<String, dynamic>.from(c as Map)),
+        AgentCall.fromJson(Map<String, dynamic>.from(c as Map)),
     ],
     total: (j['total'] as num?)?.toInt() ?? 0,
   );
-  final List<SarvamCall> items;
+  final List<AgentCall> items;
   final int total;
   @override
   List<Object?> get props => [items, total];
@@ -233,96 +86,20 @@ class TranscriptLine extends Equatable {
   List<Object?> get props => [agent, text];
 }
 
-class SarvamSettingsState extends Equatable {
-  const SarvamSettingsState({
-    this.saved = const SarvamSettings(),
-    this.orgId = '',
-    this.workspaceId = '',
-    this.appId = '',
-    this.apiKey = '',
-    this.businessIds = const {},
-    this.loading = true,
-    this.busy = false,
-    this.notice,
-    this.error,
-  });
-  final SarvamSettings saved;
-  final String orgId, workspaceId, appId, apiKey;
-  final Set<String> businessIds;
-  final bool loading, busy;
-  final String? notice, error;
-  bool get dirty =>
-      orgId != saved.orgId ||
-      workspaceId != saved.workspaceId ||
-      appId != saved.appId ||
-      apiKey.isNotEmpty ||
-      businessIds.length != saved.businesses.where((b) => b.assigned).length ||
-      !businessIds.containsAll(
-        saved.businesses.where((b) => b.assigned).map((b) => b.id),
-      );
-  SarvamSettingsState fromSaved(SarvamSettings s) => SarvamSettingsState(
-    saved: s,
-    orgId: s.orgId,
-    workspaceId: s.workspaceId,
-    appId: s.appId,
-    businessIds: {
-      for (final b in s.businesses)
-        if (b.assigned) b.id,
-    },
-    loading: false,
-  );
-  SarvamSettingsState copyWith({
-    SarvamSettings? saved,
-    String? orgId,
-    String? workspaceId,
-    String? appId,
-    String? apiKey,
-    Set<String>? businessIds,
-    bool? loading,
-    bool? busy,
-    String? notice,
-    String? error,
-  }) => SarvamSettingsState(
-    saved: saved ?? this.saved,
-    orgId: orgId ?? this.orgId,
-    workspaceId: workspaceId ?? this.workspaceId,
-    appId: appId ?? this.appId,
-    apiKey: apiKey ?? this.apiKey,
-    businessIds: businessIds ?? this.businessIds,
-    loading: loading ?? this.loading,
-    busy: busy ?? this.busy,
-    notice: notice,
-    error: error,
-  );
-  @override
-  List<Object?> get props => [
-    saved,
-    orgId,
-    workspaceId,
-    appId,
-    apiKey,
-    businessIds,
-    loading,
-    busy,
-    notice,
-    error,
-  ];
-}
-
 class CallLogsState extends Equatable {
   const CallLogsState({
     required this.day,
-    this.page = const SarvamCallPage(),
+    this.page = const AgentCallPage(),
     this.loading = true,
     this.error,
   });
   final DateTime day;
-  final SarvamCallPage page;
+  final AgentCallPage page;
   final bool loading;
   final String? error;
   CallLogsState copyWith({
     DateTime? day,
-    SarvamCallPage? page,
+    AgentCallPage? page,
     bool? loading,
     String? error,
   }) => CallLogsState(
@@ -362,3 +139,56 @@ class CallDetailState extends Equatable {
   @override
   List<Object?> get props => [lines, loading, saving, notice, error];
 }
+
+/// Progress of the owner's agent call service request.
+class AgentServiceStatus extends Equatable {
+  const AgentServiceStatus({
+    this.status = 'none',
+    this.message = '',
+    this.ready = false,
+    this.enabled = false,
+    this.requestedAt,
+    this.updatedAt,
+  });
+  factory AgentServiceStatus.fromJson(Map<String, dynamic> j) =>
+      AgentServiceStatus(
+        status: j['status'] as String? ?? 'none',
+        message: j['message'] as String? ?? '',
+        ready: j['ready'] == true,
+        enabled: j['enabled'] == true,
+        requestedAt: DateTime.tryParse(j['requested_at'] as String? ?? ''),
+        updatedAt: DateTime.tryParse(j['updated_at'] as String? ?? ''),
+      );
+  final String status, message;
+  final bool ready, enabled;
+  final DateTime? requestedAt, updatedAt;
+  @override
+  List<Object?> get props => [status, message, ready, enabled, requestedAt, updatedAt];
+}
+
+class AgentServiceState extends Equatable {
+  const AgentServiceState({
+    this.status = const AgentServiceStatus(),
+    this.loading = true,
+    this.busy = false,
+    this.error,
+  });
+  final AgentServiceStatus status;
+  final bool loading, busy;
+  final String? error;
+  AgentServiceState copyWith({
+    AgentServiceStatus? status,
+    bool? loading,
+    bool? busy,
+    Object? error = _keep,
+  }) => AgentServiceState(
+    status: status ?? this.status,
+    loading: loading ?? this.loading,
+    busy: busy ?? this.busy,
+    error: identical(error, _keep) ? this.error : error as String?,
+  );
+  @override
+  List<Object?> get props => [status, loading, busy, error];
+}
+
+const _keep = Object();

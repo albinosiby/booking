@@ -22,6 +22,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     param1: context.read<WorkspaceCubit>(),
   );
   final form = GlobalKey<FormState>();
+  final addressField = GlobalKey<FormFieldState<String>>();
   @override
   void initState() {
     super.initState();
@@ -104,7 +105,8 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
         ),
         const SizedBox(height: 12),
         SelectableText(
-          d.url ??
+          key: const ValueKey('website-saved-url'),
+          s.saved?.url ??
               'Configure BOOKING_WEBSITE_DOMAIN on the API to enable public links.',
         ),
         const SizedBox(height: 8),
@@ -154,45 +156,106 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     ),
   );
 
-  Widget address(WebsiteSettings d) => section(
+  Widget address(WebsiteSettingsState s, WebsiteSettings d) => section(
     'Website address',
-    d.domain == null
-        ? 'Choose the name used in your booking link.'
-        : 'Your website gets its own address on ${d.domain}. Share it with customers or add it to your social profiles.',
+    'Edit the name, then save your website address.',
     [
-      field(
-        label: d.domain == null ? 'Website address' : 'Subdomain',
-        value: d.slug,
-        enabled: !d.addressLocked,
-        max: 63,
-        prefix: d.domain == null ? null : 'https://',
-        suffix: d.domain == null ? null : '.${d.domain}',
-        helper: d.addressLocked
-            ? 'The address is fixed after publication so shared links keep working.'
-            : 'Lowercase letters, numbers and single hyphens, e.g. eden-sports.',
-        onChanged: (v) =>
-            cubit.update(d.copyWith(slug: v.trim().toLowerCase())),
-        validator: (v) {
-          final value = (v ?? '').trim().toLowerCase();
-          if (d.addressLocked) return null;
-          if (!RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$').hasMatch(value) ||
-              value.length < 3 ||
-              value.length > 63) {
-            return 'Use 3–63 lowercase letters, numbers or hyphens.';
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final style = Theme.of(context).textTheme.bodyMedium!;
+          final prefix = d.domain == null ? null : 'https://';
+          final suffix = d.domain == null ? null : '.${d.domain}';
+          double textWidth(String text) {
+            final painter = TextPainter(
+              text: TextSpan(text: text, style: style),
+              textDirection: Directionality.of(context),
+              textScaler: MediaQuery.textScalerOf(context),
+            )..layout();
+            final width = painter.width;
+            painter.dispose();
+            return width;
           }
-          return null;
+
+          // Wrap the fixed domain on narrow screens to leave room to type.
+          final inline =
+              prefix == null ||
+              constraints.maxWidth >=
+                  textWidth(prefix) + textWidth(suffix!) + 120;
+          Widget fixed(String text) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(text, style: style),
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                key: addressField,
+                initialValue: d.slug,
+                enabled: !s.busy,
+                maxLength: 63,
+                autocorrect: false,
+                enableSuggestions: false,
+                textCapitalization: TextCapitalization.none,
+                keyboardType: TextInputType.url,
+                validator: websiteAddressError,
+                onChanged: (v) =>
+                    cubit.update(d.copyWith(slug: v.trim().toLowerCase())),
+                onFieldSubmitted: (_) => saveAddress(),
+                decoration: InputDecoration(
+                  labelText: 'Website name',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  hintText: 'your-name',
+                  prefixIcon: prefix == null ? null : fixed(prefix),
+                  prefixIconConstraints: const BoxConstraints(minHeight: 48),
+                  suffixIcon: suffix != null && inline ? fixed(suffix) : null,
+                  suffixIconConstraints: const BoxConstraints(minHeight: 48),
+                  helperText: 'Lowercase letters, numbers and single hyphens.',
+                  helperMaxLines: 3,
+                  errorText: s.addressError,
+                  errorMaxLines: 4,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              if (suffix != null && !inline)
+                Align(alignment: Alignment.centerRight, child: fixed(suffix)),
+            ],
+          );
         },
       ),
-      if (d.draftUrl != null)
-        Row(
-          children: [
-            const Icon(Icons.link, size: 18),
-            const SizedBox(width: 8),
-            Expanded(child: SelectableText(d.draftUrl!)),
-          ],
+      const SizedBox(height: 12),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton.icon(
+          key: const ValueKey('website-address-save'),
+          onPressed: s.busy || !s.addressDirty ? null : saveAddress,
+          icon: s.savingAddress
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.save_outlined),
+          label: Text(s.savingAddress ? 'Saving…' : 'Save'),
         ),
+      ),
+      if (s.addressError != null)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: s.busy ? null : cubit.load,
+            child: const Text('Reload settings'),
+          ),
+        ),
+      const SizedBox(height: 12),
+      const Text(
+        'After saving a new name, share the updated address. The previous address will no longer open this website.',
+      ),
     ],
   );
+
+  void saveAddress() {
+    if (addressField.currentState?.validate() ?? false) cubit.saveAddress();
+  }
 
   Widget brand(WebsiteSettingsState s, WebsiteSettings d) => section(
     'Brand & homepage',
@@ -464,7 +527,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
                                   children: [
                                     header(s, d),
                                     gap,
-                                    address(d),
+                                    address(s, d),
                                     gap,
                                     brand(s, d),
                                     gap,

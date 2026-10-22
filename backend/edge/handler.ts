@@ -1,3 +1,7 @@
+import type { SupportService } from "../src/support/support.service";
+import type { AgentCallService } from "../src/agent-calls/agent-calls.service";
+import type { AdminService } from "../src/admin/admin.service";
+import { panelActor } from "../src/admin/panel-auth";
 import type { WebsiteService } from "../src/website/website.service";
 import type { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
 import { AdmissionService } from "../src/admissions/admission.service";
@@ -28,6 +32,9 @@ import { renderExpenseReport } from "../src/expenses/expenses.report";
 import type { IncomeService } from "../src/income/income.service";
 import { renderIncomeReport } from "../src/income/income.report";
 type Services = {
+  admin: AdminService;
+  support: SupportService;
+  agentCalls: AgentCallService;
   website: WebsiteService;
   blocks: SlotBlocksService;
   admissions: AdmissionService;
@@ -104,6 +111,36 @@ export function createHandler(
   const routes: Route[] = [];
   const add = (method: string, path: string, run: Route["run"]) =>
     routes.push({ method, path, run });
+  const ad = services.admin;
+  add("GET", "/v1/admin/me", (i) => ad.me(i.actor));
+  add("GET", "/v1/admin/overview", (i) => ad.overview(i.actor));
+  add("GET", "/v1/admin/organizations", (i) =>
+    ad.organizations(i.actor, i.query),
+  );
+  add("GET", "/v1/admin/organizations/:id", (i) =>
+    ad.organization(i.actor, i.params.id),
+  );
+  add("GET", "/v1/admin/users", (i) => ad.users(i.actor, i.query));
+  add("PUT", "/v1/admin/users/:id/active", (i) =>
+    ad.setUserActive(i.actor, i.params.id, i.body),
+  );
+  add("GET", "/v1/admin/support/tickets", (i) => ad.tickets(i.actor, i.query));
+  add("GET", "/v1/admin/support/tickets/:id", (i) =>
+    ad.ticket(i.actor, i.params.id),
+  );
+  add("POST", "/v1/admin/support/tickets/:id/reply", (i) =>
+    ad.reply(i.actor, i.params.id, i.body),
+  );
+  add("PUT", "/v1/admin/support/tickets/:id/status", (i) =>
+    ad.setTicketStatus(i.actor, i.params.id, i.body),
+  );
+  add("GET", "/v1/admin/agent-requests", (i) =>
+    ad.agentRequests(i.actor, i.query),
+  );
+  add("PUT", "/v1/admin/agent-requests/:id", (i) =>
+    ad.updateAgentRequest(i.actor, i.params.id, i.body),
+  );
+  add("GET", "/v1/admin/audit", (i) => ad.auditLog(i.actor, i.query));
   add("GET", "/v1/booking-website", (i) => services.website.settings(i.actor));
   add("PUT", "/v1/booking-website", (i) =>
     services.website.save(i.actor, i.body),
@@ -197,32 +234,31 @@ export function createHandler(
   add("DELETE", "/v1/message-templates/:id", (i) =>
     services.messages.remove(i.actor, i.params.id),
   );
-  add("GET", "/v1/sarvam/settings", (i) => services.sarvam.settings(i.actor));
-  add("PUT", "/v1/sarvam/settings", (i) =>
-    services.sarvam.save(i.actor, i.body),
+  add("GET", "/v1/support/tickets", (i) => services.support.list(i.actor));
+  add("POST", "/v1/support/tickets", (i) =>
+    services.support.create(i.actor, i.body),
   );
-  add("POST", "/v1/sarvam/connect", (i) =>
-    services.sarvam.connect(i.actor, i.body),
+  add("GET", "/v1/support/tickets/:id", (i) =>
+    services.support.detail(i.actor, i.params.id),
   );
-  add("POST", "/v1/sarvam/setup", (i) => services.sarvam.setupStep(i.actor));
-  add("POST", "/v1/sarvam/disconnect", (i) =>
-    services.sarvam.disconnect(i.actor),
+  add("POST", "/v1/support/tickets/:id/messages", (i) =>
+    services.support.addMessage(i.actor, i.params.id, i.body),
   );
-  add("PUT", "/v1/sarvam/booking-enabled", (i) =>
-    services.sarvam.bookingEnabled(i.actor, i.body),
+  add("GET", "/v1/agent-calls", (i) => services.agentCalls.status(i.actor));
+  add("POST", "/v1/agent-calls/request", (i) =>
+    services.agentCalls.request(i.actor, i.body),
   );
-  add("POST", "/v1/sarvam/publish", (i) =>
-    services.sarvam.publish(i.actor, i.body),
+  add("PUT", "/v1/agent-calls/enabled", (i) =>
+    services.agentCalls.setEnabled(i.actor, i.body),
   );
-  add("POST", "/v1/sarvam/test", (i) => services.sarvam.test(i.actor));
-  add("GET", "/v1/sarvam/calls", (i) =>
-    services.sarvam.calls(i.actor, i.query),
+  add("GET", "/v1/agent-calls/calls", (i) =>
+    services.agentCalls.calls(i.actor, i.query),
   );
-  add("GET", "/v1/sarvam/transcript", (i) =>
-    services.sarvam.transcript(i.actor, i.query.interaction_id),
+  add("GET", "/v1/agent-calls/transcript", (i) =>
+    services.agentCalls.transcript(i.actor, i.query.interaction_id),
   );
-  add("GET", "/v1/sarvam/recording", async (i) => {
-    const audio = await services.sarvam.recording(
+  add("GET", "/v1/agent-calls/recording", async (i) => {
+    const audio = await services.agentCalls.recording(
       i.actor,
       i.query.interaction_id,
     );
@@ -233,6 +269,15 @@ export function createHandler(
       },
     });
   });
+  add("GET", "/v1/admin/agent-requests/:id/connection", (i) =>
+    ad.connection(i.actor, i.params.id),
+  );
+  add("PUT", "/v1/admin/agent-requests/:id/connection", (i) =>
+    ad.saveConnection(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/admin/agent-requests/:id/tool-key", (i) =>
+    ad.rotateToolKey(i.actor, i.params.id),
+  );
   const voiceRoutes: Record<
     string,
     (actor: Actor, body: unknown) => Promise<unknown>
@@ -642,9 +687,23 @@ export function createHandler(
       const token = /^Bearer (\S+)$/.exec(
         req.headers.get("authorization") ?? "",
       )?.[1];
-      if (!token) throw new UnauthorizedException("Sign in to continue.");
+      const isAdmin = path.startsWith("/v1/admin/");
+      if (!isAdmin && !token)
+        throw new UnauthorizedException("Sign in to continue.");
       const authStarted = performance.now();
-      const actor = await authenticate(token).finally(() => {
+      const input = isAdmin ? await body(req) : undefined;
+      const actor = await (
+        isAdmin
+          ? Promise.resolve().then(() =>
+              panelActor(
+                req.headers.get("x-bookingos-admin"),
+                req.method,
+                path + url.search,
+                input,
+              ),
+            )
+          : authenticate(token!)
+      ).finally(() => {
         authenticationMs = performance.now() - authStarted;
       });
       const now = Date.now();
@@ -663,7 +722,7 @@ export function createHandler(
       const result = await match.run({
         actor,
         params,
-        body: await body(req),
+        body: isAdmin ? input : await body(req),
         query: Object.fromEntries(url.searchParams),
       });
       if (result instanceof Response) {

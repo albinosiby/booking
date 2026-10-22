@@ -5,6 +5,7 @@ Expenses is accessed from **Profile → Expenses**, not the Accounts action menu
 ## Using the feature
 
 - Switch Monthly/Yearly and choose a period. Tap a month in the yearly graph to see that month's full list.
+- Tap a daily bar to highlight it and list only transactions on that day. The selected date and chart total appear below the graph; **Show all days** restores the full period. Category/source, business, space and account filters still apply. **Load more** stays within the selected day. The selection survives refresh and clears when changing month/year or switching to Yearly. Totals, graphs and PDF/Excel reports continue to cover the selected full month/year. Dates follow the organization timezone, including refunds and reversals on their recorded day.
 - Filter by category, business, space or payment account. All categories includes archived and migrated historical categories.
 - Download PDF or Excel for the selected full month/year and filters. Clear Category to export the whole period. Reports include category totals, each expense, payment splits, invoice counts and reversal identifiers; private invoice URLs are never exported.
 - Add expense: category, reason, date/time, scope, optional reference and one or more payment sources. Each source has a method, account and amount; their sum is the expense total.
