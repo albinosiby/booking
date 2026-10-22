@@ -59,43 +59,35 @@ void main() {
     });
     expect(bookingOpensAllDay(turf, 'business', 'ground', 'football'), isFalse);
   });
-  for (final showOffset in [false, true]) {
-    testWidgets(
-      'midnight offset visibility $showOffset retains next-day slot identity',
-      (tester) async {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: BookingTimeGrid(
-                slots: const [
-                  BookingSlot(
-                    '00:00',
-                    false,
-                    0,
-                    null,
-                    false,
-                    null,
-                    'end_only',
-                    '2030-06-05',
-                  ),
-                ],
-                selectedDate: '2030-06-04',
-                showDayOffset: showOffset,
-                onSelected: (_) {},
-              ),
+  for (final selectedDate in ['2030-06-04', '2030-06-05']) {
+    testWidgets('midnight has no offset text for selected date $selectedDate', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BookingTimeGrid(
+              slots: const [
+                BookingSlot(
+                  '00:00',
+                  false,
+                  0,
+                  null,
+                  false,
+                  null,
+                  'end_only',
+                  '2030-06-05',
+                ),
+              ],
+              selectedDate: selectedDate,
+              onSelected: (_) {},
             ),
           ),
-        );
-        expect(
-          find.text(showOffset ? '24:00 +1 day' : '24:00'),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const ValueKey('booking-time-00:00')),
-          findsOneWidget,
-        );
-        expect(tester.takeException(), isNull);
-      },
-    );
+        ),
+      );
+      expect(find.text('24:00'), findsOneWidget);
+      expect(find.byKey(const ValueKey('booking-time-00:00')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   }
 }

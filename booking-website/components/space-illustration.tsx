@@ -1,6 +1,9 @@
 "use client";
 import { useId } from "react";
 import type { Resource } from "../lib/types";
+import { BasketballCourt } from "./basketball-court";
+import { TennisCourt } from "./tennis-court";
+import { EventHall } from "./event-hall";
 export function SpaceIllustration({
   type,
   sport,
@@ -19,7 +22,12 @@ export function SpaceIllustration({
   const id = useId().replace(/:/g, "");
   const turf = type === "turf",
     pool = type === "pool",
+    basketball = type === "basketball",
+    tennis = type === "tennis",
+    hall = type === "hall",
     cricket = sport === "cricket";
+  const detailedLayout = basketball || tennis || hall;
+  const height = turf ? 380 : detailedLayout ? 360 : 280;
   const halves =
     turf && selected?.ground_id
       ? resources.filter(
@@ -34,15 +42,19 @@ export function SpaceIllustration({
       ? cricket
         ? "CRICKET TURF"
         : "FOOTBALL PITCH"
-      : type === "hall"
+      : hall
         ? "EVENT HALL"
-        : "COURT";
+        : basketball
+          ? "BASKETBALL COURT"
+          : tennis
+            ? "TENNIS COURT"
+            : "COURT";
   return (
     <div
       className={`space-art ${turf ? "turf-art" : ""} ${cricket ? "cricket-art" : ""}`}
     >
       <svg
-        viewBox={turf ? "0 0 600 380" : "0 0 600 280"}
+        viewBox={`0 0 600 ${height}`}
         role="img"
         aria-label={`${name} ${labels.toLowerCase()} illustration`}
       >
@@ -90,16 +102,22 @@ export function SpaceIllustration({
           x="5"
           y="5"
           width="590"
-          height={turf ? 370 : 270}
+          height={height - 10}
           rx="20"
           fill={
             turf
               ? `url(#${id}grass)`
               : pool
                 ? `url(#${id}water)`
-                : `url(#${id}court)`
+                : detailedLayout
+                  ? "#173d50"
+                  : `url(#${id}court)`
           }
-          stroke={turf ? (cricket ? "#c3a567" : "#137d68") : "#71b7cf"}
+          stroke={
+            turf
+              ? cricket ? "#c3a567" : "#137d68"
+              : hall ? "#b7c9c3" : detailedLayout ? "#173d50" : "#71b7cf"
+          }
           strokeWidth="10"
         />
         {turf && !cricket && (
@@ -184,7 +202,10 @@ export function SpaceIllustration({
             ))}
           </g>
         )}
-        {!turf && !pool && type !== "hall" && (
+        {basketball && <BasketballCourt patternId={`${id}hardwood`} />}
+        {tennis && <TennisCourt />}
+        {hall && <EventHall />}
+        {!turf && !pool && !detailedLayout && (
           <g stroke="#eaf8fb" strokeWidth="2.5" fill="none">
             <rect x="34" y="34" width="532" height="212" />
             <path d="M34 67h532M34 213h532M110 34v212m380-212v212M300 34v212M110 140h380" />
@@ -195,55 +216,41 @@ export function SpaceIllustration({
               strokeWidth="4"
               strokeDasharray="2 3"
             />
-            {type === "tennis" && <path d="M34 140h76m380 0h76" />}
-            {type === "basketball" && (
-              <>
-                <circle cx="300" cy="140" r="42" />
-                <path d="M34 90h90v100H34m532-100h-90v100h90" />
-              </>
-            )}
-          </g>
-        )}
-        {type === "hall" && (
-          <g fill="#e7c895" stroke="#f6e9cb" strokeWidth="2">
-            <rect x="45" y="36" width="510" height="55" rx="8" />
-            {[115, 280, 445].flatMap((x) =>
-              [140, 210].map((y) => (
-                <g key={`${x}-${y}`}>
-                  <circle cx={x} cy={y} r="26" />
-                  <circle cx={x} cy={y} r="17" fill="#fff8e7" />
-                </g>
-              )),
-            )}
           </g>
         )}
         <rect
           x="25"
-          y="25"
+          y={detailedLayout ? 16 : 25}
           width="300"
-          height="46"
+          height={detailedLayout ? 26 : 46}
           rx="8"
           fill="#143f55"
           opacity=".82"
         />
-        <text x="40" y="54" fill="#fff" fontSize="17" fontWeight="650">
+        <text
+          x="40"
+          y={detailedLayout ? 34 : 54}
+          fill="#fff"
+          fontSize={detailedLayout ? 14 : 17}
+          fontWeight="650"
+        >
           {name.length > 30 ? name.slice(0, 29) + "…" : name}
         </text>
         <rect
           x={turf ? 418 : 420}
-          y={turf ? 326 : 226}
+          y={turf ? 326 : detailedLayout ? 327 : 226}
           width="155"
-          height="30"
+          height={detailedLayout ? 23 : 30}
           rx="8"
-          fill="#fff"
-          opacity=".17"
+          fill={detailedLayout ? "#173d50" : "#fff"}
+          opacity={detailedLayout ? ".85" : ".17"}
         />
         <text
           x="559"
-          y={turf ? 346 : 247}
+          y={turf ? 346 : detailedLayout ? 343 : 247}
           textAnchor="end"
           fill="#fff"
-          fontSize="12"
+          fontSize={detailedLayout ? 10 : 12}
           fontWeight="700"
           letterSpacing="2"
         >

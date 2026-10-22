@@ -52,7 +52,6 @@ export function BookingTimePicker({
                 {finish ? (
                   <>
                     {timeLabel(finish.slice(11, 16))}
-                    {finish.slice(0, 10) !== date && <small> +1 day</small>}
                   </>
                 ) : (
                   "—"
@@ -123,7 +122,6 @@ export function BookingTimePicker({
               >
                 <strong>
                   {timeLabel(cell.slot.time)}
-                  {day && <small>{day}</small>}
                 </strong>
                 <span>{cell.label}</span>
               </button>

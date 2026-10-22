@@ -327,9 +327,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
               ('Start', s.choosingEnd ? TimeFormat.display(s.draft.time) : '—'),
               (
                 'End',
-                s.rangeComplete
-                    ? '${TimeFormat.display(s.draft.endTime)}${s.draft.endsNextDay ? ' +1 day' : ''}'
-                    : '—',
+                s.rangeComplete ? TimeFormat.display(s.draft.endTime) : '—',
               ),
               ('Duration', s.rangeComplete ? '${s.draft.duration} min' : '—'),
             ])
@@ -420,7 +418,6 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
           choosingEnd: s.choosingEnd,
           minimumDuration: s.option?.minimumDuration,
           selectedDate: s.draft.date,
-          showDayOffset: !s.open24Hours,
           enabled: !s.locked,
           onSelected: cubit.chooseSlot,
         )
