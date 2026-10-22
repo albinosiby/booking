@@ -11,13 +11,13 @@ A Flutter owner/staff app with a Supabase-hosted API for one organization operat
 - Resource creation/removal, capacity, operating days/hours, prices in integer minor units, duration and buffers.
 - Multiple pools with capacities/depths, per-person time tariffs, configurable group offers, coaching plans and 25/custom attendance-day plans with separate expiry.
 - Configuration saved independently per business; activation requires a resource and valid rules. Configure disappears after activation; editing remains in Profile.
-- Staff invitations via private expiring links; acceptance checks the exact invited email. Owner can change business/resource assignments, permissions and revoke access.
+- Staff invitations via private expiring links; acceptance checks the exact invited email. Owner can change business/resource assignments, permissions and revoke access. Coaches use the same staff flow, with coaching plans inside staff details and separate attendance/subscription permissions; see [Unified staff management](docs/team-coaches.md).
 - Elevated Home / Calendar / Bookings / Payments / Profile navigation with preserved tab state.
 - Server-enforced owner operations and staff visibility. No passwords or service keys are stored in the application database.
 
 A Sarvam phone voice agent can book, reschedule and cancel by phone, with owner-managed setup and call logs in Profile; see [Sarvam voice agent](docs/sarvam-voice-agent.md).
 
-Bookings, daily Calendar and manual payment collections are implemented, including split payments and atomic rescheduling. Home shows live booking and collection figures. Admissions and coaching now support fixed weekly reservations, flexible attendance, expiry/completion and renewals. No payment gateway, email-delivery provider or public booking website is included.
+Bookings, daily Calendar and manual payment collections are implemented, including split payments and atomic rescheduling. Home shows live booking and collection figures. Admissions and coaching now support fixed weekly reservations, flexible attendance, expiry/completion and renewals. No payment gateway or email-delivery provider is included. The public booking website is prepared in `booking-website/`; its new migration and API/frontend deployment are required before enabling live bookings. See [Public booking website](docs/public-booking-website.md).
 
 ## Current Supabase setup
 
@@ -175,3 +175,9 @@ Shared loading motion and usage are documented in [Loading animations](docs/load
 ### Profile and business management
 
 Profile now links to organization details, Businesses, team and payment settings. Businesses provides visible detail, rename and configuration actions, plus an organization-wide saved display order used by business selectors and groups throughout the app. See [business management](docs/business-management.md), including migration `004_business_order.sql`, before deploying the updated API.
+
+## Public booking website
+
+Profile → Booking website manages the organisation’s public `/<slug>` page, selected businesses, read-only previews, publication and booking rules. The responsive Next.js homepage introduces the organisation with a hero image and service cards. Each card opens a dedicated booking page with its space-photo gallery, the approved navy/teal design, illustrated turf/court/pool selectors, start/finish time cards and reservation summary. Owners upload hero/space photos from the same settings screen. Customers enter name/phone and confirm ordinary unpaid bookings in the same inventory as the app. Group offers, coaching and swimming plans are rejected by the public API.
+
+Run the isolated in-memory preview using [the setup guide](docs/public-booking-website.md#local-setup). The user must apply `supabase/migrations/20261022034634_public_booking_websites.sql` and `supabase/migrations/20261022045215_booking_website_images.sql` (only those not already applied) before deploying the new API. No live migration or hosted deployment is implied by these source changes.

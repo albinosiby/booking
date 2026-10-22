@@ -236,34 +236,34 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('Sarvam settings show status figures and panels', (tester) async {
-    final (w, _) = await sarvam();
-    addTearDown(w.close);
-    await pumpDesktop(tester, w, const SarvamSettingsScreen());
-    expect(tester.takeException(), isNull);
-    expect(find.byType(AppStatTile), findsNWidgets(4));
-    expect(find.text('Connected'), findsOneWidget);
-    expect(find.text('API key ending 1234'), findsOneWidget);
-    expect(find.text('0 of 1'), findsOneWidget);
-    expect(find.text('Connect Sarvam'), findsOneWidget);
-    expect(find.text('Voice booking'), findsOneWidget);
-    expect(find.text('Sarvam tool setup'), findsOneWidget);
-    expect(find.text('View call logs'), findsOneWidget);
-    expect(find.text('Save settings').hitTestable(), findsOneWidget);
-    await tester.tap(find.text('Badminton'));
-    await tester.pumpAndSettle();
-    expect(find.text('You have unsaved changes.'), findsOneWidget);
-    await tester.ensureVisible(find.text('Replace'));
-    await tester.tap(find.text('Replace'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Confirm'));
-    await tester.pumpAndSettle();
-    expect(find.text('bkv_new_key_1'), findsOneWidget);
-    await tester.tap(find.text('Done'));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-  });
+  testWidgets(
+    'Sarvam settings show automatic setup and separate booking controls',
+    (tester) async {
+      final (w, _) = await sarvam();
+      addTearDown(w.close);
+      await pumpDesktop(tester, w, const SarvamSettingsScreen());
+      expect(tester.takeException(), isNull);
+      expect(find.text('Configured — awaiting publish'), findsOneWidget);
+      expect(find.text('Connect Sarvam'), findsOneWidget);
+      expect(find.text('Phone bookings'), findsOneWidget);
+      expect(find.text('Connection status'), findsOneWidget);
+      expect(find.text('Accept phone bookings'), findsOneWidget);
+      expect(find.text('Publish changes'), findsOneWidget);
+      expect(find.text('Disconnect Sarvam'), findsOneWidget);
+      expect(find.text('Generate'), findsNothing);
+      expect(find.text('Replace'), findsNothing);
+      await tester.tap(find.text('Badminton'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Connect to apply the edited credentials or business selection.',
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('call logs open the transcript in a side pane', (tester) async {
     final (w, saver) = await sarvam();

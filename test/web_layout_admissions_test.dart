@@ -112,36 +112,37 @@ Future<void> pumpDesktop(
 }
 
 void main() {
-  testWidgets('admissions list shows toolbar, stat tiles and a card grid', (
+  testWidgets('plans show space selection, student roster and admission FAB', (
     tester,
   ) async {
     await pumpDesktop(tester, AdmissionsFake(), const AdmissionsScreen());
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('admissions-new')), findsOneWidget);
     expect(find.byTooltip('Refresh admissions'), findsOneWidget);
-    expect(find.byType(AppStatTile), findsNWidgets(4));
-    expect(find.text('Payments due'), findsOneWidget);
-    expect(find.text('INR 3000.00'), findsOneWidget);
-    expect(find.byType(AppGrid), findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(find.text('Pool 1'), findsWidgets);
+    expect(find.text('INR 3000.00'), findsWidgets);
+    expect(find.byType(AppGrid), findsWidgets);
     expect(find.byKey(const ValueKey('admission-admission')), findsOneWidget);
     expect(find.text('Search name, phone or admission no.'), findsOneWidget);
-    // The phone-sized full-width button is replaced by the header action.
+    // Enrollment is available from the persistent FAB and each plan.
     expect(find.byType(AppButton), findsNothing);
     await tester.tap(find.text('Plans'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('plan-plan')), findsOneWidget);
-    expect(find.byType(AppPanel), findsOneWidget);
     expect(find.text('Enroll student'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('court admissions keep kind chips on desktop', (tester) async {
+  testWidgets('coaching tab lists the selected court’s coaching plans', (
+    tester,
+  ) async {
     await pumpDesktop(tester, CourtAdmissionsFake(), const AdmissionsScreen());
-    expect(find.widgetWithText(ChoiceChip, 'Court plans'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Coaching'), findsOneWidget);
+    expect(find.text('Court 1'), findsWidgets);
+    expect(find.text('Coaching'), findsOneWidget);
     await tester.tap(find.text('Plans'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Coaching'));
+    await tester.tap(find.text('Coaching'));
     await tester.pumpAndSettle();
     expect(find.text('Junior batch'), findsOneWidget);
     expect(find.text('8 per class'), findsOneWidget);

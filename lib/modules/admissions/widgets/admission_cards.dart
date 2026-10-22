@@ -255,11 +255,13 @@ class AdmissionPlanCard extends StatelessWidget {
     required this.business,
     required this.currency,
     this.onEnroll,
+    this.showActiveCount = true,
   });
   final AdmissionPlan plan;
   final AdmissionBusiness business;
   final String currency;
   final VoidCallback? onEnroll;
+  final bool showActiveCount;
   @override
   Widget build(BuildContext context) {
     final p = plan,
@@ -310,7 +312,7 @@ class AdmissionPlanCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (p.activeCount != null)
+              if (showActiveCount && p.activeCount != null)
                 AdmissionTag(
                   '${p.activeCount} active',
                   color: scheme.primary,

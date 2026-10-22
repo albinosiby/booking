@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import '../../../design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
 import '../cubit/admission_cubit.dart';
 import '../cubit/admission_state.dart';
-import '../../bookings/models/booking_models.dart' show bookingMoney;
+import '../models/admission_models.dart';
+import '../models/admission_overview.dart';
 import '../widgets/admission_cards.dart';
 
+/// Plans and their student rosters, scoped to a business and pool/court.
 class AdmissionsScreen extends StatefulWidget {
   const AdmissionsScreen({super.key});
   @override
@@ -20,506 +21,336 @@ class _AdmissionsScreenState extends State<AdmissionsScreen> {
   late final cubit = getIt<AdmissionCubit>(
     param1: context.read<WorkspaceCubit>(),
   );
+  final search = TextEditingController();
+
   @override
   void initState() {
     super.initState();
-    cubit.loadList();
+    cubit.loadOverview();
   }
 
   @override
   void dispose() {
+    search.dispose();
     cubit.close();
     super.dispose();
   }
 
   Future<void> open(String path) async {
     await context.push(path);
-    if (mounted) cubit.loadList();
+    if (mounted) cubit.loadOverview();
   }
 
-  bool plans = false, kindChecked = false;
-  static const statuses = [
-    'active',
-    'upcoming',
-    'completed',
-    'expired',
-    'cancelled',
-  ];
-
-  /// Plan kinds offered by the organization's pool and court businesses.
-  List<String> kinds(AdmissionState s) => [
-    if (s.catalog.businesses.any((b) => !b.court)) 'swimming',
-    if (s.catalog.businesses.any((b) => b.court)) 'play',
-    'coaching',
-  ];
-  static String kindLabel(String kind) => switch (kind) {
-    'swimming' => 'Swimming',
-    'play' => 'Court plans',
-    _ => 'Coaching',
-  };
-
-  /// Court-only organizations have no swimming plans; open court plans first.
-  void defaultKind(AdmissionState s) {
-    if (kindChecked || s.loading || s.catalog.businesses.isEmpty) return;
-    kindChecked = true;
-    final available = kinds(s);
-    if (!available.contains(s.kind)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) cubit.filter(kind: available.first);
-      });
-    }
+  void enroll({AdmissionPlan? plan}) {
+    final selection = cubit.state.overview;
+    open(
+      Uri(
+        path: '/admissions/new',
+        queryParameters: {
+          'kind': selection.coaching ? 'coaching' : 'plans',
+          'business_id': ?selection.businessId,
+          'space_id': ?selection.spaceId,
+          'plan_id': ?plan?.id,
+        },
+      ).toString(),
+    );
   }
 
-  Widget admissions(AdmissionState s) => Column(
+  Widget selection(AdmissionState s) {
+    final overview = s.overview;
+    final business = cubit.overviewBusiness;
+    final businessPicker = AppPicker(
+      key: const ValueKey('admission-business'),
+      label: 'Business',
+      value: overview.businessId,
+      enabled: !s.loading && s.catalog.businesses.isNotEmpty,
+      items: s.catalog.businesses
+          .map(
+            (b) => PickerItem(
+              b.id,
+              '${b.name} · ${b.court ? 'Court' : 'Swimming'}',
+            ),
+          )
+          .toList(),
+      onChanged: (id) => cubit.selectOverview(businessId: id),
+    );
+    final spacePicker = AppPicker(
+      key: const ValueKey('admission-space'),
+      label: business?.spaceLabel ?? 'Pool or court',
+      value: overview.spaceId,
+      enabled: !s.loading && business?.pools.isNotEmpty == true,
+      items:
+          business?.pools.map((p) => PickerItem(p.id, p.name)).toList() ?? [],
+      onChanged: (id) => cubit.selectOverview(spaceId: id),
+    );
+    return LayoutBuilder(
+      builder: (context, box) => box.maxWidth >= 650
+          ? Row(
+              children: [
+                Expanded(child: businessPicker),
+                const SizedBox(width: 16),
+                Expanded(child: spacePicker),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                businessPicker,
+                const SizedBox(height: 12),
+                spacePicker,
+              ],
+            ),
+    );
+  }
+
+  Widget filters(AdmissionState s) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      TextFormField(
-        initialValue: s.query,
+      TextField(
+        controller: search,
         textInputAction: TextInputAction.search,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           hintText: 'Search name, phone or admission no.',
-          prefixIcon: Icon(Icons.search),
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: IconButton(
+            tooltip: 'Clear search',
+            onPressed: () {
+              search.clear();
+              cubit.selectOverview(query: '');
+            },
+            icon: const Icon(Icons.close),
+          ),
         ),
-        onFieldSubmitted: (q) => cubit.filter(query: q),
+        onSubmitted: (value) => cubit.selectOverview(query: value.trim()),
       ),
-      SizedBox(height: 12.h),
+      const SizedBox(height: 12),
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            for (final value in [null, ...statuses])
+            for (final status in <String?>[
+              null,
+              'active',
+              'upcoming',
+              'completed',
+              'expired',
+              'cancelled',
+            ])
               Padding(
-                padding: EdgeInsets.only(right: 8.w),
+                padding: const EdgeInsetsDirectional.only(end: 8),
                 child: ChoiceChip(
                   label: Text(
-                    value == null ? 'All' : admissionStatusLabel(value),
+                    status == null
+                        ? 'All students'
+                        : admissionStatusLabel(status),
                   ),
-                  selected: s.status == value,
-                  onSelected: (_) =>
-                      cubit.filter(status: value, clearStatus: value == null),
+                  selected: s.overview.status == status,
+                  onSelected: (_) => cubit.selectOverview(
+                    status: status,
+                    clearStatus: status == null,
+                  ),
                 ),
               ),
           ],
         ),
       ),
-      SizedBox(height: 16.h),
-      if (s.loading) AppLoadingState(initial: s.items.isEmpty),
-      if (s.error != null)
-        AppErrorWidget(message: s.error!, onRetry: () => cubit.loadList()),
-      if (!s.loading && s.error == null && s.items.isEmpty)
-        AppEmptyState(
-          title: 'No admissions found',
-          message: s.query.isNotEmpty || s.status != null
-              ? 'Try another search or status.'
-              : 'Enroll a student from one of your plans.',
-        ),
-      if (s.items.isNotEmpty) ...[
-        Text(
-          '${s.items.length}${s.next != null ? '+' : ''} admissions',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        SizedBox(height: 10.h),
-      ],
-      for (final a in s.items)
-        Padding(
-          padding: EdgeInsets.only(bottom: 12.h),
-          child: AdmissionListCard(
-            key: ValueKey('admission-${a.id}'),
-            admission: a,
-            currency: s.catalog.currency,
-            onTap: () => open('/admissions/${a.id}'),
-          ),
-        ),
-      if (s.next != null)
-        AppButton(
-          label: 'Load more',
-          secondary: true,
-          onPressed: s.loading ? null : () => cubit.loadList(more: true),
-        ),
     ],
   );
 
-  Widget planList(AdmissionState s) {
-    final groups = [
-      for (final b in s.catalog.businesses)
-        (b, b.plans.where((p) => p.kind == s.kind).toList()),
-    ].where((g) => g.$2.isNotEmpty).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (s.loading && s.catalog.businesses.isEmpty)
-          const AppLoadingState(initial: true),
-        if (!s.loading && groups.isEmpty)
-          AppEmptyState(
-            title: switch (s.kind) {
-              'swimming' => 'No swimming plans',
-              'play' => 'No court plans',
-              _ => 'No coaching plans',
-            },
-            message:
-                'Add plans in the pool or court business settings, then enroll students here.',
+  Widget roster(AdmissionState s, AdmissionRoster roster) {
+    final plan = roster.plan;
+    if (plan == null &&
+        roster.items.isEmpty &&
+        !roster.loading &&
+        roster.error == null) {
+      return const SizedBox.shrink();
+    }
+    final filtered = s.overview.query.isNotEmpty || s.overview.status != null;
+    return Padding(
+      key: ValueKey('roster-${roster.id}'),
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (plan != null)
+            AdmissionPlanCard(
+              key: ValueKey('plan-${plan.id}'),
+              plan: plan,
+              business: cubit.overviewBusiness!,
+              currency: s.catalog.currency,
+              onEnroll: s.catalog.canManage ? () => enroll(plan: plan) : null,
+              showActiveCount: false,
+            )
+          else ...[
+            Text(
+              'Previous plans',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Students whose plans are no longer available for this space.',
+            ),
+          ],
+          const SizedBox(height: 16),
+          Text(
+            '${roster.items.length}${roster.next != null ? '+' : ''} enrolled ${roster.items.length == 1 ? 'student' : 'students'}${filtered ? ' matching filters' : ''}',
+            style: Theme.of(context).textTheme.titleSmall,
           ),
-        for (final g in groups) ...[
-          Row(
+          const SizedBox(height: 12),
+          if (roster.loading)
+            AppLoadingState(
+              initial: roster.items.isEmpty,
+              label: 'Loading students…',
+            ),
+          if (roster.error != null)
+            AppErrorWidget(
+              message: roster.error!,
+              onRetry: () =>
+                  cubit.loadRoster(roster.id, more: roster.next != null),
+            ),
+          if (!roster.loading && roster.error == null && roster.items.isEmpty)
+            Text(
+              filtered
+                  ? 'No students match these filters.'
+                  : 'No students enrolled yet.',
+            ),
+          AppGrid(
+            minTileWidth: 320,
+            maxColumns: 3,
             children: [
-              Icon(
-                g.$1.court ? Icons.sports_tennis : Icons.pool_outlined,
-                size: 18,
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: Text(
-                  g.$1.name,
-                  style: Theme.of(context).textTheme.titleMedium,
+              for (final student in roster.items)
+                AdmissionListCard(
+                  key: ValueKey('admission-${student.id}'),
+                  admission: student,
+                  currency: s.catalog.currency,
+                  onTap: () => open('/admissions/${student.id}'),
                 ),
-              ),
-              Text(
-                '${g.$2.length} ${g.$2.length == 1 ? 'plan' : 'plans'}',
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
             ],
           ),
-          SizedBox(height: 10.h),
-          for (final p in g.$2)
-            Padding(
-              padding: EdgeInsets.only(bottom: 12.h),
-              child: AdmissionPlanCard(
-                key: ValueKey('plan-${p.id}'),
-                plan: p,
-                business: g.$1,
-                currency: s.catalog.currency,
-                onEnroll: s.catalog.canManage
-                    ? () => open(
-                        '/admissions/new?business_id=${g.$1.id}&plan_id=${p.id}',
-                      )
-                    : null,
+          if (roster.next != null) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                key: ValueKey('more-${roster.id}'),
+                onPressed: roster.loading
+                    ? null
+                    : () => cubit.loadRoster(roster.id, more: true),
+                icon: const Icon(Icons.expand_more),
+                label: const Text('Load more students'),
               ),
             ),
-          SizedBox(height: 8.h),
+          ],
         ],
-      ],
+      ),
     );
   }
-
-  Widget tabs() => SegmentedButton<bool>(
-    showSelectedIcon: false,
-    segments: const [
-      ButtonSegment(value: false, label: Text('Admissions')),
-      ButtonSegment(value: true, label: Text('Plans')),
-    ],
-    selected: {plans},
-    onSelectionChanged: (v) => setState(() => plans = v.first),
-  );
-
-  Widget kindChips(AdmissionState s, List<String> available) => Wrap(
-    spacing: 8.w,
-    runSpacing: 8.h,
-    children: [
-      for (final kind in available)
-        ChoiceChip(
-          avatar: Icon(switch (kind) {
-            'swimming' => Icons.pool_outlined,
-            'play' => Icons.sports_tennis,
-            _ => Icons.sports_outlined,
-          }, size: 18),
-          label: Text(kindLabel(kind)),
-          selected: s.kind == kind,
-          onSelected: (_) => cubit.filter(kind: kind),
-        ),
-    ],
-  );
 
   @override
-  Widget build(BuildContext context) =>
-      BlocBuilder<AdmissionCubit, AdmissionState>(
-        bloc: cubit,
-        builder: (context, s) {
-          defaultKind(s);
-          final available = kinds(s);
-          if (isDesktopWidth(context)) return desktop(s, available);
-          return AppPage(
-            title: 'Admissions & Coaching',
-            back: true,
-            scrollId: 'admissions',
-            subtitle: 'Students, plans, attendance and renewals.',
-            actions: [
-              IconButton(
-                tooltip: 'Refresh admissions',
-                onPressed: s.loading ? null : () => cubit.loadList(),
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
-            children: [
-              tabs(),
-              SizedBox(height: 12.h),
-              if (available.length > 1 || s.kind != available.first)
-                kindChips(s, available),
-              SizedBox(height: 16.h),
-              if (s.catalog.canManage) ...[
-                AppButton(
-                  label: 'New admission',
-                  icon: Icons.person_add_alt_1_outlined,
-                  onPressed: () => open('/admissions/new'),
-                ),
-                SizedBox(height: 16.h),
-              ],
-              plans ? planList(s) : admissions(s),
-            ],
-          );
-        },
-      );
-
-  // Desktop web: header actions, toolbar, stat tiles and a card grid.
-  Widget desktop(AdmissionState s, List<String> available) {
-    final theme = Theme.of(context), scheme = theme.colorScheme;
-    return AppPage(
-      title: 'Admissions & Coaching',
-      back: true,
-      scrollId: 'admissions',
-      maxWidth: 1240,
-      header: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Admissions & Coaching',
-                  style: theme.textTheme.headlineLarge,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Students, plans, attendance and renewals.',
-                  style: TextStyle(
-                    color: scheme.onSurface.withValues(alpha: .65),
-                  ),
+  Widget build(
+    BuildContext context,
+  ) => BlocBuilder<AdmissionCubit, AdmissionState>(
+    bloc: cubit,
+    builder: (context, s) {
+      final overview = s.overview;
+      final current = overview.rosters.values
+          .where((r) => r.plan != null)
+          .toList();
+      return AppPage(
+        title: 'Plans & Coaching',
+        showAppBar: true,
+        compactHeader: true,
+        subtitle: 'Choose a pool or court to view plans and enrolled students.',
+        back: true,
+        scrollId: 'admissions',
+        maxWidth: 1240,
+        slivers: overview.rosters.isEmpty
+            ? null
+            : [
+                SliverList.builder(
+                  itemCount: overview.rosters.length,
+                  itemBuilder: (context, index) =>
+                      roster(s, overview.rosters.values.elementAt(index)),
                 ),
               ],
-            ),
-          ),
-          IconButton.outlined(
+        actions: [
+          IconButton(
             tooltip: 'Refresh admissions',
-            onPressed: s.loading ? null : () => cubit.loadList(),
+            onPressed: s.loading ? null : cubit.loadOverview,
             icon: const Icon(Icons.refresh),
           ),
-          if (s.catalog.canManage) ...[
-            const SizedBox(width: 10),
-            FilledButton.icon(
-              key: const ValueKey('admissions-new'),
-              onPressed: () => open('/admissions/new'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(0, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+        ],
+        floatingActionButton: s.catalog.canManage
+            ? FloatingActionButton.extended(
+                key: const ValueKey('admissions-new'),
+                onPressed: s.loading ? null : enroll,
+                tooltip: overview.coaching
+                    ? 'New coaching admission'
+                    : 'New plan admission',
+                icon: const Icon(Icons.person_add_alt_1_outlined),
+                label: const Text('New admission'),
+              )
+            : null,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: SegmentedButton<bool>(
+                key: const ValueKey('admission-tabs'),
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Plans')),
+                  ButtonSegment(value: true, label: Text('Coaching')),
+                ],
+                selected: {overview.coaching},
+                onSelectionChanged: (v) =>
+                    cubit.selectOverview(coaching: v.first),
               ),
-              icon: const Icon(Icons.person_add_alt_1_outlined),
-              label: const Text('New admission'),
             ),
-          ],
-        ],
-      ),
-      children: [
-        AppToolbar(
-          leading: Row(
-            children: [
-              tabs(),
-              if (available.length > 1 || s.kind != available.first) ...[
-                const SizedBox(width: 20),
-                Flexible(child: kindChips(s, available)),
-              ],
-            ],
           ),
-        ),
-        const SizedBox(height: 24),
-        plans ? desktopPlans(s) : desktopAdmissions(s),
-      ],
-    );
-  }
-
-  Widget desktopAdmissions(AdmissionState s) {
-    final scheme = Theme.of(context).colorScheme;
-    final now = DateTime.now();
-    final active = s.items.where((a) => a.status == 'active').toList();
-    final upcoming = s.items.where((a) => a.status == 'upcoming').length;
-    final expiring = active.where((a) {
-      final expiry = DateTime.tryParse(a.expiry);
-      return expiry != null && expiry.difference(now).inDays <= 7;
-    }).length;
-    final low = active.where((a) => a.remaining <= 3).length;
-    final dues = s.items.where((a) => a.balance > 0).toList();
-    final due = dues.fold(0, (n, a) => n + a.balance);
-    final more = s.next != null;
-    const amber = Color(0xFFFFB74D);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (s.items.isNotEmpty) ...[
-          AppStatRow(
-            children: [
-              AppStatTile(
-                highlight: true,
-                icon: admissionKindIcon(s.kind),
-                label: 'Students',
-                value: '${s.items.length}${more ? '+' : ''}',
-                caption: more
-                    ? '${kindLabel(s.kind)} · more to load'
-                    : kindLabel(s.kind),
-              ),
-              AppStatTile(
-                icon: Icons.how_to_reg_outlined,
-                label: 'Active',
-                value: '${active.length}',
-                caption: upcoming == 0
-                    ? 'Currently attending'
-                    : '$upcoming upcoming',
-                onTap: s.status == 'active'
-                    ? null
-                    : () => cubit.filter(status: 'active'),
-              ),
-              AppStatTile(
-                icon: Icons.schedule,
-                accent: expiring > 0 ? amber : null,
-                label: 'Expiring in 7 days',
-                value: '$expiring',
-                caption: low == 0
-                    ? 'No low balances'
-                    : '$low with 3 or fewer left',
-              ),
-              AppStatTile(
-                icon: due > 0
-                    ? Icons.payments_outlined
-                    : Icons.check_circle_outline,
-                accent: due > 0 ? scheme.error : null,
-                label: 'Payments due',
-                value: bookingMoney(due, s.catalog.currency),
-                caption: dues.isEmpty
-                    ? 'All shown students paid'
-                    : '${dues.length} ${dues.length == 1 ? 'student' : 'students'} with dues',
-              ),
-            ],
-          ),
-          const SizedBox(height: 28),
-        ],
-        AppToolbar(
-          leading: Row(
-            children: [
-              SizedBox(
-                width: 340,
-                child: TextFormField(
-                  initialValue: s.query,
-                  textInputAction: TextInputAction.search,
-                  decoration: const InputDecoration(
-                    hintText: 'Search name, phone or admission no.',
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                  onFieldSubmitted: (q) => cubit.filter(query: q),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final value in [null, ...statuses])
-                      ChoiceChip(
-                        label: Text(
-                          value == null ? 'All' : admissionStatusLabel(value),
-                        ),
-                        selected: s.status == value,
-                        onSelected: (_) => cubit.filter(
-                          status: value,
-                          clearStatus: value == null,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            if (s.items.isNotEmpty)
-              Text(
-                '${s.items.length}${more ? '+' : ''} admissions',
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        if (s.loading) AppLoadingState(initial: s.items.isEmpty),
-        if (s.error != null)
-          AppErrorWidget(message: s.error!, onRetry: () => cubit.loadList()),
-        if (!s.loading && s.error == null && s.items.isEmpty)
-          AppEmptyState(
-            title: 'No admissions found',
-            message: s.query.isNotEmpty || s.status != null
-                ? 'Try another search or status.'
-                : 'Enroll a student from one of your plans.',
-          ),
-        AppGrid(
-          minTileWidth: 340,
-          maxColumns: 3,
-          children: [
-            for (final a in s.items)
-              AdmissionListCard(
-                key: ValueKey('admission-${a.id}'),
-                admission: a,
-                currency: s.catalog.currency,
-                onTap: () => open('/admissions/${a.id}'),
-              ),
-          ],
-        ),
-        if (more) ...[
           const SizedBox(height: 20),
-          Center(
-            child: SizedBox(
-              width: 260,
-              child: AppButton(
-                label: 'Load more',
-                secondary: true,
-                onPressed: s.loading ? null : () => cubit.loadList(more: true),
+          selection(s),
+          const SizedBox(height: 20),
+          if (s.loading)
+            AppLoadingState(
+              initial: overview.rosters.isEmpty,
+              label: 'Loading plans…',
+            ),
+          if (s.error != null)
+            AppErrorWidget(message: s.error!, onRetry: cubit.loadOverview),
+          if (!s.loading && s.error == null && cubit.overviewSpace == null)
+            const AppEmptyState(
+              title: 'No spaces available',
+              message:
+                  'An enabled pool or court is needed to view plans and enroll students.',
+            ),
+          if (cubit.overviewSpace != null) ...[
+            filters(s),
+            const SizedBox(height: 24),
+            if (!s.loading && current.isEmpty) ...[
+              AppEmptyState(
+                title: overview.coaching
+                    ? 'No coaching plans for this space'
+                    : 'No plans for this space',
+                message:
+                    'Configure a plan in this business’s settings to start enrolling students.',
               ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget desktopPlans(AdmissionState s) {
-    final groups = [
-      for (final b in s.catalog.businesses)
-        (b, b.plans.where((p) => p.kind == s.kind).toList()),
-    ].where((g) => g.$2.isNotEmpty).toList();
-    if (groups.isEmpty) return planList(s);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final g in groups)
-          AppPanel(
-            title: g.$1.name,
-            subtitle:
-                '${g.$2.length} ${g.$2.length == 1 ? 'plan' : 'plans'} · ${g.$1.court ? 'Court' : 'Pool'}',
-            child: AppGrid(
-              minTileWidth: 340,
-              maxColumns: 3,
-              children: [
-                for (final p in g.$2)
-                  AdmissionPlanCard(
-                    key: ValueKey('plan-${p.id}'),
-                    plan: p,
-                    business: g.$1,
-                    currency: s.catalog.currency,
-                    onEnroll: s.catalog.canManage
-                        ? () => open(
-                            '/admissions/new?business_id=${g.$1.id}&plan_id=${p.id}',
-                          )
-                        : null,
+              if (s.catalog.owner)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: () =>
+                        open('/businesses/${overview.businessId}/settings'),
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Configure plans'),
                   ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
+                ),
+              const SizedBox(height: 24),
+            ],
+          ],
+        ],
+      );
+    },
+  );
 }

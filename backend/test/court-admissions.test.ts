@@ -456,8 +456,126 @@ test("coaches see their own classes and may mark attendance only for them", asyn
       reason: "",
     });
   };
-  // Ravi passes the permission check for his class; the session is ahead.
+  // Coach status by itself cannot mark attendance.
+  await assert.rejects(() => mark(ravi.staff, mine.id), /permission|access/);
+  await assert.rejects(() => service.detail(ravi.staff, mine.id), /access/);
+  await assert.rejects(() => service.list(ravi.staff, {}), /access/);
+  await db.query("UPDATE memberships SET permissions=$1 WHERE id=$2", [
+    JSON.stringify(["coach", "mark_attendance"]),
+    ravi.id,
+  ]);
+  assert.equal((await service.detail(ravi.staff, mine.id)).can_attend, true);
+  assert.equal((await service.detail(ravi.staff, other.id)).can_attend, false);
+  // An explicit attendance grant permits his class, but never another coach's.
   await assert.rejects(() => mark(ravi.staff, mine.id), /before the session/);
-  await assert.rejects(() => mark(ravi.staff, other.id), /permission/);
+  await assert.rejects(
+    () => mark(ravi.staff, other.id),
+    /assigned coaching plans/,
+  );
   await assert.rejects(() => mark(helper.staff, mine.id), /permission/);
+  const detail = await service.detail(f.owner, mine.id);
+  await db.query(
+    "UPDATE bookings SET starts_at=now()-interval '10 minutes', ends_at=now()+interval '50 minutes' WHERE id=$1",
+    [detail.sessions[0].id],
+  );
+  const today = localStamp(Date.now(), "UTC").slice(0, 10);
+  assert.equal(
+    (await service.classes(ravi.staff, { date: today })).classes[0].students[0]
+      .markable,
+    true,
+  );
+  await db.query("UPDATE memberships SET permissions=$1 WHERE id=$2", [
+    JSON.stringify(["coach"]),
+    ravi.id,
+  ]);
+  assert.equal(
+    (await service.classes(ravi.staff, { date: today })).classes[0].students[0]
+      .markable,
+    false,
+  );
+  await assert.rejects(() => mark(ravi.staff, mine.id), /permission|access/);
+  await db.query("UPDATE memberships SET permissions=$1 WHERE id=$2", [
+    JSON.stringify(["coach", "mark_attendance"]),
+    ravi.id,
+  ]);
+  await mark(ravi.staff, mine.id);
+  assert.equal(
+    (await service.detail(f.owner, mine.id)).sessions[0].admission_attendance,
+    "present",
+  );
+  await db.query(
+    "UPDATE staff_assignments SET resource_ids=$1 WHERE membership_id=$2",
+    [JSON.stringify([f.config.courts[0].id]), ravi.id],
+  );
+  assert.equal(
+    (await service.classes(ravi.staff, { date: today })).classes.length,
+    0,
+  );
+  await assert.rejects(
+    () => service.detail(ravi.staff, mine.id),
+    /not assigned/,
+  );
+});
+
+test("subscription management, booking creation and attendance are independent staff grants", async () => {
+  const f = await fixture();
+  const bookingStaff = await coach(f, ["view_bookings", "manage_bookings"]);
+  const subscriptionStaff = await coach(f, ["manage_subscriptions"]);
+  const attendanceStaff = await coach(f, ["mark_attendance"]);
+  assert.equal((await service.catalog(bookingStaff.staff)).can_manage, false);
+  assert.equal(
+    (await service.catalog(subscriptionStaff.staff)).can_manage,
+    true,
+  );
+  assert.equal(
+    (await service.catalog(subscriptionStaff.staff)).can_attend,
+    false,
+  );
+  assert.equal((await service.catalog(attendanceStaff.staff)).can_attend, true);
+  assert.equal(
+    (await service.catalog(attendanceStaff.staff)).can_manage,
+    false,
+  );
+  const admission = await enroll(f);
+  assert.equal(
+    (await service.detail(attendanceStaff.staff, admission.id)).can_attend,
+    true,
+  );
+  const command = {
+    business_id: f.businessId,
+    resource_id: f.config.courts[0].id,
+    plan_id: f.config.plans[0].id,
+    starts_on: "2030-06-06",
+    mode: "fixed",
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
+    time: "17:00",
+    duration_minutes: 60,
+    customer: {
+      id: null,
+      name: "New student",
+      phone: "9000000008",
+      email: null,
+    },
+    payments: [],
+    renewed_from: null,
+  };
+  await assert.rejects(
+    () => service.preview(bookingStaff.staff, command),
+    /Subscription management permission/,
+  );
+  await assert.rejects(
+    () => service.preview(attendanceStaff.staff, command),
+    /Subscription management permission/,
+  );
+  const quote = await service.preview(subscriptionStaff.staff, command);
+  const created = await service.create(subscriptionStaff.staff, {
+    ...command,
+    preview_token: quote.preview_token,
+    command_key: randomUUID(),
+  });
+  assert.ok(created.id);
+  await assert.rejects(
+    () => bookings.catalog(subscriptionStaff.staff),
+    /access|permission/i,
+  );
 });

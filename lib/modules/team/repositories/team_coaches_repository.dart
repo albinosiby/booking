@@ -120,7 +120,7 @@ class ConfigurationTeamCoachesRepository implements TeamCoachesRepository {
     }
     if (b.version != version) {
       throw const AppException(
-        'Settings changed. Refresh coaches and try again.',
+        'Settings changed. Refresh staff details and try again.',
         code: 'CONFLICT',
       );
     }

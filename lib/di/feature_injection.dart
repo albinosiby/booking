@@ -1,3 +1,6 @@
+import '../modules/booking_website/cubit/website_settings_cubit.dart';
+import '../modules/booking_website/repositories/website_repository.dart';
+import '../modules/booking_website/repositories/rest_website_repository.dart';
 import '../modules/booking_blocks/models/slot_block_models.dart';
 import '../modules/booking_blocks/repositories/slot_block_repository.dart';
 import '../modules/booking_blocks/repositories/rest_slot_block_repository.dart';
@@ -86,6 +89,10 @@ import '../modules/dashboard/cubit/home_cubit.dart';
 
 /// Composition root: swap persistence implementations here, never in screens.
 void registerFeatureDependencies(GetIt di) {
+  di.registerFactory<WebsiteRepository>(() => RestWebsiteRepository(di()));
+  di.registerFactoryParam<WebsiteSettingsCubit, WorkspaceSession, void>(
+    (s, _) => WebsiteSettingsCubit(s, di()),
+  );
   di.registerLazySingleton<SlotBlockRepository>(
     () => RestSlotBlockRepository(di(), di()),
   );

@@ -75,12 +75,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'view_bookings',
           'manage_bookings',
           'manage_attendance',
+          'mark_attendance',
+          'manage_subscriptions',
           'collect_payments',
         ].any(w.hasPermission))
           const _Destination(
             Icons.pool_outlined,
-            'Admissions & Coaching',
-            'Plans, attendance, remaining days and renewals',
+            'Plans & Coaching',
+            'Plans, enrolled students, attendance and renewals',
             '/admissions',
           ),
         if (w.hasPermission('view_finance') ||
@@ -134,6 +136,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'Booking message templates',
             'WhatsApp messages and primary template',
             '/profile/message-templates',
+          ),
+          _Destination(
+            Icons.language_outlined,
+            'Booking website',
+            'Public page, online bookings and website settings',
+            Routes.bookingWebsite,
           ),
           _Destination(
             Icons.support_agent_outlined,

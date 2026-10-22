@@ -53,25 +53,30 @@ class SarvamSettingsCubit extends OwnerSarvamCubit<SarvamSettingsState> {
       emit(accessReset());
       return;
     }
+    if (state.busy) return;
     final g = ++generation;
-    emit(state.copyWith(loading: true));
+    emit(state.copyWith(loading: state.saved.version == 0));
     try {
-      final s = await repository.settings();
-      if (valid(g)) emit(state.fromSaved(s));
+      final saved = await repository.settings();
+      if (valid(g)) {
+        emit(
+          state.dirty && !state.loading
+              ? state.copyWith(saved: saved, loading: false)
+              : state.fromSaved(saved),
+        );
+      }
     } catch (e) {
       if (valid(g)) emit(state.copyWith(loading: false, error: sarvamError(e)));
     }
   }
 
   void update({
-    bool? enabled,
     String? orgId,
     String? workspaceId,
     String? appId,
     String? apiKey,
   }) => emit(
     state.copyWith(
-      enabled: enabled,
       orgId: orgId?.trim(),
       workspaceId: workspaceId?.trim(),
       appId: appId?.trim(),
@@ -85,85 +90,160 @@ class SarvamSettingsCubit extends OwnerSarvamCubit<SarvamSettingsState> {
           : ({...state.businessIds}..remove(id)),
     ),
   );
-
   String? validate() {
-    final ids = [state.orgId, state.workspaceId, state.appId];
-    final anyId = ids.any((v) => v.isNotEmpty);
-    if (anyId && ids.any((v) => v.isEmpty)) {
-      return 'Enter the organization, workspace and app IDs together.';
+    if ([
+      state.orgId,
+      state.workspaceId,
+      state.appId,
+    ].any((v) => !RegExp(r'^[A-Za-z0-9_-]{1,100}$').hasMatch(v))) {
+      return 'Enter the organization, workspace and app IDs from Sarvam.';
     }
-    if (ids.any(
-      (v) => v.isNotEmpty && !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(v),
-    )) {
-      return 'IDs contain only letters, numbers, hyphens and underscores.';
+    if ((!state.saved.hasCredentials || state.apiKey.isNotEmpty) &&
+        state.apiKey.length < 8) {
+      return 'Enter a valid Sarvam workspace API key.';
     }
-    if (state.apiKey.isNotEmpty && state.apiKey.length < 8) {
-      return 'The Sarvam API key looks too short.';
-    }
-    if (state.enabled && state.businessIds.isEmpty) {
+    if (state.businessIds.isEmpty) {
       return 'Choose at least one business the voice agent can book.';
-    }
-    if (state.enabled && !state.saved.hasToolKey) {
-      return 'Generate a voice tool key before turning the agent on.';
     }
     return null;
   }
 
-  Future<void> save() async {
+  Future<void> connect() async {
     if (!owner || state.busy) return;
-    final invalid = validate();
-    if (invalid != null) {
-      emit(state.copyWith(error: invalid));
+    final error = validate();
+    if (error != null) {
+      emit(state.copyWith(error: error));
       return;
     }
-    await _run(() async {
-      final saved = await repository.save(
+    await _run(
+      () => repository.connect(
         version: state.saved.version,
-        enabled: state.enabled,
         businessIds: state.businessIds,
         orgId: state.orgId,
         workspaceId: state.workspaceId,
         appId: state.appId,
         apiKey: state.apiKey.isEmpty ? null : state.apiKey,
-      );
-      return state.fromSaved(saved).copyWith(notice: 'Sarvam settings saved.');
-    });
+      ),
+      drive: true,
+    );
   }
 
-  Future<void> rotateToolKey() => _run(() async {
-    final key = await repository.rotateToolKey();
-    final saved = await repository.settings();
-    // Keep unsaved edits; only the key and version come from the server.
-    return SarvamSettingsState(
-      saved: saved,
-      enabled: state.enabled,
-      orgId: state.orgId,
-      workspaceId: state.workspaceId,
-      appId: state.appId,
-      apiKey: state.apiKey,
-      businessIds: state.businessIds,
-      loading: false,
-      newToolKey: key,
-    );
-  });
+  Future<void> continueSetup() => _run(repository.settings, drive: true);
+  Future<void> authorize() async {
+    if (!owner || state.busy || state.saved.authorizationUrl.isEmpty) return;
+    final g = generation;
+    try {
+      final opened = await repository.openAuthorization(
+        state.saved.authorizationUrl,
+      );
+      if (!valid(g)) return;
+      if (!opened) {
+        emit(
+          state.copyWith(
+            error:
+                'Could not open Sarvam sign-in. Allow browser popups and retry.',
+          ),
+        );
+      }
+    } catch (e) {
+      if (valid(g)) {
+        emit(state.copyWith(error: sarvamError(e)));
+      }
+    }
+  }
 
-  Future<void> test() => _run(() async {
-    final count = await repository.test();
-    return state.copyWith(
-      notice:
-          'Connected to Sarvam. $count call${count == 1 ? '' : 's'} in the last 24 hours.',
+  Future<void> setBookingEnabled(bool enabled) async {
+    if (!owner) return;
+    if (!enabled && state.busy) {
+      generation++;
+      emit(state.copyWith(busy: false));
+    }
+    await _run(
+      () => repository.setBookingEnabled(state.saved.version, enabled),
+      preserveEdits: true,
     );
-  });
+  }
 
-  Future<void> _run(Future<SarvamSettingsState> Function() work) async {
+  Future<void> disconnect() async {
+    if (!owner) return;
+    // Supersede a pending setup request; the backend fences its checkpoint too.
+    generation++;
+    emit(state.copyWith(busy: false, apiKey: ''));
+    await _run(repository.disconnect, drive: true);
+  }
+
+  Future<void> publish(String deploymentId) => _run(
+    () => repository.publish(state.saved.version, deploymentId),
+    drive: true,
+  );
+  Future<void> test() async {
     if (!owner || state.busy) return;
     final g = ++generation;
     emit(state.copyWith(busy: true));
     try {
-      final next = await work();
-      if (valid(g)) emit(next);
+      final count = await repository.test();
+      if (valid(g)) {
+        emit(
+          state.copyWith(
+            busy: false,
+            notice: 'Call logs connected. $count calls in the last 24 hours.',
+          ),
+        );
+      }
     } catch (e) {
       if (valid(g)) emit(state.copyWith(busy: false, error: sarvamError(e)));
+    }
+  }
+
+  Future<void> _run(
+    Future<SarvamSettings> Function() work, {
+    bool drive = false,
+    bool preserveEdits = false,
+  }) async {
+    if (!owner || state.busy) return;
+    final g = ++generation;
+    emit(state.copyWith(busy: true));
+    try {
+      var saved = await work();
+      if (!valid(g)) return;
+      emit(
+        (preserveEdits ? state.copyWith(saved: saved) : state.fromSaved(saved))
+            .copyWith(busy: drive),
+      );
+      if (drive) {
+        for (var step = 0; saved.needsWork && step < 30; step++) {
+          if (!valid(g)) return;
+          saved = await repository.setupStep();
+          if (!valid(g)) return;
+          emit(state.fromSaved(saved).copyWith(busy: saved.needsWork));
+        }
+        if (!valid(g)) return;
+        emit(
+          state.copyWith(
+            busy: false,
+            notice: saved.status == 'authorization_required'
+                ? 'Authorize Sarvam, then return here and continue setup.'
+                : saved.statusLabel,
+          ),
+        );
+        if (saved.status == 'authorization_required') await authorize();
+      }
+    } catch (e) {
+      if (!valid(g)) return;
+      // Recover durable progress even when a request timed out after saving it.
+      try {
+        final saved = await repository.settings();
+        if (valid(g)) {
+          emit(
+            (preserveEdits
+                    ? state.copyWith(saved: saved)
+                    : state.fromSaved(saved))
+                .copyWith(busy: false, error: sarvamError(e)),
+          );
+        }
+      } catch (_) {
+        if (valid(g)) emit(state.copyWith(busy: false, error: sarvamError(e)));
+      }
     }
   }
 }

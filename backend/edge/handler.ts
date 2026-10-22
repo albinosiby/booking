@@ -1,3 +1,4 @@
+import type { WebsiteService } from "../src/website/website.service";
 import type { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
 import { AdmissionService } from "../src/admissions/admission.service";
 import type { MessagesService } from "../src/messages/messages.service";
@@ -27,6 +28,7 @@ import { renderExpenseReport } from "../src/expenses/expenses.report";
 import type { IncomeService } from "../src/income/income.service";
 import { renderIncomeReport } from "../src/income/income.report";
 type Services = {
+  website: WebsiteService;
   blocks: SlotBlocksService;
   admissions: AdmissionService;
   messages: MessagesService;
@@ -102,6 +104,38 @@ export function createHandler(
   const routes: Route[] = [];
   const add = (method: string, path: string, run: Route["run"]) =>
     routes.push({ method, path, run });
+  add("GET", "/v1/booking-website", (i) => services.website.settings(i.actor));
+  add("PUT", "/v1/booking-website", (i) =>
+    services.website.save(i.actor, i.body),
+  );
+  add("POST", "/v1/booking-website/publish", (i) =>
+    services.website.publication(i.actor, "published", i.body),
+  );
+  add("POST", "/v1/booking-website/pause", (i) =>
+    services.website.publication(i.actor, "paused", i.body),
+  );
+  add("POST", "/v1/booking-website/unpublish", (i) =>
+    services.website.publication(i.actor, "unpublished", i.body),
+  );
+  add("POST", "/v1/booking-website/images", (i) =>
+    services.website.uploadImage(i.actor, i.body),
+  );
+  add("POST", "/v1/booking-website/images/:id/remove", (i) =>
+    services.website.removeImage(i.actor, i.params.id, i.body),
+  );
+  add("GET", "/v1/booking-website/images/:id", async (i) => {
+    const image = await services.website.ownerImage(i.actor, i.params.id);
+    return new Response(new Uint8Array(image.data), {
+      headers: {
+        "Content-Type": image.content_type,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  });
+  add("POST", "/v1/booking-website/preview", (i) =>
+    services.website.preview(i.actor),
+  );
   add("GET", "/v1/admissions/customers", (i) =>
     services.admissions.customers(i.actor, i.query.q ?? ""),
   );
@@ -167,8 +201,18 @@ export function createHandler(
   add("PUT", "/v1/sarvam/settings", (i) =>
     services.sarvam.save(i.actor, i.body),
   );
-  add("POST", "/v1/sarvam/tool-key", (i) =>
-    services.sarvam.rotateToolKey(i.actor),
+  add("POST", "/v1/sarvam/connect", (i) =>
+    services.sarvam.connect(i.actor, i.body),
+  );
+  add("POST", "/v1/sarvam/setup", (i) => services.sarvam.setupStep(i.actor));
+  add("POST", "/v1/sarvam/disconnect", (i) =>
+    services.sarvam.disconnect(i.actor),
+  );
+  add("PUT", "/v1/sarvam/booking-enabled", (i) =>
+    services.sarvam.bookingEnabled(i.actor, i.body),
+  );
+  add("POST", "/v1/sarvam/publish", (i) =>
+    services.sarvam.publish(i.actor, i.body),
   );
   add("POST", "/v1/sarvam/test", (i) => services.sarvam.test(i.actor));
   add("GET", "/v1/sarvam/calls", (i) =>
@@ -467,12 +511,23 @@ export function createHandler(
         headers.set("Referrer-Policy", "no-referrer");
         return new Response(null, { status: 302, headers });
       }
+      if (req.method === "GET" && path === "/v1/sarvam/oauth/callback") {
+        await services.sarvam.oauthCallback(
+          Object.fromEntries(url.searchParams),
+        );
+        headers.set("Content-Type", "text/html; charset=utf-8");
+        headers.set("Referrer-Policy", "no-referrer");
+        return new Response(
+          "<!doctype html><title>BookingOS</title><p>Authorization processed. Return to BookingOS to continue setup.</p>",
+          { headers },
+        );
+      }
       if (req.method === "GET" && path === "/health") {
         await health();
         return respond({
           status: "ok",
           runtime: "supabase-edge",
-          revision: "2026-10-22-sarvam-voice-agent",
+          revision: "2026-10-22-sarvam-automatic-setup",
         });
       }
       if (req.method === "GET" && path === "/v1/catalog")
@@ -499,6 +554,49 @@ export function createHandler(
             name: s.name,
           })),
         );
+      const publicWebsite =
+        /^\/public\/v1\/sites\/([^/]+)(?:\/(catalog|logo|images\/[a-f0-9-]{36}|availability|quote|bookings))?$/.exec(
+          path,
+        );
+      if (publicWebsite) {
+        const slug = decodeURIComponent(publicWebsite[1]),
+          operation = publicWebsite[2] ?? "catalog";
+        const preview = url.searchParams.get("preview") ?? undefined;
+        if (req.method === "GET" && operation === "catalog")
+          return respond(await services.website.catalog(slug, preview));
+        if (req.method === "GET" && operation.startsWith("images/")) {
+          const image = await services.website.image(
+            slug,
+            operation.slice(7),
+            preview,
+          );
+          headers.set("Content-Type", image.content_type);
+          return new Response(new Uint8Array(image.data), { headers });
+        }
+        if (req.method === "GET" && operation === "logo") {
+          const logo = await services.website.logo(slug, preview);
+          headers.set("Content-Type", logo.content_type);
+          return new Response(new Uint8Array(logo.data), { headers });
+        }
+        if (
+          req.method === "POST" &&
+          ["availability", "quote", "bookings"].includes(operation)
+        ) {
+          if (Number(req.headers.get("content-length")) > 16384)
+            throw new HttpException("Request body is too large.", 413);
+          const input = await body(req);
+          if (JSON.stringify(input ?? {}).length > 16384)
+            throw new HttpException("Request body is too large.", 413);
+          const result =
+            operation === "availability"
+              ? await services.website.availability(slug, input, preview)
+              : operation === "quote"
+                ? await services.website.quote(slug, input, preview)
+                : await services.website.book(slug, input, preview);
+          return respond(result, operation === "bookings" ? 201 : 200);
+        }
+        throw new HttpException("Route not found.", 404);
+      }
       const voice = voiceRoutes[path];
       if (voice && req.method === "POST") {
         // Sarvam tool calls: tool key instead of a user session.

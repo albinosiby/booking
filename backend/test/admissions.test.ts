@@ -417,6 +417,26 @@ test("staff attendance permissions and pool assignments are enforced on lists, d
     [mid, org, f.input.business_id, JSON.stringify([f.input.resource_id])],
   );
   assert.equal((await service.list(staff, {})).items.length, 1);
+  assert.equal(
+    (
+      await service.list(staff, {
+        business_id: f.input.business_id,
+        resource_id: f.input.resource_id,
+        plan_id: f.input.plan_id,
+      })
+    ).items.length,
+    1,
+  );
+  assert.equal(
+    (
+      await service.list(staff, {
+        business_id: f.input.business_id,
+        resource_id: f.config.pools[1].id,
+        plan_id: f.input.plan_id,
+      })
+    ).items.length,
+    0,
+  );
   assert.equal((await service.catalog(staff)).businesses[0].pools.length, 1);
   await assert.rejects(() => service.preview(staff, f.input), /permission/);
   let visit = a.sessions[0];
@@ -687,4 +707,90 @@ test("swimming plans accept 30-minute extensions above the pool minimum in flexi
     const detail = await service.detail(f.owner, saved.id);
     assert.equal(detail.schedule.duration_minutes, 90);
   }
+});
+
+test("plan rosters filter before pagination and keep previous plans reachable", async () => {
+  const f = await fixture();
+  const filters = {
+    business_id: f.input.business_id,
+    resource_id: f.input.resource_id,
+    plan_id: f.input.plan_id,
+    kind: "swimming",
+  };
+  assert.equal((await service.list(f.owner, filters)).items.length, 1);
+  assert.equal(
+    (
+      await service.list(f.owner, {
+        ...filters,
+        resource_id: f.config.pools[1].id,
+      })
+    ).items.length,
+    0,
+  );
+  assert.equal(
+    (await service.list(f.owner, { ...filters, plan_id: randomUUID() })).items
+      .length,
+    0,
+  );
+  assert.equal(
+    (await service.list(f.owner, { ...filters, kind: "coaching" })).items
+      .length,
+    0,
+  );
+  const another = await fixture();
+  assert.equal((await service.list(another.owner, filters)).items.length, 0);
+  await assert.rejects(() =>
+    service.list(f.owner, { ...filters, resource_id: "invalid" }),
+  );
+  await assert.rejects(() =>
+    service.list(f.owner, { ...filters, plan_id: "invalid" }),
+  );
+  await db.query(
+    `INSERT INTO admissions(id,organization_id,business_id,resource_id,customer_id,
+    reference,plan_id,plan_snapshot,customer_snapshot,timezone,mode,starts_on,expires_on,
+    allowance,total_minor,schedule,created_by)
+    SELECT gen_random_uuid(),a.organization_id,a.business_id,a.resource_id,a.customer_id,
+    a.reference||'-roster-'||g.n,a.plan_id,a.plan_snapshot,a.customer_snapshot,a.timezone,
+    a.mode,a.starts_on,a.expires_on,a.allowance,a.total_minor,a.schedule,a.created_by
+    FROM admissions a CROSS JOIN generate_series(1,55) g(n) WHERE a.id=$1`,
+    [f.id],
+  );
+  const page = await service.list(f.owner, filters);
+  assert.equal(page.items.length, 50);
+  assert.equal(page.next_cursor, 50);
+  const next = await service.list(f.owner, {
+    ...filters,
+    cursor: page.next_cursor,
+  });
+  assert.equal(next.items.length, 6);
+  assert.equal(next.next_cursor, null);
+  assert.equal(
+    new Set([...page.items, ...next.items].map((a: any) => a.id)).size,
+    56,
+  );
+  assert.equal(
+    (await service.list(f.owner, { ...filters, previous_plans: "true" })).items
+      .length,
+    0,
+  );
+  const current = (
+    await db.query<any>("SELECT configuration FROM businesses WHERE id=$1", [
+      f.input.business_id,
+    ])
+  ).rows[0].configuration;
+  current.plans.find((p: any) => p.id === f.input.plan_id).enabled = false;
+  await db.query("UPDATE businesses SET configuration=$1 WHERE id=$2", [
+    JSON.stringify(current),
+    f.input.business_id,
+  ]);
+  assert.equal(
+    (await service.list(f.owner, { ...filters, previous_plans: "true" })).items
+      .length,
+    50,
+  );
+  assert.equal(
+    (await service.list(another.owner, { ...filters, previous_plans: "true" }))
+      .items.length,
+    0,
+  );
 });

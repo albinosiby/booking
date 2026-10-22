@@ -33,6 +33,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   );
   bool leaving = false;
   bool switchingPool = false;
+  Timer? successTimer;
   AdmissionCubit? admission;
   AdmissionDraft? admissionBaseline;
   @override
@@ -43,6 +44,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
   @override
   void dispose() {
+    successTimer?.cancel();
     admission?.close();
     cubit.close();
     super.dispose();
@@ -172,6 +174,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   );
 
   void back() {
+    if (cubit.state.original == null && cubit.state.resultId != null) return;
     if (cubit.state.locked ||
         admission?.state.locked == true ||
         admission?.state.busy == true) {
@@ -686,107 +689,146 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
   Widget page(BookingFormModel s, [AdmissionState? a]) {
     final locked = s.locked || a?.busy == true || a?.locked == true;
+    final showSuccess = s.original == null && s.resultId != null;
     // Desktop web: details on the left, payment beside them.
     final wide = isDesktopWidth(context);
     return PopScope(
-      canPop: leaving || !locked,
+      canPop: leaving || (!locked && !showSuccess),
       onPopInvokedWithResult: (popped, _) {
         if (!popped) back();
       },
-      child: AppPage(
-        showAppBar: true,
-        compactHeader: true,
-        title: s.original == null ? 'New booking' : 'Reschedule booking',
-        scrollId: 'booking-form',
-        maxWidth: wide ? 1180 : 760,
-        actions: [
-          IconButton(
-            tooltip: 'Close booking',
-            onPressed: back,
-            icon: const Icon(Icons.close),
-          ),
-        ],
-        bottomBar:
-            s.loading ||
-                !s.catalog.canManage ||
-                s.catalog.businesses.isEmpty ||
-                (wide && !s.review && a == null)
-            ? null
-            : a != null
-            ? admissionConfirm(a)
-            : BookingConfirmBar(
-                model: s,
-                onReview: cubit.review,
-                onConfirm: cubit.confirm,
-              ),
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          if (s.loading)
-            const AppLoadingState(
-              initial: true,
-              label: 'Loading booking options…',
-            ),
-          if (s.error != null) ...[
-            AppErrorWidget(
-              message: s.error!,
-              onRetry: s.catalog.businesses.isEmpty ? cubit.load : null,
-            ),
-            const SizedBox(height: 16),
-          ],
-          if (!s.loading && s.catalog.businesses.isEmpty)
-            const AppEmptyState(
-              showCard: false,
-              title: 'No bookable businesses',
-              message:
-                  'Activate a business with configured spaces first, or ask the owner for access.',
-            ),
-          if (!s.loading &&
-              s.catalog.canManage &&
-              s.catalog.businesses.isNotEmpty)
-            if (s.review && a == null)
-              wide
-                  ? Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 720),
-                        child: review(s),
-                      ),
-                    )
-                  : review(s)
-            else if (wide)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: details(s, a, locked),
-                    ),
-                  ),
-                  const SizedBox(width: 28),
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        settlement(s, a),
-                        if (a == null) ...[
-                          const SizedBox(height: 16),
-                          BookingConfirmBar(
-                            model: s,
-                            onReview: cubit.review,
-                            onConfirm: cubit.confirm,
-                            inline: true,
-                          ),
-                        ],
-                      ],
-                    ),
+          ExcludeFocus(
+            excluding: showSuccess,
+            child: ExcludeSemantics(
+              excluding: showSuccess,
+              child: AppPage(
+                showAppBar: true,
+                compactHeader: true,
+                title: s.original == null
+                    ? 'New booking'
+                    : 'Reschedule booking',
+                scrollId: 'booking-form',
+                maxWidth: wide ? 1180 : 760,
+                actions: [
+                  IconButton(
+                    tooltip: 'Close booking',
+                    onPressed: back,
+                    icon: const Icon(Icons.close),
                   ),
                 ],
-              )
-            else ...[
-              ...details(s, a, locked),
-              settlement(s, a),
-            ],
+                bottomBar:
+                    s.loading ||
+                        !s.catalog.canManage ||
+                        s.catalog.businesses.isEmpty ||
+                        (wide && !s.review && a == null)
+                    ? null
+                    : a != null
+                    ? admissionConfirm(a)
+                    : BookingConfirmBar(
+                        model: s,
+                        onReview: cubit.review,
+                        onConfirm: cubit.confirm,
+                      ),
+                children: [
+                  if (s.loading)
+                    const AppLoadingState(
+                      initial: true,
+                      label: 'Loading booking options…',
+                    ),
+                  if (s.error != null) ...[
+                    AppErrorWidget(
+                      message: s.error!,
+                      onRetry: s.catalog.businesses.isEmpty ? cubit.load : null,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (!s.loading && s.catalog.businesses.isEmpty)
+                    const AppEmptyState(
+                      showCard: false,
+                      title: 'No bookable businesses',
+                      message:
+                          'Activate a business with configured spaces first, or ask the owner for access.',
+                    ),
+                  if (!s.loading &&
+                      s.catalog.canManage &&
+                      s.catalog.businesses.isNotEmpty)
+                    if (s.review && a == null)
+                      wide
+                          ? Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 720,
+                                ),
+                                child: review(s),
+                              ),
+                            )
+                          : review(s)
+                    else if (wide)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: details(s, a, locked),
+                            ),
+                          ),
+                          const SizedBox(width: 28),
+                          Expanded(
+                            flex: 2,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                settlement(s, a),
+                                if (a == null) ...[
+                                  const SizedBox(height: 16),
+                                  BookingConfirmBar(
+                                    model: s,
+                                    onReview: cubit.review,
+                                    onConfirm: cubit.confirm,
+                                    inline: true,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      ...details(s, a, locked),
+                      settlement(s, a),
+                    ],
+                ],
+              ),
+            ),
+          ),
+          if (showSuccess) ...[
+            const Positioned.fill(
+              child: ModalBarrier(
+                key: ValueKey('booking-success-barrier'),
+                dismissible: false,
+                color: Colors.black26,
+              ),
+            ),
+            Positioned.fill(
+              child: Semantics(
+                liveRegion: true,
+                child: const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: BookingSuccess(size: 240),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -824,6 +866,8 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   Widget build(BuildContext context) =>
       BlocConsumer<BookingFormCubit, BookingFormModel>(
         bloc: cubit,
+        listenWhen: (previous, current) =>
+            previous.resultId != current.resultId,
         listener: (context, s) {
           if (s.resultId != null) {
             if (s.original != null && context.canPop()) {
@@ -831,8 +875,19 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (context.mounted) context.pop();
               });
-            } else {
+            } else if (s.original != null) {
               context.replace('/booking/${s.resultId}?created=1');
+            } else {
+              FocusManager.instance.primaryFocus?.unfocus();
+              successTimer?.cancel();
+              successTimer = Timer(BookingSuccess.duration, () {
+                if (!mounted ||
+                    cubit.state.resultId != s.resultId ||
+                    ModalRoute.of(context)?.isCurrent != true) {
+                  return;
+                }
+                context.replace('/booking/${s.resultId}?created=1');
+              });
             }
           }
         },

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -24,8 +25,12 @@ class TestSarvam implements SarvamRepository {
     orgId: 'org-1',
     workspaceId: 'ws-1',
     appId: 'Edens-Sport',
-    toolKeyPrefix: 'bkv_abcdef',
-    toolBaseUrl: 'https://x.supabase.co/functions/v1/booking-api/voice/v1',
+    hasCredentials: true,
+    callLogsAvailable: true,
+    status: 'configured',
+    draftVersion: 7,
+    publishedVersion: 6,
+    deployments: [SarvamDeployment(id: 'deployment', name: 'Edens Sports')],
     businesses: [
       SarvamBusiness(
         id: 'business',
@@ -37,37 +42,64 @@ class TestSarvam implements SarvamRepository {
   );
   final saves = <Map<String, Object?>>[];
   AppException? failure;
-  int rotations = 0;
+  int connects = 0, disconnects = 0, publishes = 0, authorizations = 0;
+  Completer<void>? pendingConnect;
+  final steps = <SarvamSettings>[];
+  AppException? stepFailure;
   @override
   Future<SarvamSettings> settings() async => value;
+  SarvamSettings changed({
+    String? status,
+    bool? enabled,
+    bool? credentials,
+    int? publishedVersion,
+  }) => SarvamSettings(
+    version: value.version + 1,
+    enabled: enabled ?? value.enabled,
+    connected: (status ?? value.status) == 'configured',
+    hasCredentials: credentials ?? value.hasCredentials,
+    apiKeyLast4: value.apiKeyLast4,
+    orgId: value.orgId,
+    workspaceId: value.workspaceId,
+    appId: value.appId,
+    status: status ?? value.status,
+    draftVersion: value.draftVersion,
+    publishedVersion: publishedVersion ?? value.publishedVersion,
+    deployments: value.deployments,
+    businesses: value.businesses,
+  );
   @override
-  Future<SarvamSettings> save({
+  Future<SarvamSettings> connect({
     required int version,
-    required bool enabled,
     required Set<String> businessIds,
     required String orgId,
     required String workspaceId,
     required String appId,
     String? apiKey,
   }) async {
-    if (failure != null) throw failure!;
+    connects++;
     saves.add({
       'version': version,
-      'enabled': enabled,
       'business_ids': businessIds,
       'org': orgId,
       'api_key': apiKey,
     });
+    await pendingConnect?.future;
+    if (failure != null) throw failure!;
     return value = SarvamSettings(
       version: version + 1,
-      enabled: enabled,
-      connected: value.connected || apiKey != null,
+      connected: false,
+      hasCredentials: true,
+      callLogsAvailable: true,
+      enabled: value.enabled,
+      status: 'connecting',
       apiKeyLast4: apiKey?.substring(apiKey.length - 4) ?? value.apiKeyLast4,
       orgId: orgId,
       workspaceId: workspaceId,
       appId: appId,
-      toolKeyPrefix: value.toolKeyPrefix,
-      toolBaseUrl: value.toolBaseUrl,
+      draftVersion: 7,
+      publishedVersion: value.publishedVersion,
+      deployments: value.deployments,
       businesses: [
         for (final b in value.businesses)
           SarvamBusiness(
@@ -81,9 +113,36 @@ class TestSarvam implements SarvamRepository {
   }
 
   @override
-  Future<String> rotateToolKey() async {
-    rotations++;
-    return 'bkv_new_key_$rotations';
+  Future<SarvamSettings> setupStep() async {
+    if (stepFailure != null) throw stepFailure!;
+    return value = steps.isEmpty
+        ? changed(status: 'configured')
+        : steps.removeAt(0);
+  }
+
+  @override
+  Future<SarvamSettings> disconnect() async {
+    disconnects++;
+    return value = changed(
+      status: 'disconnected',
+      enabled: false,
+      credentials: false,
+    );
+  }
+
+  @override
+  Future<SarvamSettings> setBookingEnabled(int version, bool enabled) async =>
+      value = changed(enabled: enabled);
+  @override
+  Future<SarvamSettings> publish(int version, String deploymentId) async {
+    publishes++;
+    return value = changed(publishedVersion: value.draftVersion);
+  }
+
+  @override
+  Future<bool> openAuthorization(String url) async {
+    authorizations++;
+    return true;
   }
 
   @override
@@ -155,61 +214,84 @@ void main() {
     expect(call.title, 'Unknown caller');
   });
 
-  test('settings keep the saved key unless a new one is typed', () async {
-    final repo = TestSarvam();
-    final cubit = SarvamSettingsCubit(await workspace(), repo);
-    await cubit.load();
-    expect(cubit.state.dirty, isFalse);
-    cubit.toggleBusiness('business', true);
-    cubit.update(enabled: true);
-    await cubit.save();
-    expect(repo.saves.single['api_key'], isNull);
-    expect(repo.saves.single['version'], 2);
-    expect(repo.saves.single['business_ids'], {'business'});
-    expect(cubit.state.notice, 'Sarvam settings saved.');
-    expect(cubit.state.dirty, isFalse);
-    cubit.update(apiKey: ' sk_new_5678 ');
-    await cubit.save();
-    expect(repo.saves.last['api_key'], 'sk_new_5678');
-    expect(cubit.state.saved.apiKeyLast4, '5678');
-    await cubit.close();
-  });
+  test(
+    'Connect keeps server credentials, configures automatically and never publishes',
+    () async {
+      final repo = TestSarvam();
+      final cubit = SarvamSettingsCubit(await workspace(), repo);
+      await cubit.load();
+      cubit.toggleBusiness('business', true);
+      await cubit.connect();
+      expect(repo.saves.single['api_key'], isNull);
+      expect(repo.saves.single['version'], 2);
+      expect(repo.saves.single['business_ids'], {'business'});
+      expect(cubit.state.saved.connected, isTrue);
+      expect(cubit.state.saved.awaitingPublish, isTrue);
+      expect(repo.publishes, 0);
+      expect(cubit.state.dirty, isFalse);
+      cubit.update(apiKey: ' sk_new_5678 ');
+      await cubit.connect();
+      expect(repo.saves.last['api_key'], 'sk_new_5678');
+      expect(cubit.state.apiKey, isEmpty);
+      await cubit.close();
+    },
+  );
 
-  test('settings validate before saving and surface server errors', () async {
+  test('validates input and reports durable setup failures', () async {
     final repo = TestSarvam();
     final cubit = SarvamSettingsCubit(await workspace(), repo);
     await cubit.load();
-    cubit.update(enabled: true);
-    await cubit.save();
+    await cubit.connect();
     expect(cubit.state.error, contains('at least one business'));
-    cubit.update(enabled: false, appId: '');
-    await cubit.save();
-    expect(cubit.state.error, contains('together'));
     cubit.update(appId: 'bad id!');
-    await cubit.save();
-    expect(cubit.state.error, contains('letters, numbers'));
+    await cubit.connect();
+    expect(cubit.state.error, contains('IDs'));
     expect(repo.saves, isEmpty);
-    cubit.update(appId: 'Edens-Sport', orgId: 'org-2');
-    repo.failure = AppException(
-      'Sarvam settings changed elsewhere.',
-      code: 'CONFLICT',
-    );
-    await cubit.save();
-    expect(cubit.state.error, 'Sarvam settings changed elsewhere.');
-    expect(cubit.state.orgId, 'org-2');
+    cubit.update(appId: 'Edens-Sport');
+    cubit.toggleBusiness('business', true);
+    repo.stepFailure = const AppException('Setup interrupted. Retry.');
+    await cubit.connect();
+    expect(cubit.state.error, 'Setup interrupted. Retry.');
+    expect(cubit.state.busy, isFalse);
+    repo.stepFailure = null;
+    await cubit.continueSetup();
+    expect(cubit.state.saved.connected, isTrue);
+    expect(repo.connects, 1);
     await cubit.close();
   });
 
-  test('generating a key keeps unsaved edits and shows the key once', () async {
+  test(
+    'Disconnect supersedes pending Connect and prevents a late response restoring it',
+    () async {
+      final repo = TestSarvam()..pendingConnect = Completer<void>();
+      final cubit = SarvamSettingsCubit(await workspace(), repo);
+      await cubit.load();
+      cubit.toggleBusiness('business', true);
+      final pending = cubit.connect();
+      await cubit.connect();
+      expect(repo.connects, 1);
+      await cubit.disconnect();
+      expect(cubit.state.saved.status, 'disconnected');
+      repo.pendingConnect!.complete();
+      await pending;
+      expect(cubit.state.saved.status, 'disconnected');
+      expect(cubit.state.saved.enabled, isFalse);
+      await cubit.close();
+    },
+  );
+
+  test('booking switch saves immediately and Publish is explicit', () async {
     final repo = TestSarvam();
     final cubit = SarvamSettingsCubit(await workspace(), repo);
     await cubit.load();
-    cubit.update(orgId: 'org-9');
-    await cubit.rotateToolKey();
-    expect(cubit.state.newToolKey, 'bkv_new_key_1');
-    expect(cubit.state.orgId, 'org-9');
-    cubit.update(appId: 'x');
-    expect(cubit.state.newToolKey, isNull);
+    await cubit.setBookingEnabled(true);
+    expect(cubit.state.saved.enabled, isTrue);
+    expect(repo.connects, 0);
+    await cubit.setBookingEnabled(false);
+    expect(cubit.state.saved.enabled, isFalse);
+    await cubit.publish('deployment');
+    expect(repo.publishes, 1);
+    expect(cubit.state.saved.awaitingPublish, isFalse);
     await cubit.close();
   });
 
@@ -267,26 +349,33 @@ void main() {
   }
 
   testWidgets(
-    'settings screen fits a narrow phone and shows the tool key once',
+    'settings fit a narrow phone with booking controls and no key popup',
     (tester) async {
       final repo = TestSarvam();
       await pump(tester, const SarvamSettingsScreen(), repo, TestSaver());
       expect(tester.takeException(), isNull);
       expect(find.text('Connect Sarvam'), findsOneWidget);
+      expect(find.text('Generate'), findsNothing);
+      expect(find.text('Replace'), findsNothing);
       await tester.scrollUntilVisible(
-        find.text('Replace'),
+        find.text('Accept phone bookings'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
-      await tester.tap(find.text('Replace'));
+      await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
-      expect(find.text('Replace the voice tool key?'), findsOneWidget);
+      expect(repo.value.enabled, isTrue);
+      await tester.scrollUntilVisible(
+        find.text('Disconnect Sarvam'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Disconnect Sarvam'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Confirm'));
       await tester.pumpAndSettle();
-      expect(find.text('bkv_new_key_1'), findsOneWidget);
-      await tester.tap(find.text('Done'));
-      await tester.pumpAndSettle();
-      expect(find.text('bkv_new_key_1'), findsNothing);
+      expect(repo.disconnects, 1);
+      expect(repo.value.enabled, isFalse);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },

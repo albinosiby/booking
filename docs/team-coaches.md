@@ -1,45 +1,90 @@
-# Coaches and pool-space assignments
+# Unified staff and coaching responsibilities
 
-Open **Profile → Team management → Coaches**. Use the **Add coach** app-bar icon to add a contact with name, phone and pool business. This creates neither a login nor staff access. New contacts have no assigned pool spaces; new coaching plans start Unassigned. Pool configuration displays the current coach without offering an Add coach action or dropdown.
+Open **Profile → Team & access → Invite staff**. There is one staff list and invitation flow for everyone, including coaches. Enter the name, email and responsibility (Staff or Manager), optionally enable **Also a coach**, select businesses and optionally restrict them to specific resources. Select the required permissions explicitly; new invitations start with all permissions off. Create and share the private invitation link. No email is sent automatically; it expires after seven days and acceptance requires the invited verified email.
 
-## Assign pool spaces
+Coach status makes an active team member eligible to teach coaching plans. It does not grant bookings, payments, subscriptions or attendance access. Staff and Manager remain responsibility labels; selected permissions and assignments determine access. Team cards identify coaches with a badge. The former `/team/coaches` URL redirects to Team & access; there is no separate Coaches page.
 
-On a coach card, choose **Assign pool spaces**, select one or more checkboxes, then **Save assignments**. Existing assignments are checked. Clear all to leave the coach unassigned. Several coaches may share a pool space. Assigned pools appear as chips on the coach card.
+## Permissions
 
-Pool-space assignment is independent of coaching-plan assignment. Under **Assign coaching plans**, only plans whose eligible pools are all covered by the coach’s assigned spaces are offered. Selecting a plan assigned to another coach replaces that plan assignment. Unchecking removes the current coach from that plan.
+- **View bookings** (`view_bookings`): booking visibility within assigned resources.
+- **Create and edit bookings** (`manage_bookings`): ordinary booking operations.
+- **Mark attendance** (`mark_attendance`): attendance/check-in within assigned resources. Coaches are additionally limited to the plans they currently teach. A coach with this permission disabled can still see their own classes, but cannot mark students present or absent. Coach status alone does not grant general admissions or booking access.
+- **Manage subscriptions** (`manage_subscriptions`): enrollments, renewals, and subscription session management. It does not grant ordinary booking creation or attendance marking.
+- **Record collections**, **Record expenses**, and **View financial reports** remain separate permissions.
 
-If a space removal would invalidate saved coaching-plan assignments, the editor lists the affected plans. Saving asks for confirmation. Cancel keeps the online assignments intact and retains the checkbox edits. Confirm saves the space changes and clears only the affected plan assignments in one version-checked configuration update. Prices, opening hours, capacity, validity and unrelated coaches/plans remain unchanged.
+Owner permissions continue to cover all operations. Attendance corrections still require the owner and a reason. Staff first marks remain limited to fixed sessions that have started and ended no more than 24 hours ago. Flexible check-in requires attendance access and follows the existing allowance, current-time, capacity and expiry rules.
 
-Save the pool configuration and coaching plans first so they appear in Team management. Team saves publish immediately through the repository and refresh the workspace. Cached cards stay visible during reload. Save failures retain checkbox selections. Stale versions are rejected; close the editor, refresh Coaches, then retry. Already-open local pool drafts use the existing version-conflict handling.
+## Assign coaching plans inside staff details
 
-## Existing data and authorization
+Once an invitation is accepted, choose **Edit staff** on that person's card. Coach status, business/resource access, permissions and the **Coaching plans** section are managed here in both web and app layouts. **Save staff access** keeps the details page open.
 
-Old contact records without an explicit `pool_ids` property retain the pools implied by their existing coaching-plan assignments. On the next configuration save, the app writes those inferred assignments explicitly. A contact without previous plan assignments starts with no spaces. An explicit empty array always means unassigned, never every pool.
+Save changes to Coach status or resource assignments before changing coaching plans. The plan section explains this and disables assignments until access has been saved. New invitations show an explanation that plans can be assigned after acceptance. Under each eligible business, choose **Assign coaching plans**, select covered plans, and **Save assignments**. These plan changes have their own explicit save and publish immediately. Only plans fully covered by the staff member's saved resources are offered, together with already-assigned plans so they can be removed. Selecting another coach's plan replaces its coach. Existing overlap warnings and version-conflict rejection are preserved. Failed saves retain edits and report the error.
 
-Existing staff-based coach assignments continue to use their staff-resource authorization checks; they are not converted into contact records or automatically made coaches. Contacts never grant authentication or app access. Pool-restricted staff see only relevant contacts and pool IDs within their assigned resources.
+Removing access, disabling Coach or narrowing resources releases coaching plans that are no longer eligible, after the existing confirmation. Removing only attendance permission preserves teaching assignments. Owners choose **Manage responsibilities** on their own Team card to enable **Also a coach** and assign their own plans, within staff management.
 
-Deleting a pool removes its coach-space references along with its existing references in offers/plans, after the pool deletion confirmation. Backend validation rejects duplicate or foreign space IDs and coaching-plan assignments outside a contact's explicit pool coverage.
+## Permission data migration: user applies it
 
-## Deployment and migration
+No tables, columns, indexes, authentication settings or secrets change. Existing membership and invitation permission arrays need a one-time compatibility backfill:
 
-**No SQL migration is needed.** Space IDs are stored in the existing business JSON configuration under `coaches[].pool_ids`. No live data or schema changes were applied.
+- Existing `manage_bookings` grants receive `manage_subscriptions`, preserving previous subscription-management access.
+- Existing `manage_attendance` grants receive `mark_attendance`.
+- Existing coaches (including team members referenced by legacy coaching plans) receive `mark_attendance`, preserving their previous attendance ability. Going forward, turning Coach on grants nothing automatically.
+- Pending, unexpired, uncancelled invitations receive equivalent grants. Cancelled/expired invitations are unchanged.
+- The legacy `manage_attendance` marker remains accepted as an attendance grant for older clients; new staff saves replace that marker with the explicit attendance permission. For coaches, attendance remains limited to their own current plans, including when a legacy attendance marker is present.
 
-The hosted API must be updated to accept and validate the new field:
+**No migration or deployment has been applied by this implementation.**
 
-1. The generated source is `supabase/functions/booking-api/index.ts`. It includes the latest validation and staff projection changes.
-2. Open the existing **booking** Supabase project (`scwwkaywewecspsrskft`) → **Edge Functions → booking-api**. Download the current function as a backup.
-3. Copy the generated source on the Mac:
-   ```bash
-   pbcopy < "/Users/albinosiby/Tatos Dev/booking/supabase/functions/booking-api/index.ts"
+### Prerequisites and backup
+
+1. Confirm the correct booking project, private `booking_app` schema, and that the existing workspace/admissions/staff-coach migrations have been applied, including `20261022120000_staff_coaches.sql`. Do not run the earlier staff-coach migration again if it is already recorded.
+2. Arrange a short maintenance window for staff/invitation edits. Keep the previous deployed Edge Function and Flutter web/APK builds for recovery.
+3. In Supabase SQL Editor, run the following read-only queries and save their results as SQL text. These produce exact restoration statements for the current permission arrays. Keep these files private:
+
+   ```sql
+   SELECT format('UPDATE booking_app.memberships SET permissions=%L::jsonb WHERE id=%L::uuid;', permissions::text, id::text) AS recovery_sql
+   FROM booking_app.memberships ORDER BY id;
+   SELECT format('UPDATE booking_app.invitations SET permissions=%L::jsonb WHERE id=%L::uuid;', permissions::text, id::text) AS recovery_sql
+   FROM booking_app.invitations ORDER BY id;
+   SELECT name FROM booking_app.schema_migrations
+   WHERE name IN ('20261022120000_staff_coaches.sql', '20261022051321_unified_staff_permissions.sql');
    ```
-4. Replace `index.ts` in the function's Code editor and choose **Deploy updates**.
-5. Preserve `BOOKING_DATABASE_URL` and the existing custom Auth verification setting (`verify_jwt=false`). No secret, gateway or database changes are required.
-6. Run the latest Flutter source. Add a coach, assign Pool A/Pool B, save and reopen to check persistence. Assign a covered coaching plan, then remove its pool; verify Cancel preserves it and Confirm returns the affected plan to Unassigned. Test a second coach on the same pool if needed.
 
-Update clients before using explicit assignments; older clients do not understand the new field. If rolling back, use compatible API/client code and preserve published business configuration rather than overwriting it with an older snapshot.
+### Apply and release
 
-No hosted deployment, APK build or phone installation was performed for this change.
+1. Deploy the prepared `supabase/functions/booking-api/index.ts` to the existing `booking-api` Edge Function, preserving its current environment and custom JWT verification configuration. Keep staff edits paused until migration and updated clients are ready.
+2. Open `supabase/migrations/20261022051321_unified_staff_permissions.sql` and execute its complete contents in Supabase SQL Editor. It contains its transaction, private-schema search path, lock timeout and application migration-ledger entry. On failure, the transaction rolls back; diagnose before retrying. Do not rerun a recorded migration, especially after owners have changed attendance grants.
+3. Release the updated Flutter web and app builds together, then reopen staff management. Retire older clients before editing the new explicit permissions; older clients cannot represent all the new controls.
+4. Node deployments use the matching file in `backend/migrations/`. Apply it with the project's migration process and record the same filename in `schema_migrations`; do not execute both versions on the same database.
 
-## Verification
+### Validation
 
-Flutter analysis passed with no issues. All 29 focused Flutter tests passed, including small-screen space selection, covered-plan filtering, confirmation/cancellation, unassignment, stale versions, existing-data compatibility and access changes. All 38 backend pool/booking tests passed in isolated test storage. TypeScript build, Edge type-check and generated Edge bundle build passed.
+```sql
+SELECT name FROM booking_app.schema_migrations
+WHERE name='20261022051321_unified_staff_permissions.sql';
+SELECT id, display_name, role, permissions
+FROM booking_app.memberships ORDER BY display_name;
+SELECT id, email, permissions, expires_at
+FROM booking_app.invitations
+WHERE accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now();
+```
+
+Immediately after the backfill, before owners edit permissions, legacy coaches/attendance staff should have `mark_attendance`, and legacy booking managers should have `manage_subscriptions`. After release, removing an explicit permission intentionally changes that expectation.
+
+Verify on web and phone: invite a coach without attendance; accept as the exact email; assign resources, save, then assign a covered coaching plan. Confirm classes are visible with attendance disabled. Enable attendance and verify first marking on their own current classes only. Disable it and confirm the next API request is rejected. Confirm booking creation and subscription management can be enabled independently. Narrow resource access and confirm the affected plans become Unassigned; cancel the confirmation to preserve access. Check an old `/team/coaches` link returns to Team & access.
+
+### Recovery
+
+Keep staff edits paused. If the SQL transaction failed, it rolled back and no restoration is needed. If recovering a completed rollout before staff edits resume, restore the saved membership/invitation permission statements in one transaction, then delete only `20261022051321_unified_staff_permissions.sql` from `booking_app.schema_migrations` in that transaction. Restore compatible previous API and client builds together. If owners have already changed permissions, reconcile each affected record against audit history rather than overwriting their changes with the old backup. Coaching assignments are not changed by this migration and must not be reverted as part of permission recovery.
+
+
+## Verification of the unified flow
+
+- Targeted Flutter analysis: no issues. The unrelated full-project analysis finding in `test/admission_overview_test.dart` was left untouched.
+- All 49 focused Flutter tests passed across staff assignment, staff coaching, My classes, responsive workspace layouts, admissions, route guards/configuration, repository isolation and court coaching. These cover explicit permission selection, failed staff saves, edits during an in-flight save, saved resource eligibility, owner coaching, and plan assignment inside staff details.
+- All 41 focused backend tests passed across admissions, court admissions, workspace authorization and permission migration. Coach-only invitations do not acquire operational permissions, attendance grants/revocation and current resource/plan boundaries are enforced, booking and subscription grants are independent, and the compatibility backfill preserves pending invitations without duplicate grants. All database tests use isolated in-memory storage.
+- TypeScript build, Edge type check and generated Edge bundle build passed.
+- JavaScript Flutter web debug build passed with `--no-wasm-dry-run`; this disables the optional extra Wasm compatibility compilation. Desktop and phone staff layouts were rendered and reviewed locally.
+- Android debug APK build passed; the APK is `build/app/outputs/flutter-apk/app-debug.apk`. It was not installed on a device.
+- An optional full backend run was stopped after 147 passing checks because concurrent compilation caused severe resource contention; it is not recorded as a full-suite pass. The final affected backend suites were rerun serially and passed as listed above.
+
+No hosted deployment, live migration or device installation was performed.

@@ -29,7 +29,7 @@ The configuration supports up to 50 courts/business, 40 rules/court and 10 durat
 
 ## Boundaries and operation
 
-Court setup does not create bookings or reserve time. Concurrency-safe court reservations, cancellations, customer details and payments belong to later booking/payment modules. Staff assignments continue through Team & access. Optional coaching plans and coach contacts are configured from Court settings → Coaching plans and Team management → Coaches; see [Court coaching](court-coaching.md).
+Court setup does not create bookings or reserve time. Concurrency-safe court reservations, cancellations, customer details and payments belong to later booking/payment modules. Staff assignments continue through Team & access. Optional coaching plans are configured from Court settings → Coaching plans; staff-coach responsibilities and assignments are managed in Team & access → Edit staff → Coaching plans; see [Court coaching](court-coaching.md).
 
 Existing setup, local database, backups, deployment and CI instructions apply unchanged. Production requires the configured Firebase/PostgreSQL/HTTPS environment. Tests cover three business types, pricing boundaries, copy isolation, legacy identity preservation, conflicts/lost responses, protected staff scopes and narrow-width enlarged-text editing.
 

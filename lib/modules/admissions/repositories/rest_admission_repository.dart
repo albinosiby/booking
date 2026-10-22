@@ -146,6 +146,7 @@ class RestAdmissionRepository implements AdmissionRepository {
     poolName: j['space_name'] ?? '',
     today: j['today'] ?? '',
     localNow: j['local_now'] ?? '',
+    canMarkAttendance: j['can_attend'] == true,
     renewalId: j['renewal_id'],
     visits: List.unmodifiable(
       (j['sessions'] as List? ?? []).map(
@@ -184,6 +185,10 @@ class RestAdmissionRepository implements AdmissionRepository {
     String query = '',
     String kind = 'swimming',
     String? status,
+    String? businessId,
+    String? spaceId,
+    String? planId,
+    bool previousPlans = false,
     int cursor = 0,
   }) async {
     final uri = Uri(
@@ -192,6 +197,10 @@ class RestAdmissionRepository implements AdmissionRepository {
         'q': query,
         'kind': kind,
         'status': ?status,
+        'business_id': ?businessId,
+        'resource_id': ?spaceId,
+        'plan_id': ?planId,
+        if (previousPlans) 'previous_plans': 'true',
         'cursor': '$cursor',
       },
     );

@@ -1,3 +1,4 @@
+import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/services/rest_api_service.dart';
 import '../models/sarvam_models.dart';
 import 'sarvam_repository.dart';
@@ -11,9 +12,8 @@ class RestSarvamRepository implements SarvamRepository {
   Future<SarvamSettings> settings() async =>
       _settings(await api.request('/sarvam/settings'));
   @override
-  Future<SarvamSettings> save({
+  Future<SarvamSettings> connect({
     required int version,
-    required bool enabled,
     required Set<String> businessIds,
     required String orgId,
     required String workspaceId,
@@ -21,11 +21,10 @@ class RestSarvamRepository implements SarvamRepository {
     String? apiKey,
   }) async => _settings(
     await api.request(
-      '/sarvam/settings',
-      method: 'PUT',
+      '/sarvam/connect',
+      method: 'POST',
       data: {
         'version': version,
-        'enabled': enabled,
         'business_ids': businessIds.toList(),
         'sarvam_org_id': orgId,
         'workspace_id': workspaceId,
@@ -35,9 +34,40 @@ class RestSarvamRepository implements SarvamRepository {
     ),
   );
   @override
-  Future<String> rotateToolKey() async =>
-      (await api.request('/sarvam/tool-key', method: 'POST'))['tool_key']
-          as String;
+  Future<SarvamSettings> setupStep() async =>
+      _settings(await api.request('/sarvam/setup', method: 'POST'));
+  @override
+  Future<SarvamSettings> disconnect() async =>
+      _settings(await api.request('/sarvam/disconnect', method: 'POST'));
+  @override
+  Future<SarvamSettings> setBookingEnabled(int version, bool enabled) async =>
+      _settings(
+        await api.request(
+          '/sarvam/booking-enabled',
+          method: 'PUT',
+          data: {'version': version, 'enabled': enabled},
+        ),
+      );
+  @override
+  Future<SarvamSettings> publish(int version, String deploymentId) async =>
+      _settings(
+        await api.request(
+          '/sarvam/publish',
+          method: 'POST',
+          data: {'version': version, 'deployment_id': deploymentId},
+        ),
+      );
+  @override
+  Future<bool> openAuthorization(String url) async {
+    final uri = Uri.parse(url);
+    if (uri.scheme != 'https' ||
+        uri.host != 'mcp.sarvam.ai' ||
+        uri.path != '/voice-agents/authorize') {
+      return false;
+    }
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   @override
   Future<int> test() async =>
       ((await api.request('/sarvam/test', method: 'POST'))['calls_last_24h']

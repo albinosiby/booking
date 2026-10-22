@@ -276,7 +276,7 @@ test("public health exposes a revision for deployment verification without accou
   assert.deepEqual(await response.json(), {
     status: "ok",
     runtime: "supabase-edge",
-    revision: "2026-10-22-sarvam-voice-agent",
+    revision: "2026-10-22-sarvam-automatic-setup",
   });
 });
 

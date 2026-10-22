@@ -60,9 +60,32 @@ const reasonSchema = z.string().trim().min(2).max(500);
 export class AdmissionService {
   constructor(private readonly db: Database) {}
   private allowed(m: Row, p: string) {
-    return m.role === "owner" || m.permissions.includes(p);
+    return (
+      m.role === "owner" ||
+      m.permissions.includes(p) ||
+      (p === "mark_attendance" && m.permissions.includes("manage_attendance"))
+    );
   }
-  private async member(actor: Actor, db: Queryable = this.db) {
+  private canMarkAttendance(
+    m: Row,
+    admission: Row,
+    configuration: Row | undefined,
+  ) {
+    if (!this.allowed(m, "mark_attendance")) return false;
+    if (m.role === "owner" || !isCoach(m)) return true;
+    return (
+      currentCoachId(
+        configuration,
+        admission.plan_id,
+        admission.plan_snapshot,
+      ) === m.id
+    );
+  }
+  private async member(
+    actor: Actor,
+    db: Queryable = this.db,
+    allowCoachClasses = false,
+  ) {
     const m = (
       await db.query<Row>(
         "SELECT * FROM memberships WHERE user_id=$1 AND active=true FOR SHARE",
@@ -71,13 +94,15 @@ export class AdmissionService {
     ).rows[0];
     if (
       !m ||
-      ![
+      (![
         "view_bookings",
         "manage_bookings",
         "manage_attendance",
+        "mark_attendance",
+        "manage_subscriptions",
         "collect_payments",
-        "coach",
-      ].some((p) => this.allowed(m, p))
+      ].some((p) => this.allowed(m, p)) &&
+        !(allowCoachClasses && isCoach(m)))
     )
       throw new ForbiddenException("Admission access is required.");
     return m;
@@ -299,8 +324,8 @@ export class AdmissionService {
     return {
       businesses,
       currency,
-      can_manage: this.allowed(m, "manage_bookings"),
-      can_attend: this.allowed(m, "manage_attendance"),
+      can_manage: this.allowed(m, "manage_subscriptions"),
+      can_attend: this.allowed(m, "mark_attendance"),
       can_collect: this.allowed(m, "collect_payments"),
       is_owner: m.role === "owner",
     };
@@ -368,7 +393,7 @@ export class AdmissionService {
   /** The caller's coaching classes on one local date, each with its students. */
   async classes(actor: Actor, input: unknown) {
     const v = z.object({ date: calendarDate }).strict().parse(input);
-    const m = await this.member(actor);
+    const m = await this.member(actor, this.db, true);
     if (!isCoach(m))
       throw new ForbiddenException("Only coaches have coaching classes.");
     const businesses = (
@@ -377,10 +402,21 @@ export class AdmissionService {
         [m.organization_id],
       )
     ).rows;
+    const assignments =
+      m.role === "owner"
+        ? []
+        : (
+            await this.db.query<Row>(
+              "SELECT business_id,resource_ids FROM staff_assignments WHERE membership_id=$1",
+              [m.id],
+            )
+          ).rows;
     const now = Date.now();
     const classes: Row[] = [];
     for (const b of businesses) {
       if (!coachingConfiguration(b.configuration)) continue;
+      const assignment = assignments.find((a) => a.business_id === b.id);
+      if (m.role !== "owner" && !assignment) continue;
       const plans: Row[] = (b.configuration.plans ?? []).filter(
         (p: Row) => p.kind === "coaching" && p.coach_id === m.id,
       );
@@ -397,6 +433,12 @@ export class AdmissionService {
       // One class per plan, space and time; students of a batch share it.
       const byKey = new Map<string, Row>();
       for (const r of rows) {
+        if (
+          m.role !== "owner" &&
+          assignment!.resource_ids.length &&
+          !assignment!.resource_ids.includes(r.resource_id)
+        )
+          continue;
         const starts = Date.parse(new Date(r.starts_at).toISOString()),
           ends = Date.parse(new Date(r.ends_at).toISOString());
         const key = [b.id, r.plan_id, r.resource_id, starts, ends].join("|");
@@ -430,6 +472,7 @@ export class AdmissionService {
           // Mirrors attendance(): first marks of fixed sessions, from the
           // start until 24 hours after the end; owners correct the rest.
           markable:
+            this.allowed(m, "mark_attendance") &&
             r.mode === "fixed" &&
             r.admission_attendance === "unmarked" &&
             starts <= now &&
@@ -446,7 +489,7 @@ export class AdmissionService {
   }
   /**
    * Upcoming classes that would overlap for a coach who coaches exactly
-   * `plan_ids` after a Team → Coaches save. Only clashes involving a plan
+   * `plan_ids` after a staff coaching-plan save. Only clashes involving a plan
    * the coach would newly take over are reported.
    */
   async coachConflicts(actor: Actor, input: unknown) {
@@ -665,9 +708,9 @@ export class AdmissionService {
     const v = enrollmentSchema.parse(input);
     return this.db.transaction(async (db) => {
       const m = await this.member(actor, db);
-      if (!this.allowed(m, "manage_bookings"))
+      if (!this.allowed(m, "manage_subscriptions"))
         throw new ForbiddenException(
-          "Booking management permission is required.",
+          "Subscription management permission is required.",
         );
       const b = await this.business(m, v.business_id, v.resource_id, db, true);
       return this.previewIn(db, m, b, v);
@@ -837,7 +880,7 @@ export class AdmissionService {
       command_key,
       "admission_create",
       parsed,
-      "manage_bookings",
+      "manage_subscriptions",
       async (db, m, b) => {
         const q = await this.previewIn(db, m, b, v);
         if (q.preview_token !== preview_token)
@@ -950,6 +993,9 @@ export class AdmissionService {
           .enum(["active", "upcoming", "completed", "expired", "cancelled"])
           .optional(),
         business_id: z.uuid().optional(),
+        resource_id: z.uuid().optional(),
+        plan_id: z.uuid().optional(),
+        previous_plans: z.enum(["true", "false"]).optional(),
         cursor: z.coerce.number().int().min(0).max(100000).default(0),
       })
       .strict()
@@ -969,6 +1015,11 @@ export class AdmissionService {
     if (v.kind) add("a.plan_snapshot->>'kind'=?", v.kind);
     if (v.status) add("a.status=?", v.status);
     if (v.business_id) add("a.business_id=?", v.business_id);
+    if (v.resource_id) add("a.resource_id=?", v.resource_id);
+    if (v.plan_id) add("a.plan_id=?", v.plan_id);
+    if (v.previous_plans === "true")
+      where +=
+        " AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(b.configuration->'plans','[]'::jsonb)) p WHERE p->>'id'=a.plan_id::text AND p->>'kind'=a.plan_snapshot->>'kind' AND p->>'enabled'='true' AND COALESCE(p->'pool_ids',p->'court_ids','[]'::jsonb) @> jsonb_build_array(a.resource_id::text))";
     if (m.role !== "owner")
       add(
         "EXISTS(SELECT 1 FROM staff_assignments s WHERE s.membership_id=? AND s.business_id=a.business_id AND (jsonb_array_length(s.resource_ids)=0 OR s.resource_ids @> jsonb_build_array(a.resource_id::text)))",
@@ -1029,6 +1080,7 @@ export class AdmissionService {
         business.configuration,
         await this.coachNames(this.db, m.organization_id),
       ),
+      can_attend: this.canMarkAttendance(m, a, business.configuration),
       business_name: business.name,
       space_name:
         admissionSpaces(business.configuration).find(
@@ -1073,9 +1125,13 @@ export class AdmissionService {
       v.command_key,
       "admission_checkin",
       { id, ...v },
-      "manage_attendance",
+      "mark_attendance",
       async (db, m, b) => {
         const a = await this.find(m, id, db);
+        if (!this.canMarkAttendance(m, a, b.configuration))
+          throw new ForbiddenException(
+            "Attendance is limited to your assigned coaching plans.",
+          );
         if (a.version !== v.version)
           throw new ConflictException("Admission changed. Refresh and retry.");
         if (a.mode !== "flexible")
@@ -1158,18 +1214,6 @@ export class AdmissionService {
       .parse(input);
     const member = await this.member(actor),
       original = await this.find(member, id);
-    // Coaches mark attendance for classes of the plans they coach now.
-    const config = (
-      await this.db.query<Row>(
-        "SELECT configuration FROM businesses WHERE id=$1",
-        [original.business_id],
-      )
-    ).rows[0]?.configuration;
-    const coach = currentCoachId(
-      config,
-      original.plan_id,
-      original.plan_snapshot,
-    );
     return this.command(
       actor,
       original.business_id,
@@ -1177,16 +1221,19 @@ export class AdmissionService {
       v.command_key,
       "admission_attendance",
       { id, visitId, ...v },
-      (m) =>
-        this.allowed(m, "manage_attendance") || (isCoach(m) && coach === m.id),
-      async (db, m) => {
-        const a = await this.find(m, id, db),
-          s = (
-            await db.query<Row>(
-              "SELECT * FROM bookings WHERE id=$1 AND admission_id=$2 FOR UPDATE",
-              [visitId, id],
-            )
-          ).rows[0];
+      "mark_attendance",
+      async (db, m, b) => {
+        const a = await this.find(m, id, db);
+        if (!this.canMarkAttendance(m, a, b.configuration))
+          throw new ForbiddenException(
+            "Attendance is limited to your assigned coaching plans.",
+          );
+        const s = (
+          await db.query<Row>(
+            "SELECT * FROM bookings WHERE id=$1 AND admission_id=$2 FOR UPDATE",
+            [visitId, id],
+          )
+        ).rows[0];
         if (!s || s.status === "cancelled" || a.cancelled)
           throw new BadRequestException(
             "This session is cancelled or unavailable.",
@@ -1264,7 +1311,7 @@ export class AdmissionService {
       v.command_key,
       "admission_session",
       { id, visitId, ...v },
-      "manage_bookings",
+      "manage_subscriptions",
       async (db, m, b) => {
         const a = await this.find(m, id, db),
           session = (
@@ -1475,7 +1522,7 @@ export class AdmissionService {
       v.command_key,
       "admission_cancel",
       { id, ...v },
-      "manage_bookings",
+      "manage_subscriptions",
       async (db, m) => {
         const a = await this.find(m, id, db);
         if (a.version !== v.version)

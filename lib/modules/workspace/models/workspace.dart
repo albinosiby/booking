@@ -131,13 +131,17 @@ class Workspace extends Equatable {
   );
   bool get isOwner => membership?['role'] == 'owner';
 
-  /// Coaches teach coaching plans and mark attendance in My classes. Owners
+  /// Coaches teach coaching plans. Attendance needs its own permission. Owners
   /// opt in too, so this is not implied by [isOwner].
   bool get isCoach =>
       (membership?['permissions'] as List? ?? const []).contains('coach');
   bool hasPermission(String permission) =>
       isOwner ||
-      (membership?['permissions'] as List? ?? []).contains(permission);
+      (membership?['permissions'] as List? ?? []).contains(permission) ||
+      (permission == 'mark_attendance' &&
+          (membership?['permissions'] as List? ?? []).contains(
+            'manage_attendance',
+          ));
   factory Workspace.fromJson(Map<String, dynamic> j, {Uint8List? logo}) =>
       Workspace(
         organization: j['organization'] == null

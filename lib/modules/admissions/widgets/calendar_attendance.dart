@@ -29,7 +29,7 @@ class CalendarAttendance extends StatelessWidget {
       ),
       if (!cancelled &&
           context.read<WorkspaceCubit>().state.data.hasPermission(
-            'manage_attendance',
+            'mark_attendance',
           ))
         TextButton.icon(
           icon: const Icon(Icons.how_to_reg),
@@ -85,6 +85,7 @@ class CalendarAttendance extends StatelessWidget {
                                 visit.status != 'cancelled' &&
                                 s.detail!.status != 'cancelled' &&
                                 s.catalog.canAttend &&
+                                s.detail!.canMarkAttendance &&
                                 visit.attendance == 'unmarked' &&
                                 s.detail!.mode == 'fixed' &&
                                 DateTime.parse(visit.endsAt).isAfter(

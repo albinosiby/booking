@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/routes/routes.dart';
@@ -15,480 +14,342 @@ class SarvamSettingsScreen extends StatefulWidget {
   State<SarvamSettingsScreen> createState() => _SarvamSettingsScreenState();
 }
 
-class _SarvamSettingsScreenState extends State<SarvamSettingsScreen> {
+class _SarvamSettingsScreenState extends State<SarvamSettingsScreen>
+    with WidgetsBindingObserver {
   late final cubit = getIt<SarvamSettingsCubit>(
     param1: context.read<WorkspaceCubit>(),
   );
   final apiKey = TextEditingController();
+  String? deployment;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     cubit.load();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        cubit.state.saved.status == 'authorization_required') {
+      cubit.continueSetup();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     apiKey.dispose();
     cubit.close();
     super.dispose();
   }
 
-  Future<void> copy(String text, String label) async {
-    await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) showMessage(context, '$label copied.');
-  }
-
-  Future<void> rotate(SarvamSettings saved) async {
-    if (saved.hasToolKey &&
-        !await confirmAction(
-          context,
-          'Replace the voice tool key?',
-          'The current key stops working immediately. Update it in every Sarvam tool afterwards.',
-        )) {
-      return;
+  Future<void> publish(SarvamSettings settings, String id) async {
+    if (await confirmAction(
+      context,
+      'Publish booking changes?',
+      'Publish agent version ${settings.draftVersion} to the selected phone deployment. This replaces its booking instructions and tools. Existing bookings remain unchanged.',
+    )) {
+      await cubit.publish(id);
     }
-    await cubit.rotateToolKey();
   }
 
-  Future<void> showToolKey(String key) => showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (c) => AlertDialog(
-      scrollable: true,
-      title: const Text('Voice tool key'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget connection(SarvamSettingsState s) => AppPanel(
+    title: 'Connect Sarvam',
+    subtitle: 'Connect your workspace and authorize automatic booking setup.',
+    child: AppCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Copy it now and paste it into each Sarvam API tool as an API key '
-            'header named X-API-Key. It will not be shown again.',
+          AppTextField(
+            label: 'Sarvam API key',
+            controller: apiKey,
+            password: true,
+            hint: s.saved.hasCredentials
+                ? 'Saved key ending ${s.saved.apiKeyLast4}. Leave empty to keep.'
+                : 'Paste your workspace API key',
+            prefixIcon: Icons.key_outlined,
+            onChanged: (v) => cubit.update(apiKey: v),
           ),
-          const SizedBox(height: 12),
-          SelectableText(key, style: const TextStyle(fontFamily: 'monospace')),
+          const SizedBox(height: 14),
+          ConfigurationField(
+            label: 'Organization ID',
+            value: s.orgId,
+            onChanged: (v) => cubit.update(orgId: v),
+          ),
+          const SizedBox(height: 14),
+          ConfigurationField(
+            label: 'Workspace ID',
+            value: s.workspaceId,
+            onChanged: (v) => cubit.update(workspaceId: v),
+          ),
+          const SizedBox(height: 14),
+          ConfigurationField(
+            label: 'App ID',
+            value: s.appId,
+            onChanged: (v) => cubit.update(appId: v),
+          ),
+          const SizedBox(height: 20),
+          AppButton(
+            label: s.saved.status == 'failed' ? 'Reconnect' : 'Connect',
+            icon: Icons.link_rounded,
+            busy: s.busy,
+            onPressed: s.busy || s.saved.status == 'cleanup_pending'
+                ? null
+                : cubit.connect,
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Sarvam sign-in authorizes setup. The agent stays on its current published version until you choose Publish changes.',
+          ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: key));
-            if (c.mounted) showMessage(c, 'Tool key copied.');
-          },
-          child: const Text('Copy key'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(c),
-          child: const Text('Done'),
-        ),
-      ],
     ),
   );
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) =>
-        BlocConsumer<SarvamSettingsCubit, SarvamSettingsState>(
-          bloc: cubit,
-          listenWhen: (a, b) =>
-              b.newToolKey != null || b.notice != null || b.error != null,
-          listener: (context, s) {
-            if (s.newToolKey != null) {
-              showToolKey(s.newToolKey!);
-            } else if (s.notice != null) {
-              apiKey.clear();
-              showMessage(context, s.notice!);
-            } else if (s.error != null && !s.loading && s.saved.version > 0) {
-              showMessage(context, s.error!);
-            }
-          },
-          builder: (context, s) =>
-              isDesktopWidth(context) && box.maxWidth >= AppPage.wideWidth
-              ? desktop(context, s)
-              : narrow(context, s),
-        ),
-  );
-
-  bool loadFailed(SarvamSettingsState s) =>
-      s.error != null && s.saved.version == 0 && !s.busy;
-
-  Widget saveButton(SarvamSettingsState s) => AppButton(
-    label: 'Save settings',
-    icon: Icons.check_rounded,
-    busy: s.busy,
-    onPressed: s.busy || !s.dirty ? null : cubit.save,
-  );
-
-  Widget testButton(SarvamSettingsState s) => AppButton(
-    label: 'Test connection',
-    icon: Icons.wifi_tethering_rounded,
-    secondary: true,
-    onPressed: s.saved.connected && !s.dirty && !s.busy ? cubit.test : null,
-  );
-
-  Widget callLogsButton(SarvamSettingsState s) => AppButton(
-    label: 'View call logs',
-    icon: Icons.call_outlined,
-    secondary: true,
-    onPressed: s.saved.connected && !s.dirty
-        ? () => context.push(Routes.callLogs)
-        : null,
-  );
-
-  Widget apiKeyField(SarvamSettings saved) => AppTextField(
-    label: 'Sarvam API key',
-    controller: apiKey,
-    password: true,
-    hint: saved.connected
-        ? 'Saved key ending ${saved.apiKeyLast4}. Type to replace.'
-        : 'Paste your Sarvam API key',
-    prefixIcon: Icons.key_outlined,
-    onChanged: (v) => cubit.update(apiKey: v),
-  );
-
-  List<Widget> idFields(SarvamSettingsState s) => [
-    ConfigurationField(
-      label: 'Organization ID',
-      value: s.orgId,
-      onChanged: (v) => cubit.update(orgId: v),
-    ),
-    ConfigurationField(
-      label: 'Workspace ID',
-      value: s.workspaceId,
-      onChanged: (v) => cubit.update(workspaceId: v),
-    ),
-    ConfigurationField(
-      label: 'App ID',
-      value: s.appId,
-      onChanged: (v) => cubit.update(appId: v),
-    ),
-  ];
-
-  Widget? saveHint(BuildContext context, SarvamSettingsState s) =>
-      s.saved.connected && s.dirty
-      ? Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(
-            'Save your changes to test them.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        )
-      : null;
-
-  Widget bookingCard(SarvamSettingsState s) => AppCard(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Column(
-      children: [
-        SwitchListTile(
-          title: const Text('Accept phone bookings'),
-          subtitle: Text(
-            s.enabled
-                ? 'The voice agent can book selected businesses.'
-                : 'Voice tool calls are refused.',
-          ),
-          value: s.enabled,
-          onChanged: s.busy ? null : (v) => cubit.update(enabled: v),
-        ),
-        const Divider(height: 1),
-        for (final b in s.saved.businesses)
-          CheckboxListTile(
-            title: Text(b.name),
-            subtitle: b.ready ? null : const Text('Not active yet'),
-            value: s.businessIds.contains(b.id),
-            onChanged: s.busy
-                ? null
-                : (v) => cubit.toggleBusiness(b.id, v == true),
-          ),
-        if (s.saved.businesses.isEmpty)
-          const ListTile(title: Text('Add a business before enabling.')),
-      ],
-    ),
-  );
-
-  Widget toolCard(BuildContext context, SarvamSettingsState s) {
-    final t = Theme.of(context), c = t.colorScheme, saved = s.saved;
-    return AppCard(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+  Widget booking(SarvamSettingsState s) => AppPanel(
+    title: 'Phone bookings',
+    subtitle: 'Choose which businesses callers may book.',
+    child: AppCard(
       child: Column(
         children: [
-          ListTile(
-            leading: const Icon(Icons.vpn_key_outlined),
-            title: const Text('Voice tool key'),
+          SwitchListTile(
+            title: const Text('Accept phone bookings'),
             subtitle: Text(
-              saved.hasToolKey
-                  ? 'Starts with ${saved.toolKeyPrefix}…'
-                  : 'Not generated yet',
+              s.saved.enabled
+                  ? 'Callers can book, reschedule and cancel.'
+                  : 'Phone booking actions are blocked. General enquiries can continue.',
             ),
-            trailing: TextButton(
-              onPressed: s.busy ? null : () => rotate(saved),
-              child: Text(saved.hasToolKey ? 'Replace' : 'Generate'),
-            ),
+            value: s.saved.enabled,
+            onChanged: s.saved.enabled || !s.busy && s.saved.canEnableBookings
+                ? cubit.setBookingEnabled
+                : null,
           ),
-          const Divider(height: 1),
-          for (final (path, label) in voiceTools)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 4, 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(label, style: t.textTheme.bodyMedium),
-                        Text(
-                          '${saved.toolBaseUrl}/$path',
-                          style: t.textTheme.bodySmall?.copyWith(
-                            color: c.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Copy $label URL',
-                    icon: const Icon(Icons.copy_rounded),
-                    onPressed: () => copy('${saved.toolBaseUrl}/$path', 'URL'),
-                  ),
-                ],
+          if (!s.saved.canEnableBookings && !s.saved.enabled)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                'Connect and publish before turning phone bookings on.',
               ),
             ),
+          const Divider(height: 1),
+          for (final b in s.saved.businesses)
+            CheckboxListTile(
+              title: Text(b.name),
+              subtitle: b.ready ? null : const Text('Not active yet'),
+              value: s.businessIds.contains(b.id),
+              onChanged: s.busy
+                  ? null
+                  : (v) => cubit.toggleBusiness(b.id, v == true),
+            ),
+          if (s.saved.businesses.isEmpty)
+            const ListTile(title: Text('Add a business before connecting.')),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Business selection changes take effect when you Connect and Publish changes. Turning bookings off takes effect immediately.',
+            ),
+          ),
         ],
+      ),
+    ),
+  );
+  Widget status(SarvamSettingsState s) {
+    final saved = s.saved;
+    final ids = saved.deployments.map((d) => d.id).toSet();
+    final selected = ids.contains(deployment)
+        ? deployment
+        : saved.deployments.length == 1
+        ? saved.deployments.single.id
+        : null;
+    return AppPanel(
+      title: 'Connection status',
+      child: AppCard(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              saved.statusLabel,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            if (s.busy) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+            if (saved.progressLabel.isNotEmpty &&
+                saved.status != 'configured') ...[
+              const SizedBox(height: 10),
+              Text(saved.progressLabel),
+            ],
+            if (s.error != null || saved.setupError.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                s.error ?? saved.setupError,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+            if (saved.status == 'authorization_required') ...[
+              const SizedBox(height: 16),
+              AppButton(
+                label: 'Authorize with Sarvam',
+                icon: Icons.open_in_new_rounded,
+                onPressed: s.busy ? null : cubit.authorize,
+              ),
+              const SizedBox(height: 10),
+              AppButton(
+                label: 'Continue setup',
+                secondary: true,
+                onPressed: s.busy ? null : cubit.continueSetup,
+              ),
+            ],
+            if (saved.needsWork && !s.busy) ...[
+              const SizedBox(height: 16),
+              AppButton(
+                label: saved.status == 'cleanup_pending'
+                    ? 'Retry cleanup'
+                    : 'Retry setup',
+                onPressed: cubit.continueSetup,
+              ),
+            ],
+            if (saved.connected) ...[
+              const SizedBox(height: 16),
+              if (saved.awaitingPublish)
+                const Text(
+                  'Booking setup is ready. Review and test the draft in Sarvam before publishing.',
+                ),
+              if (saved.deployments.isEmpty)
+                const Text(
+                  'Set up a phone deployment for this agent in Sarvam, then Connect again to refresh it.',
+                ),
+              if (saved.deployments.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selected,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone deployment',
+                  ),
+                  items: [
+                    for (final d in saved.deployments)
+                      DropdownMenuItem(
+                        value: d.id,
+                        child: Text(d.name, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: s.busy
+                      ? null
+                      : (v) => setState(() => deployment = v),
+                ),
+                const SizedBox(height: 12),
+                AppButton(
+                  label: 'Publish changes',
+                  icon: Icons.publish_rounded,
+                  onPressed:
+                      s.busy ||
+                          s.dirty ||
+                          selected == null ||
+                          !saved.awaitingPublish
+                      ? null
+                      : () => publish(saved, selected),
+                ),
+              ],
+            ],
+            if (saved.callLogsAvailable) ...[
+              const SizedBox(height: 16),
+              AppButton(
+                label: 'Test call log connection',
+                secondary: true,
+                onPressed: s.busy ? null : cubit.test,
+              ),
+              const SizedBox(height: 10),
+              AppButton(
+                label: 'View call logs',
+                secondary: true,
+                icon: Icons.call_outlined,
+                onPressed: () => context.push(Routes.callLogs),
+              ),
+            ],
+            if (saved.status != 'disconnected' || saved.hasCredentials) ...[
+              const SizedBox(height: 16),
+              AppButton(
+                label: 'Disconnect Sarvam',
+                secondary: true,
+                icon: Icons.link_off_rounded,
+                onPressed: saved.status == 'cleanup_pending'
+                    ? null
+                    : () async {
+                        if (await confirmAction(
+                          context,
+                          'Disconnect Sarvam?',
+                          'Turn off phone bookings and revoke booking access. Existing bookings are preserved.',
+                        )) {
+                          await cubit.disconnect();
+                        }
+                      },
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 
-  static const connectNote =
-      'Used to show call logs, transcripts and recordings. '
-      'Find these in Sarvam under your app’s API settings.';
-  static const bookingNote =
-      'Callers can book, and change or cancel bookings made from '
-      'their own phone number. Bookings are confirmed instantly '
-      'and paid at the venue.';
-  static const toolNote =
-      'In Sarvam, add an API tool for each URL below: method POST, '
-      'auth “API key” with header X-API-Key, and pass the caller’s '
-      'User Identifier as caller_phone and Interaction ID as '
-      'interaction_id.';
-
-  Widget narrow(BuildContext context, SarvamSettingsState s) {
-    final t = Theme.of(context), c = t.colorScheme;
-    final failed = loadFailed(s);
-    final note = t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant);
-    return AppPage(
+  @override
+  Widget build(
+    BuildContext context,
+  ) => BlocConsumer<SarvamSettingsCubit, SarvamSettingsState>(
+    bloc: cubit,
+    listener: (context, s) {
+      if (s.apiKey.isEmpty) apiKey.clear();
+      if (s.notice != null) showMessage(context, s.notice!);
+    },
+    builder: (context, s) => AppPage(
       title: 'Sarvam voice agent',
-      subtitle: 'Phone bookings, cancellations and call logs.',
-      back: true,
-      showAppBar: true,
-      compactHeader: true,
-      scrollId: 'sarvam-settings',
-      bottomBar: cubit.owner && !s.loading && !failed
-          ? Material(
-              elevation: 8,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                  child: saveButton(s),
-                ),
-              ),
-            )
-          : null,
-      children: [
-        if (s.loading)
-          const AppRefreshIndicator(label: 'Loading Sarvam settings…'),
-        if (failed && !s.loading)
-          AppErrorWidget(message: s.error!, onRetry: cubit.load),
-        if (!s.loading && !failed && cubit.owner) ...[
-          Text('Connect Sarvam', style: t.textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(connectNote, style: note),
-          const SizedBox(height: 12),
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                apiKeyField(s.saved),
-                for (final field in idFields(s)) ...[
-                  const SizedBox(height: 12),
-                  field,
-                ],
-                const SizedBox(height: 12),
-                testButton(s),
-                const SizedBox(height: 8),
-                callLogsButton(s),
-                ?saveHint(context, s),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text('Voice booking', style: t.textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(bookingNote, style: note),
-          const SizedBox(height: 12),
-          bookingCard(s),
-          const SizedBox(height: 24),
-          Text('Sarvam tool setup', style: t.textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(toolNote, style: note),
-          const SizedBox(height: 12),
-          toolCard(context, s),
-          const SizedBox(height: 24),
-        ],
-        if (!s.loading && !cubit.owner)
-          const Text('Only the owner can manage the Sarvam voice agent.'),
-      ],
-    );
-  }
-
-  // Wide web windows: status figures, then settings panels side by side.
-  Widget desktop(BuildContext context, SarvamSettingsState s) {
-    final t = Theme.of(context), c = t.colorScheme, saved = s.saved;
-    final failed = loadFailed(s);
-    final ready = !s.loading && !failed && cubit.owner;
-    final assigned = saved.businesses.where((b) => b.assigned).length;
-    return AppPage(
-      title: 'Sarvam voice agent',
+      subtitle: 'Automatic setup, phone booking controls and call logs.',
       back: true,
       showAppBar: true,
       maxWidth: 1200,
       scrollId: 'sarvam-settings',
-      header: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Sarvam voice agent', style: t.textTheme.headlineLarge),
-                const SizedBox(height: 6),
-                Text(
-                  'Phone bookings, cancellations and call logs.',
-                  style: TextStyle(color: c.onSurface.withValues(alpha: .65)),
-                ),
-              ],
-            ),
-          ),
-          if (ready) ...[
-            SizedBox(width: 190, child: callLogsButton(s)),
-            const SizedBox(width: 10),
-            SizedBox(width: 190, child: saveButton(s)),
-          ],
-        ],
-      ),
       children: [
         if (s.loading)
           const AppRefreshIndicator(label: 'Loading Sarvam settings…'),
-        if (failed && !s.loading)
-          AppErrorWidget(message: s.error!, onRetry: cubit.load),
-        if (ready) ...[
-          AppStatRow(
-            children: [
-              AppStatTile(
-                icon: Icons.link_rounded,
-                label: 'Sarvam connection',
-                value: saved.connected ? 'Connected' : 'Not connected',
-                caption: saved.connected
-                    ? 'API key ending ${saved.apiKeyLast4}'
-                    : 'Add your Sarvam API key',
-                highlight: saved.connected,
-              ),
-              AppStatTile(
-                icon: Icons.phone_in_talk_outlined,
-                label: 'Phone bookings',
-                value: saved.enabled ? 'On' : 'Off',
-                caption: saved.enabled
-                    ? 'Voice agent can book'
-                    : 'Voice tool calls are refused',
-              ),
-              AppStatTile(
-                icon: Icons.storefront_outlined,
-                label: 'Bookable businesses',
-                value: '$assigned of ${saved.businesses.length}',
-                caption: 'Selected for voice booking',
-              ),
-              AppStatTile(
-                icon: Icons.vpn_key_outlined,
-                label: 'Voice tool key',
-                value: saved.hasToolKey ? 'Generated' : 'Not set',
-                caption: saved.hasToolKey
-                    ? 'Starts with ${saved.toolKeyPrefix}…'
-                    : 'Generate one for Sarvam tools',
-              ),
-            ],
-          ),
-          if (s.dirty)
-            Padding(
-              padding: const EdgeInsets.only(top: 14),
-              child: Row(
-                children: [
-                  Icon(Icons.edit_note_rounded, size: 18, color: c.primary),
-                  const SizedBox(width: 6),
-                  Text(
-                    'You have unsaved changes.',
-                    style: t.textTheme.bodySmall?.copyWith(color: c.primary),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 28),
-          AppTwoPane(
-            primaryFlex: 3,
-            secondaryFlex: 2,
-            primary: [
-              AppPanel(
-                title: 'Connect Sarvam',
-                subtitle: connectNote,
-                child: AppCard(
-                  padding: const EdgeInsets.all(22),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      apiKeyField(saved),
-                      const SizedBox(height: 14),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final (i, field) in idFields(s).indexed) ...[
-                            if (i > 0) const SizedBox(width: 12),
-                            Expanded(child: field),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          SizedBox(width: 220, child: testButton(s)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child:
-                                saveHint(context, s) ?? const SizedBox.shrink(),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              AppPanel(
-                title: 'Sarvam tool setup',
-                subtitle: toolNote,
-                child: toolCard(context, s),
-              ),
-            ],
-            secondary: [
-              AppPanel(
-                title: 'Voice booking',
-                subtitle: bookingNote,
-                child: bookingCard(s),
-              ),
-            ],
-          ),
-        ],
         if (!s.loading && !cubit.owner)
           const AppEmptyState(
             title: 'Owner access required',
             message: 'Only the owner can manage the Sarvam voice agent.',
           ),
+        if (!s.loading &&
+            cubit.owner &&
+            s.saved.version == 0 &&
+            s.error != null)
+          AppErrorWidget(message: s.error!, onRetry: cubit.load),
+        if (!s.loading && cubit.owner) ...[
+          if (s.dirty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: Text(
+                'Connect to apply the edited credentials or business selection.',
+              ),
+            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 900) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [connection(s), status(s), booking(s)],
+                );
+              }
+              return AppTwoPane(
+                primaryFlex: 3,
+                secondaryFlex: 2,
+                primary: [connection(s)],
+                secondary: [status(s), booking(s)],
+              );
+            },
+          ),
+        ],
       ],
-    );
-  }
+    ),
+  );
 }

@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../cubit/team_cubit.dart';
-import '../../../config/routes/routes.dart';
 import '../widgets/team_desktop_widgets.dart';
 
 class TeamScreen extends StatefulWidget {
@@ -65,12 +64,6 @@ class _TeamScreenState extends State<TeamScreen> {
           'Assign businesses and resources. Keep each person’s access clear.',
       maxWidth: 1200,
       actions: [
-        OutlinedButton.icon(
-          icon: const Icon(Icons.sports_outlined, size: 18),
-          label: const Text('Coaches'),
-          onPressed: () => context.push(Routes.teamCoaches),
-        ),
-        const SizedBox(width: 10),
         FilledButton.icon(
           icon: const Icon(Icons.person_add_alt, size: 18),
           label: const Text('Invite staff'),
@@ -132,6 +125,8 @@ class _TeamScreenState extends State<TeamScreen> {
                         ? 'Organization owner · full access'
                         : 'No longer has organization access',
                     chips: [
+                      if ((m['permissions'] as List? ?? []).contains('coach'))
+                        const TeamChip('Coach', icon: Icons.sports_outlined),
                       TeamChip(
                         roleLabel(m['role']),
                         icon: m['role'] == 'owner'
@@ -146,11 +141,16 @@ class _TeamScreenState extends State<TeamScreen> {
                       ),
                     ],
                     actions: [
+                      if (m['role'] == 'owner' && m['active'])
+                        TextButton(
+                          onPressed: () => edit(m),
+                          child: const Text('Manage responsibilities'),
+                        ),
                       if (m['role'] != 'owner' && m['active']) ...[
                         TextButton.icon(
                           onPressed: s.busy ? null : () => edit(m),
                           icon: const Icon(Icons.tune, size: 18),
-                          label: const Text('Edit assignments'),
+                          label: const Text('Edit staff'),
                         ),
                         TextButton(
                           style: TextButton.styleFrom(
@@ -186,6 +186,13 @@ class _TeamScreenState extends State<TeamScreen> {
                             ? null
                             : 'Send a new invitation to give access',
                         chips: [
+                          if ((i['permissions'] as List? ?? []).contains(
+                            'coach',
+                          ))
+                            const TeamChip(
+                              'Coach',
+                              icon: Icons.sports_outlined,
+                            ),
                           TeamChip(
                             status,
                             icon: Icons.mail_outline,
@@ -235,12 +242,6 @@ class _TeamScreenState extends State<TeamScreen> {
                   cubit.load();
                 },
               ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.sports_outlined),
-                label: const Text('Coaches'),
-                onPressed: () => context.push(Routes.teamCoaches),
-              ),
               const SizedBox(height: 24),
               if (s.loading)
                 AppLoadingState(
@@ -265,12 +266,23 @@ class _TeamScreenState extends State<TeamScreen> {
                         Text(m['email']),
                         const SizedBox(height: 8),
                         Text(
-                          '${m['role']} · ${m['active'] ? 'Active' : 'Access removed'}',
-                          style: const TextStyle(
-                            color: AppColors.lime,
+                          '${roleLabel(m['role'])} · ${m['active'] ? 'Active' : 'Access removed'}',
+                          style: TextStyle(
+                            color: m['active']
+                                ? Theme.of(context).colorScheme.tertiary
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                           ),
                         ),
+                        if ((m['permissions'] as List? ?? []).contains('coach'))
+                          const TeamChip('Coach', icon: Icons.sports_outlined),
+                        if (m['role'] == 'owner' && m['active'])
+                          TextButton(
+                            onPressed: () => edit(m),
+                            child: const Text('Manage responsibilities'),
+                          ),
                         if (m['role'] != 'owner' && m['active'])
                           Wrap(
                             spacing: 10,
@@ -285,7 +297,7 @@ class _TeamScreenState extends State<TeamScreen> {
                                         );
                                         cubit.load();
                                       },
-                                child: const Text('Edit assignments'),
+                                child: const Text('Edit staff'),
                               ),
                               TextButton(
                                 onPressed: s.busy
@@ -337,6 +349,13 @@ class _TeamScreenState extends State<TeamScreen> {
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                           Text(i['email']),
+                          if ((i['permissions'] as List? ?? []).contains(
+                            'coach',
+                          ))
+                            const TeamChip(
+                              'Coach',
+                              icon: Icons.sports_outlined,
+                            ),
                           Text(status, style: const TextStyle(fontSize: 12)),
                           if (status == 'Pending')
                             TextButton(

@@ -204,7 +204,7 @@ class PoolPlansScreen extends StatelessWidget {
             ),
           const SizedBox(height: 8),
           const Text(
-            'Add coaches and assign them to this plan from Team management → Coaches. Changing this plan’s pools needs a coach assigned to all of them.',
+            'Enable Also a coach in Team & access → Edit staff, then assign this plan in their Coaching plans section. Changing this plan’s pools needs a coach assigned to all of them.',
           ),
           const SizedBox(height: 12),
           const Text(

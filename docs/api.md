@@ -64,7 +64,7 @@ New pool clients use the dedicated graph endpoint below; the legacy configuratio
 }
 ```
 
-An empty resource array grants access to all resources within that assigned business. A nonempty array restricts access to those IDs. At least one business is required. Role is `staff` or `manager`; neither grants owner administration. Additional permissions: `manage_attendance`, `record_expenses`, `view_finance`. The response includes an `invitation_url`, expiry is seven days, and `delivery` is `share_link`. Keep links private; do not log them.
+An empty resource array grants access to all resources within that assigned business. A nonempty array restricts access to those IDs. At least one business is required. Role is `staff` or `manager`; neither grants owner administration. Additional permissions: `mark_attendance`, `manage_subscriptions`, `record_expenses`, `view_finance`, plus the `coach` responsibility flag. The legacy `manage_attendance` marker remains accepted for compatibility. The response includes an `invitation_url`, expiry is seven days, and `delivery` is `share_link`. Keep links private; do not log them.
 
 ## Turf configuration
 
@@ -152,3 +152,19 @@ Accounts routes are under `/v1/accounts`; see [Accounts API and accounting rules
 
 
 Booking form response additions: turf catalog options include `sport` (`football`/`cricket`) and `format`. Availability returns `{slots:[{time:"09:00",available:true,status:"available",total_minor:50000,remaining_capacity:null}]}`. `status` can be `past`, `booked` or `available`; past and occupied starts have `available:false`. Only valid priced starts within configured hours are included. Past results are display-only and quote/confirmation still reject past bookings. Clients must recheck via quote and confirmation; a tile does not reserve inventory.
+
+## Public booking website
+
+Owner configuration endpoints and restricted guest site/catalog/availability/quote/confirmation operations are documented in [Public booking website API contracts](public-booking-website.md#api-contracts). Guest operations share the authoritative booking inventory but do not expose customer search, payments, staff, group offers or plans. This feature requires its prepared migration and updated API deployment.
+
+
+The organisation homepage is `/<slug>`; service booking pages are `/<slug>/book/<business-id>`. Owner-only photo upload/read/removal routes and publication-aware guest image routes are documented in [Homepage and photos API additions](public-booking-website.md#api-additions). Photo uploads require the additional `20261022045215_booking_website_images.sql` migration.
+
+
+## Unified staff permissions
+
+Staff invitation/member payloads retain the existing `display_name`, `email`, `role`, `permissions` and `assignments` contract. `coach` identifies coaching responsibility; it grants no attendance capability. New explicit permissions are `mark_attendance` and `manage_subscriptions`. The old `manage_attendance` marker is accepted as an attendance grant for compatibility; new clients replace it with `mark_attendance` when saving. New invitations do not automatically receive operational permissions. The permission backfill and release/recovery steps are in [Unified staff management](team-coaches.md).
+
+Admission preview/create/renewal/cancellation/session-management operations require `manage_subscriptions`; ordinary booking operations continue to use `manage_bookings`. Attendance and flexible check-in require `mark_attendance` (or the legacy attendance marker) and current business/resource access. Coaches are additionally restricted to the coaching plans currently assigned to them; owner corrections still require a reason. Coach-only memberships may read My classes; general admission endpoints require an explicit operational permission. Admission detail returns `can_attend`, and My classes returns `students[].markable`, reflecting these current permissions. Permission and current plan scope are rechecked inside write transactions.
+
+Existing owner-only `plan-coaches`, owner coach opt-in and conflict-check endpoints are reused inside staff details. They retain configuration version checks, resource coverage validation and overlap warnings. Coach-plan saves remain distinct from staff-access saves. The removed `/team/coaches` client page redirects to `/team`.

@@ -5,10 +5,9 @@ import '../models/sarvam_models.dart';
 abstract interface class SarvamRepository {
   Future<SarvamSettings> settings();
 
-  /// [apiKey] null keeps the saved Sarvam key.
-  Future<SarvamSettings> save({
+  /// Omitted API key keeps the backend credential.
+  Future<SarvamSettings> connect({
     required int version,
-    required bool enabled,
     required Set<String> businessIds,
     required String orgId,
     required String workspaceId,
@@ -16,8 +15,11 @@ abstract interface class SarvamRepository {
     String? apiKey,
   });
 
-  /// Returns the new tool key; it cannot be read again later.
-  Future<String> rotateToolKey();
+  Future<SarvamSettings> setupStep();
+  Future<SarvamSettings> disconnect();
+  Future<SarvamSettings> setBookingEnabled(int version, bool enabled);
+  Future<SarvamSettings> publish(int version, String deploymentId);
+  Future<bool> openAuthorization(String url);
 
   /// Number of calls in the last 24 hours.
   Future<int> test();

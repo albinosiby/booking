@@ -377,7 +377,8 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
       if (v.status != 'cancelled' &&
           a.status != 'cancelled' &&
           v.hasStarted &&
-          s.catalog.canAttend) ...[
+          s.catalog.canAttend &&
+          a.canMarkAttendance) ...[
         if (v.attendance == 'unmarked' || s.catalog.owner) ...[
           if (v.attendance != 'present')
             TextButton.icon(
@@ -436,7 +437,7 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
 
   // Check-in, renewal and payment actions shared by both layouts.
   List<Widget> actionButtons(Admission a, AdmissionState s, bool enabled) => [
-    if (a.canCheckIn && s.catalog.canAttend) ...[
+    if (a.canCheckIn && s.catalog.canAttend && a.canMarkAttendance) ...[
       AppButton(
         label: 'Mark present',
         icon: Icons.how_to_reg,

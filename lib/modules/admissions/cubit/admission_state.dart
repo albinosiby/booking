@@ -2,6 +2,7 @@ import '../../bookings/models/booking_payment_entry_model.dart';
 import '../../bookings/models/booking_models.dart';
 import 'package:equatable/equatable.dart';
 import '../models/admission_models.dart';
+import '../models/admission_overview.dart';
 
 class AdmissionState extends Equatable {
   const AdmissionState({
@@ -21,6 +22,7 @@ class AdmissionState extends Equatable {
     this.locked = false,
     this.error,
     this.savedId,
+    this.overview = const AdmissionOverview(),
   });
   final AdmissionCatalog catalog;
   final List<Admission> items;
@@ -30,12 +32,11 @@ class AdmissionState extends Equatable {
   final AdmissionPreview? preview;
   final String kind, query;
   final String? formKind;
+  final AdmissionOverview overview;
   List<AdmissionPlan> get availablePlans =>
       business?.plans
           .where(
-            (p) =>
-                p.poolIds.contains(draft.poolId) &&
-                (formKind == null || p.kind == formKind),
+            (p) => p.poolIds.contains(draft.poolId) && p.matchesKind(formKind),
           )
           .toList() ??
       [];
@@ -59,6 +60,7 @@ class AdmissionState extends Equatable {
     bool? locked,
     String? error,
     String? savedId,
+    AdmissionOverview? overview,
     bool clearPreview = false,
     bool clearStatus = false,
     bool clearNext = false,
@@ -79,6 +81,7 @@ class AdmissionState extends Equatable {
     locked: locked ?? this.locked,
     error: error,
     savedId: savedId ?? this.savedId,
+    overview: overview ?? this.overview,
   );
   AdmissionBusiness? get business =>
       catalog.businesses.where((b) => b.id == draft.businessId).firstOrNull;
@@ -116,5 +119,6 @@ class AdmissionState extends Equatable {
     locked,
     error,
     savedId,
+    overview,
   ];
 }

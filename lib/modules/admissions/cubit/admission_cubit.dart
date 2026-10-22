@@ -6,6 +6,7 @@ import '../../workspace/repositories/workspace_session.dart';
 import '../../workspace/models/workspace_access.dart';
 import '../../bookings/models/booking_models.dart';
 import '../models/admission_models.dart';
+import '../models/admission_overview.dart';
 import '../repositories/admission_repository.dart';
 import 'admission_state.dart';
 
@@ -26,6 +27,7 @@ class AdmissionCubit extends Cubit<AdmissionState> {
       if (scope != workspaceAccessScope(session.state.data)) {
         generation++;
         pending = null;
+        _overviewSelections.clear();
         emit(
           const AdmissionState(error: 'Your access changed. Reopen this page.'),
         );
@@ -35,7 +37,8 @@ class AdmissionCubit extends Cubit<AdmissionState> {
   final WorkspaceSession session;
   final AdmissionRepository repository;
   late final StreamSubscription readSubscription;
-  bool _listing = false, _readPending = false;
+  bool _listing = false, _readPending = false, _overview = false;
+  final Map<bool, (String?, String?)> _overviewSelections = {};
   String? _detailView;
   Timer? _readTimer;
   void _refreshRetainedRead() {
@@ -52,6 +55,8 @@ class AdmissionCubit extends Cubit<AdmissionState> {
       if (!authorized) return;
       if (_detailView != null) {
         loadDetail(_detailView!);
+      } else if (_overview) {
+        loadOverview();
       } else if (_listing) {
         loadList();
       }
@@ -70,9 +75,200 @@ class AdmissionCubit extends Cubit<AdmissionState> {
       scope == workspaceAccessScope(session.state.data) &&
       session.state.data.organization != null;
   bool valid(int g) => authorized && generation == g;
+
+  AdmissionBusiness? get overviewBusiness => state.catalog.businesses
+      .where((b) => b.id == state.overview.businessId)
+      .firstOrNull;
+  AdmissionPool? get overviewSpace => overviewBusiness?.pools
+      .where((p) => p.id == state.overview.spaceId)
+      .firstOrNull;
+  String get overviewKind => state.overview.coaching
+      ? 'coaching'
+      : overviewBusiness?.court == true
+      ? 'play'
+      : 'swimming';
+
+  Future<void> loadOverview({bool refreshCatalog = true}) async {
+    if (!authorized || state.busy) return;
+    _listing = true;
+    _overview = true;
+    _detailView = null;
+    final g = ++generation;
+    emit(state.copyWith(loading: true));
+    try {
+      final catalog = refreshCatalog
+          ? await repository.catalog()
+          : state.catalog;
+      if (!valid(g)) return;
+      final old = state.overview;
+      final business =
+          catalog.businesses.where((b) => b.id == old.businessId).firstOrNull ??
+          catalog.businesses.firstOrNull;
+      final space =
+          business?.pools.where((p) => p.id == old.spaceId).firstOrNull ??
+          business?.pools.firstOrNull;
+      final plans =
+          business?.plans
+              .where(
+                (p) =>
+                    p.poolIds.contains(space?.id) &&
+                    p.matchesKind(old.coaching ? 'coaching' : 'plans'),
+              )
+              .toList() ??
+          [];
+      final sameScope =
+          old.businessId == business?.id && old.spaceId == space?.id;
+      final groups = <String, AdmissionRoster>{
+        for (final p in plans)
+          p.id: AdmissionRoster(
+            id: p.id,
+            plan: p,
+            items: sameScope ? old.rosters[p.id]?.items ?? [] : [],
+            loading: true,
+          ),
+        if (space != null)
+          'previous-plans': AdmissionRoster(
+            id: 'previous-plans',
+            items: sameScope ? old.rosters['previous-plans']?.items ?? [] : [],
+            loading: true,
+          ),
+      };
+      emit(
+        state.copyWith(
+          catalog: catalog,
+          loading: false,
+          overview: AdmissionOverview(
+            coaching: old.coaching,
+            businessId: business?.id,
+            spaceId: space?.id,
+            query: old.query,
+            status: old.status,
+            rosters: Map.unmodifiable(groups),
+          ),
+        ),
+      );
+      // Bound parallel requests for businesses with many plans.
+      final ids = groups.keys.toList();
+      for (var i = 0; i < ids.length && valid(g); i += 4) {
+        await Future.wait(ids.skip(i).take(4).map((id) => _fetchRoster(id, g)));
+      }
+    } catch (e) {
+      if (valid(g)) _overviewFailure(e);
+    } finally {
+      _refreshRetainedRead();
+    }
+  }
+
+  void selectOverview({
+    bool? coaching,
+    String? businessId,
+    String? spaceId,
+    String? query,
+    String? status,
+    bool clearStatus = false,
+  }) {
+    if (!authorized || state.busy) return;
+    final old = state.overview;
+    if (coaching != null && coaching != old.coaching) {
+      _overviewSelections[old.coaching] = (old.businessId, old.spaceId);
+      final selection = _overviewSelections[coaching];
+      businessId = selection?.$1 ?? old.businessId;
+      spaceId = selection?.$2 ?? old.spaceId;
+    }
+    final changedBusiness = businessId != null && businessId != old.businessId;
+    emit(
+      state.copyWith(
+        overview: old.copyWith(
+          coaching: coaching,
+          businessId: businessId,
+          spaceId: spaceId,
+          clearSpace: changedBusiness && spaceId == null,
+          query: query,
+          status: status,
+          clearStatus: clearStatus,
+          rosters: const {},
+        ),
+      ),
+    );
+    loadOverview(refreshCatalog: state.catalog.businesses.isEmpty);
+  }
+
+  Future<void> loadRoster(String id, {bool more = false}) async {
+    final roster = state.overview.rosters[id];
+    if (!authorized ||
+        state.loading ||
+        roster == null ||
+        roster.loading ||
+        (more && roster.next == null)) {
+      return;
+    }
+    _putRoster(roster.copyWith(loading: true));
+    await _fetchRoster(id, generation, more: more);
+  }
+
+  void _putRoster(AdmissionRoster roster) => emit(
+    state.copyWith(
+      overview: state.overview.copyWith(
+        rosters: {...state.overview.rosters, roster.id: roster},
+      ),
+    ),
+  );
+
+  Future<void> _fetchRoster(String id, int g, {bool more = false}) async {
+    final roster = state.overview.rosters[id];
+    if (!valid(g) || roster == null) return;
+    final selection = state.overview;
+    try {
+      final page = await repository.list(
+        kind: overviewKind,
+        query: selection.query,
+        status: selection.status,
+        businessId: selection.businessId,
+        spaceId: selection.spaceId,
+        planId: roster.plan?.id,
+        previousPlans: roster.plan == null,
+        cursor: more ? roster.next ?? 0 : 0,
+      );
+      if (!valid(g)) return;
+      final byId = {
+        for (final a in [
+          ...(more ? roster.items : <Admission>[]),
+          ...page.items,
+        ])
+          a.id: a,
+      };
+      _putRoster(
+        roster.copyWith(
+          items: List.unmodifiable(byId.values),
+          next: page.next,
+          clearNext: page.next == null,
+          loading: false,
+        ),
+      );
+    } catch (e) {
+      if (!valid(g)) return;
+      if (accessFailure(e)) {
+        _overviewFailure(e);
+      } else {
+        _putRoster(roster.copyWith(loading: false, error: admissionError(e)));
+      }
+    }
+  }
+
+  void _overviewFailure(Object e) {
+    if (accessFailure(e)) {
+      generation++;
+      _overviewSelections.clear();
+      emit(const AdmissionState(error: 'Access denied. Reopen this page.'));
+    } else {
+      emit(state.copyWith(loading: false, error: admissionError(e)));
+    }
+  }
+
   Future<void> loadList({bool more = false}) async {
     if (!authorized || state.loading || state.busy) return;
     _listing = true;
+    _overview = false;
     _detailView = null;
     final g = ++generation, old = state;
     emit(state.copyWith(loading: true));
@@ -216,8 +412,8 @@ class AdmissionCubit extends Cubit<AdmissionState> {
                 (a != null
                     ? plan.id == a.planId
                     : chosen != null
-                    ? plan.id == chosen.id
-                    : formKind != null && plan.kind == formKind) &&
+                    ? plan.id == chosen.id && plan.matchesKind(formKind)
+                    : formKind != null && plan.matchesKind(formKind)) &&
                 plan.poolIds.contains(p?.id),
           )
           .firstOrNull;

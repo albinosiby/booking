@@ -1,3 +1,4 @@
+import '../widgets/staff_coaching_section.dart';
 import '../models/staff_access_draft.dart';
 import '../cubit/staff_assignment_cubit.dart';
 import '../models/staff_assignment_screen_model.dart';
@@ -11,15 +12,8 @@ import '../../workspace/cubit/workspace_cubit.dart';
 import '../models/staff_coaches.dart';
 
 class StaffAssignmentScreen extends StatefulWidget {
-  const StaffAssignmentScreen({
-    super.key,
-    this.member,
-    this.startAsCoach = false,
-  });
+  const StaffAssignmentScreen({super.key, this.member});
   final Map<String, dynamic>? member;
-
-  /// Invites with Coach already on, when opened from Team → Coaches.
-  final bool startAsCoach;
   @override
   State<StaffAssignmentScreen> createState() => _StaffAssignmentScreenState();
 }
@@ -29,14 +23,6 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
     param1: context.read<WorkspaceCubit>(),
     param2: widget.member,
   );
-  @override
-  void initState() {
-    super.initState();
-    if (widget.member == null && widget.startAsCoach) {
-      cubit.selectPermission('coach', true);
-    }
-  }
-
   final form = GlobalKey<FormState>();
   late final name = TextEditingController(text: widget.member?['display_name']),
       email = TextEditingController(text: widget.member?['email']);
@@ -49,16 +35,16 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
     'view_bookings': 'View bookings',
     'manage_bookings': 'Create and edit bookings',
     'collect_payments': 'Record collections',
-    'manage_attendance': 'Manage subscriptions and attendance',
+    'mark_attendance': 'Mark attendance',
+    'manage_subscriptions': 'Manage subscriptions',
     'record_expenses': 'Record expenses',
     'view_finance': 'View financial reports',
-    'coach': 'Coach · teaches coaching plans in the assigned spaces',
   };
   @override
   void dispose() {
     name.dispose();
     email.dispose();
-    cubit.close();
+    if (widget.member?['role'] != 'owner') cubit.close();
     super.dispose();
   }
 
@@ -149,7 +135,13 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
         ),
       );
     }
-    if (mounted) Navigator.pop(context);
+    if (mounted) {
+      if (widget.member == null) {
+        Navigator.pop(context);
+      } else {
+        showMessage(context, 'Staff access saved.');
+      }
+    }
   }
 
   List<Widget> identityFields() => [
@@ -157,6 +149,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
       label: 'Staff name',
       controller: name,
       validator: Validation.name,
+      enabled: !cubit.state.busy,
     ),
     const SizedBox(height: 16),
     AppTextField(
@@ -164,17 +157,30 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
       controller: email,
       keyboardType: TextInputType.emailAddress,
       validator: Validation.email,
-      enabled: widget.member == null,
+      enabled: widget.member == null && !cubit.state.busy,
     ),
     const SizedBox(height: 16),
     AppPicker(
       label: 'Responsibility',
+      enabled: !cubit.state.busy,
       items: const [
         PickerItem('staff', 'Staff'),
         PickerItem('manager', 'Manager'),
       ],
       value: role,
       onChanged: (v) => cubit.selectRole(v),
+    ),
+    const SizedBox(height: 12),
+    SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: const Text('Also a coach'),
+      subtitle: const Text(
+        'Can teach assigned coaching plans. Enable attendance separately under Permissions.',
+      ),
+      value: permissions.contains('coach'),
+      onChanged: cubit.state.busy
+          ? null
+          : (value) => cubit.selectPermission('coach', value),
     ),
   ];
 
@@ -188,7 +194,9 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
               title: Text(b.name),
               subtitle: Text(b.type.label),
               value: businesses.contains(b.id),
-              onChanged: (v) => cubit.selectBusiness(b.id, v == true),
+              onChanged: s.busy
+                  ? null
+                  : (v) => cubit.selectBusiness(b.id, v == true),
             ),
             if (businesses.contains(b.id)) ...[
               SwitchListTile(
@@ -197,15 +205,18 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
                   style: TextStyle(fontSize: 13),
                 ),
                 value: restricted.contains(b.id),
-                onChanged: (v) => cubit.restrictBusiness(b.id, v),
+                onChanged: s.busy
+                    ? null
+                    : (v) => cubit.restrictBusiness(b.id, v),
               ),
               if (restricted.contains(b.id))
                 ...b.resources.map(
                   (r) => CheckboxListTile(
                     title: Text(r.name),
                     value: resources[b.id]?.contains(r.id) ?? false,
-                    onChanged: (v) =>
-                        cubit.selectResource(b.id, r.id, v == true),
+                    onChanged: s.busy
+                        ? null
+                        : (v) => cubit.selectResource(b.id, r.id, v == true),
                   ),
                 ),
             ],
@@ -222,12 +233,26 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
             (e) => SwitchListTile(
               title: Text(e.value, style: const TextStyle(fontSize: 13)),
               value: permissions.contains(e.key),
-              onChanged: (v) => cubit.selectPermission(e.key, v),
+              onChanged: cubit.state.busy
+                  ? null
+                  : (v) => cubit.selectPermission(e.key, v),
             ),
           )
           .toList(),
     ),
   );
+
+  Widget coaching(StaffAssignmentScreenModel s) => widget.member == null
+      ? const AppCard(
+          child: Text(
+            'After this staff member accepts their invitation, open their staff details to assign coaching plans.',
+          ),
+        )
+      : StaffCoachingSection(
+          key: ValueKey('${widget.member!['id']}/${s.accessRevision}'),
+          memberId: widget.member!['id'],
+          enabled: !cubit.coachingAccessChanged && !s.busy,
+        );
 
   List<Widget> submit(StaffAssignmentScreenModel s) => [
     if (s.error != null) ...[
@@ -291,6 +316,10 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
               child: permissionsCard(),
             ),
             ...submit(s),
+            if (permissions.contains('coach')) ...[
+              const SizedBox(height: 20),
+              coaching(s),
+            ],
           ],
         ),
       ),
@@ -298,56 +327,67 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
   );
 
   @override
-  Widget build(
-    BuildContext context,
-  ) => BlocBuilder<StaffAssignmentCubit, StaffAssignmentScreenModel>(
-    bloc: cubit,
-    builder: (c, s) => isDesktopWidth(c)
-        ? desktop(c, s)
-        : AppPage(
-            back: true,
-            eyebrow: 'TEAM & ACCESS',
-            title: widget.member == null
-                ? 'The right people.\nThe right access.'
-                : 'Edit staff access.',
-            subtitle:
-                'Assign staff to one business or several. You remain the organization owner.',
-            children: [
-              Form(
-                key: form,
-                child: Column(
+  Widget build(BuildContext context) => widget.member?['role'] == 'owner'
+      ? AppPage(
+          back: true,
+          eyebrow: 'TEAM & ACCESS',
+          title: 'Your staff responsibilities.',
+          children: [
+            StaffCoachingSection(memberId: widget.member!['id'], owner: true),
+          ],
+        )
+      : BlocBuilder<StaffAssignmentCubit, StaffAssignmentScreenModel>(
+          bloc: cubit,
+          builder: (c, s) => isDesktopWidth(c)
+              ? desktop(c, s)
+              : AppPage(
+                  back: true,
+                  eyebrow: 'TEAM & ACCESS',
+                  title: widget.member == null
+                      ? 'The right people.\nThe right access.'
+                      : 'Edit staff access.',
+                  subtitle:
+                      'Assign staff to one business or several. You remain the organization owner.',
                   children: [
-                    ...identityFields(),
-                    const SizedBox(height: 24),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Assign businesses',
-                        style: Theme.of(c).textTheme.titleMedium,
+                    Form(
+                      key: form,
+                      child: Column(
+                        children: [
+                          ...identityFields(),
+                          const SizedBox(height: 24),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Assign businesses',
+                              style: Theme.of(c).textTheme.titleMedium,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          for (final card in businessCards(s))
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: card,
+                            ),
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Permissions',
+                              style: Theme.of(c).textTheme.titleMedium,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          permissionsCard(),
+                          const SizedBox(height: 24),
+                          ...submit(s),
+                          if (permissions.contains('coach')) ...[
+                            const SizedBox(height: 20),
+                            coaching(s),
+                          ],
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    for (final card in businessCards(s))
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: card,
-                      ),
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Permissions',
-                        style: Theme.of(c).textTheme.titleMedium,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    permissionsCard(),
-                    const SizedBox(height: 24),
-                    ...submit(s),
                   ],
                 ),
-              ),
-            ],
-          ),
-  );
+        );
 }

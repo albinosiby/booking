@@ -31,7 +31,11 @@ class AdmissionScheduleFields extends StatelessWidget {
               .map(
                 (p) => PickerItem(
                   p.id,
-                  '${p.name} · ${p.kind} · ${bookingMoney(p.total, s.catalog.currency)}',
+                  '${p.name} · ${switch (p.kind) {
+                    'swimming' => 'Swimming plan',
+                    'play' => 'Court plan',
+                    _ => 'Coaching',
+                  }} · ${bookingMoney(p.total, s.catalog.currency)}',
                 ),
               )
               .toList(),

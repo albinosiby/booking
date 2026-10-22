@@ -19,7 +19,7 @@ import 'package:eden_booking/modules/team/cubit/team_cubit.dart';
 import 'package:eden_booking/modules/team/models/staff_access_draft.dart';
 import 'package:eden_booking/modules/team/repositories/team_repository.dart';
 import 'package:eden_booking/modules/team/screens/staff_assignment_screen.dart';
-import 'package:eden_booking/modules/team/screens/team_coaches_screen.dart';
+import 'package:eden_booking/modules/team/widgets/staff_coaching_section.dart';
 import 'package:eden_booking/modules/team/screens/team_screen.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_repository_interface.dart';
@@ -310,9 +310,10 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(AppStatTile), findsWidgets);
     expect(find.text('Invite staff'), findsOneWidget);
-    expect(find.text('Coaches'), findsOneWidget);
+    expect(find.text('Coaches'), findsNothing);
+    expect(find.text('Manage responsibilities'), findsOneWidget);
     expect(find.text('Manager'), findsWidgets);
-    expect(find.text('Edit assignments'), findsNWidgets(2));
+    expect(find.text('Edit staff'), findsNWidgets(2));
     final alex = tester.getCenter(find.text('Alex Thomas'));
     final priya = tester.getCenter(find.text('Priya Nair'));
     expect(alex.dy, priya.dy, reason: 'members share a grid row');
@@ -340,16 +341,21 @@ void main() {
     expect(find.text('Create invitation'), findsOneWidget);
   });
 
-  testWidgets('coaches list coach cards beside a plan summary', (tester) async {
+  testWidgets('staff details contain coaching assignments on desktop', (
+    tester,
+  ) async {
     final session = await coachSession();
     await pumpDesktop(tester, [
-      page(const TeamCoachesScreen()),
+      page(
+        const AppPage(
+          title: 'Staff details',
+          children: [StaffCoachingSection(memberId: 'arjun')],
+        ),
+      ),
     ], session: session);
     expect(tester.takeException(), isNull);
-    expect(find.byType(AppTwoPane), findsOneWidget);
-    expect(find.text('Arjun Pillai'), findsWidgets);
-    expect(find.text('Invite coach'), findsOneWidget);
-    expect(find.byTooltip('Refresh coaches'), findsOneWidget);
+    expect(find.text('Invite coach'), findsNothing);
+    expect(find.byTooltip('Refresh coaching plans'), findsOneWidget);
     expect(find.text('Coaching plans'), findsOneWidget);
     await tester.tap(find.text('Assign coaching plans'));
     await tester.pumpAndSettle();

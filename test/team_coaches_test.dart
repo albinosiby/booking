@@ -10,7 +10,10 @@ import 'package:eden_booking/modules/pool/models/pool_configuration.dart';
 import 'package:eden_booking/modules/team/cubit/team_coaches_cubit.dart';
 import 'package:eden_booking/modules/team/models/staff_coaches.dart';
 import 'package:eden_booking/modules/team/repositories/team_coaches_repository.dart';
-import 'package:eden_booking/modules/team/screens/team_coaches_screen.dart';
+import 'package:eden_booking/modules/team/widgets/staff_coaching_section.dart';
+import 'package:eden_booking/modules/team/screens/staff_assignment_screen.dart';
+import 'package:eden_booking/modules/team/cubit/staff_assignment_cubit.dart';
+import 'package:eden_booking/modules/team/repositories/team_repository.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_session.dart';
@@ -26,6 +29,7 @@ Map<String, dynamic> staff(
 }) => {
   'id': id,
   'display_name': name,
+  'email': '$id@example.com',
   'role': 'staff',
   'active': true,
   'permissions': [if (coach) 'coach'],
@@ -41,6 +45,7 @@ class TeamSource extends PoolSource {
   Map<String, dynamic> get ownerRow => {
     'id': 'owner',
     'display_name': 'Owner',
+    'email': 'owner@example.com',
     'role': 'owner',
     'active': true,
     'permissions': [if (ownerCoach) 'coach'],
@@ -62,6 +67,14 @@ class TeamSource extends PoolSource {
     'members': [ownerRow, ...members],
     'invitations': [],
   };
+  @override
+  Future<void> updateMember(String id, Map<String, dynamic> data) async {
+    members = [
+      for (final m in members)
+        if (m['id'] == id) {...m, ...data} else m,
+    ];
+  }
+
   void setCoaches(Map<String, String?> coaches) {
     configuration = {
       ...configuration!,
@@ -357,7 +370,7 @@ void main() {
     expect(released(assignments: {}), hasLength(2));
   });
 
-  testWidgets('Team coach screen assigns plans on narrow large text', (
+  testWidgets('Staff coaching section assigns plans on narrow large text', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 900);
@@ -386,16 +399,17 @@ void main() {
               ).copyWith(textScaler: const TextScaler.linear(1.6)),
               child: child!,
             ),
-            home: const TeamCoachesScreen(),
+            home: const AppPage(
+              title: 'Staff details',
+              children: [StaffCoachingSection(memberId: 'ravi')],
+            ),
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Ravi Kumar'), findsOneWidget);
-    expect(find.text('I also coach'), findsOneWidget);
-    expect(find.byTooltip('Invite coach'), findsOneWidget);
-    expect(find.text('Pool A'), findsOneWidget);
+    expect(find.text('Coaching plans'), findsOneWidget);
+    expect(find.byTooltip('Invite coach'), findsNothing);
     await tester.ensureVisible(find.text('Assign coaching plans'));
     await tester.tap(find.text('Assign coaching plans'));
     await tester.pumpAndSettle();
@@ -408,6 +422,112 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Beginner coaching'), findsOneWidget);
     expect(f.source.configuration!['plans'][0]['coach_id'], 'ravi');
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+    'staff details save resource changes before enabling coaching plan assignments',
+    (tester) async {
+      final f = await fixture(
+        members: [
+          staff('ravi', 'Ravi Kumar', pools: ['pool']),
+        ],
+      );
+      addTearDown(f.session.close);
+      getIt.registerFactoryParam<TeamCoachesCubit, WorkspaceSession, void>(
+        (session, _) => TeamCoachesCubit(f.repository, session),
+      );
+      getIt.registerFactoryParam<
+        StaffAssignmentCubit,
+        WorkspaceSession,
+        Map<String, dynamic>?
+      >(
+        (session, member) => StaffAssignmentCubit(
+          session,
+          LocalApiTeamRepository(f.source),
+          member: member,
+        ),
+      );
+      await tester.pumpWidget(
+        BlocProvider.value(
+          value: f.session,
+          child: ScreenUtilInit(
+            designSize: const Size(390, 844),
+            builder: (_, _) => MaterialApp(
+              theme: darkTheme(),
+              home: StaffAssignmentScreen(member: f.source.members.single),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final restriction = find.widgetWithText(
+        SwitchListTile,
+        'Restrict to selected resources',
+      );
+      await tester.ensureVisible(restriction);
+      await tester.tap(restriction);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Save staff access before'), findsOneWidget);
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.widgetWithText(OutlinedButton, 'Assign coaching plans'),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.ensureVisible(find.text('Save staff access'));
+      await tester.tap(find.text('Save staff access'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit staff access.'), findsOneWidget);
+      expect(find.textContaining('Save staff access before'), findsNothing);
+      await tester.ensureVisible(find.text('Assign coaching plans'));
+      await tester.tap(find.text('Assign coaching plans'));
+      await tester.pumpAndSettle();
+      expect(find.text('Advanced coaching'), findsOneWidget);
+      await tester.ensureVisible(find.text('Advanced coaching'));
+      await tester.tap(find.text('Advanced coaching'));
+      await tester.ensureVisible(find.text('Save assignments'));
+      await tester.tap(find.text('Save assignments'));
+      await tester.pumpAndSettle();
+      expect(f.source.configuration!['plans'][1]['coach_id'], 'ravi');
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets('owner coaching is managed from their staff responsibilities', (
+    tester,
+  ) async {
+    final f = await fixture();
+    addTearDown(f.session.close);
+    getIt.registerFactoryParam<TeamCoachesCubit, WorkspaceSession, void>(
+      (session, _) => TeamCoachesCubit(f.repository, session),
+    );
+    await tester.pumpWidget(
+      BlocProvider.value(
+        value: f.session,
+        child: ScreenUtilInit(
+          designSize: const Size(390, 844),
+          builder: (_, _) => MaterialApp(
+            theme: darkTheme(),
+            home: StaffAssignmentScreen(member: f.source.ownerRow),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Your staff responsibilities.'), findsOneWidget);
+    expect(find.text('Staff name'), findsNothing);
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Also a coach'));
+    await tester.pumpAndSettle();
+    expect(f.source.ownerCoach, true);
+    await tester.ensureVisible(find.text('Assign coaching plans'));
+    await tester.tap(find.text('Assign coaching plans'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Beginner coaching'));
+    await tester.ensureVisible(find.text('Save assignments'));
+    await tester.tap(find.text('Save assignments'));
+    await tester.pumpAndSettle();
+    expect(f.source.configuration!['plans'][0]['coach_id'], 'owner');
     expect(tester.takeException(), isNull);
   });
 }

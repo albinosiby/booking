@@ -22,11 +22,13 @@ class AdmissionFormScreen extends StatefulWidget {
     this.controller,
     this.header,
     this.fixedLocation = false,
+    this.formKind,
   });
   final String? renewalId, businessId, poolId, planId, date;
   final AdmissionCubit? controller;
   final Widget? header;
   final bool fixedLocation;
+  final String? formKind;
   @override
   State<AdmissionFormScreen> createState() => _AdmissionFormScreenState();
 }
@@ -45,7 +47,9 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
           Text('Customer', style: Theme.of(context).textTheme.titleMedium),
           SizedBox(height: 12.h),
           ConfigurationField(
-            label: s.business?.court == true ? 'Student name' : 'Swimmer name',
+            label: s.business?.court == true || s.formKind == 'coaching'
+                ? 'Student name'
+                : 'Swimmer name',
             value: d.customer.name,
             enabled: enabled && widget.renewalId == null,
             onChanged: (v) => cubit.update(
@@ -188,6 +192,7 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
         poolId: widget.poolId,
         planId: widget.planId,
         date: widget.date,
+        formKind: widget.formKind,
       );
     }
   }
@@ -212,7 +217,9 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
       return PopScope(
         canPop: !s.busy && !s.locked,
         child: AppPage(
-          title: s.formKind == 'swimming'
+          title: s.formKind == 'plans'
+              ? 'New plan admission'
+              : s.formKind == 'swimming'
               ? 'New swimming plan'
               : s.formKind == 'play'
               ? 'New court plan'
@@ -224,7 +231,11 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
           back: true,
           scrollId: 'admission-form',
           maxWidth: wide ? 1200 : 620,
-          subtitle: 'Purchase a swimming or court plan, or a coaching course.',
+          subtitle: s.formKind == 'coaching'
+              ? 'Enroll a student in a coaching plan.'
+              : s.formKind == 'plans'
+              ? 'Enroll a customer in a swimming or court access plan.'
+              : 'Purchase a swimming or court plan, or a coaching course.',
           children: [
             if (widget.header != null) widget.header!,
             if (s.loading) const AppLoadingState(initial: true),
@@ -251,21 +262,23 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
                 s.catalog.canManage &&
                 s.catalog.businesses.isNotEmpty)
               if (s.formKind != null && s.availablePlans.isEmpty) ...[
+                if (!widget.fixedLocation) ...location(s, enabled),
                 AppEmptyState(
                   showCard: false,
                   title: s.formKind == 'coaching'
                       ? 'No coaching plans'
                       : s.formKind == 'play'
                       ? 'No court plans'
+                      : s.formKind == 'plans'
+                      ? 'No access plans'
                       : 'No swimming plans',
                   message:
                       'No matching plans are configured for this ${(s.business?.spaceLabel ?? 'space').toLowerCase()}.',
                 ),
-                if (s.catalog.owner)
+                if (s.catalog.owner && s.business != null)
                   TextButton(
-                    onPressed: () => context.push(
-                      '/businesses/${widget.businessId}/settings',
-                    ),
+                    onPressed: () =>
+                        context.push('/businesses/${s.business!.id}/settings'),
                     child: const Text('Configure plans'),
                   ),
               ] else if (wide)

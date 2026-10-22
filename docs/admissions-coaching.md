@@ -1,8 +1,51 @@
-# Admissions & Coaching
+# Plans & Coaching
+
+## Workspace flow
+
+Open **Profile → Plans & Coaching**. The two tabs are **Plans** (swimming/court
+access packages) and **Coaching** (taught classes). Below the tabs, select the
+business and a specific pool or court. Every matching package shows its terms
+and its enrolled students together. Search and status chips filter students;
+each package has independent pagination. Previous-plan enrollments for that
+space remain available under **Previous plans**, including disabled or removed
+packages. Student cards open the existing attendance, payment and renewal details.
+
+The **New admission** floating action button opens **New plan admission** or
+**New coaching admission** according to the current tab. It preserves business
+and space, and restricts the form's plan choices to that category. **Enroll
+student** on a specific package also preselects that package. Returning from
+forms/details refreshes the roster while retaining the tab, space and filters.
+The two tabs remember their own space selection. Coaches continue to use
+**My classes** for their daily roster and attendance.
+
+The Flutter screen is owned by `AdmissionCubit`; typed `AdmissionOverview` and
+`AdmissionRoster` models hold selection and per-plan loading, errors, rows and
+cursors. Requests run at most four at a time. Late responses are discarded after
+scope/selection changes; access failures clear protected data. Roster sections
+are built lazily, and retained rows remain visible during refresh failures.
+
+The existing `GET /v1/admissions` now also accepts `resource_id` and `plan_id`
+(UUIDs), and `previous_plans=true` for enrollments without a currently enabled
+matching plan in that space. These combine with `business_id`, `kind`, `q`,
+`status` and `cursor` before the 50-row pagination limit. Membership and staff
+resource restrictions apply to every query. The existing admission scope index
+supports business/space filtering; no database migration is needed for this UI.
+
+**Release:** deploy the updated API before releasing this client; older APIs
+reject the new strict query parameters. Run backend `npm run build`,
+`npm run edge:check`, `npm run edge:build`, then deploy the generated existing
+`booking-api` function through the normal release process. No live deployment,
+database change or device installation is performed by this UI change. The
+prerequisite admissions migration described below remains unchanged.
+
+Verification: `flutter analyze`; Flutter tests `admission_overview_test.dart`,
+`admissions_test.dart`, `web_layout_admissions_test.dart`, `court_coaching_test.dart`,
+`pool_booking_options_test.dart`, `coach_classes_test.dart`; backend tests
+`admissions.test.ts`, `court-admissions.test.ts`, `coach-classes.test.ts`.
 
 ## What is included
 
-Profile → Admissions & Coaching manages customer purchases of configured swimming and coaching plans for pool businesses, and coaching plans for court businesses (see [Court coaching](court-coaching.md)). The booking form links to the same admission form. Select a customer, business, pool and plan, activation date, attendance mode, and optional split payments. Review the calculated expiry and every fixed session before confirming.
+Profile → Plans & Coaching manages customer purchases of configured swimming and coaching plans for pool businesses, and access/coaching plans for court businesses (see [Court coaching](court-coaching.md)). The booking form links to the same admission form. Select a customer, business, pool or court and plan, activation date, attendance mode, and optional split payments. Review the calculated expiry and every fixed session before confirming.
 
 - **Fixed weekly schedule:** selected weekdays/time reserve the complete allowance, up to 1,000 sessions, within validity. Each non-cancelled session uses one unit after its end, even when absent or unmarked. Present/Absent records actual attendance separately. An insufficient schedule or a full interval rejects the entire purchase; it never silently skips a day.
 - **Flexible:** no standing reservation. Mark present on arrival, selecting a start time whose configured duration contains the current time. The visit reserves one pool place and consumes one unit per location-local attendance date. Multiple non-overlapping visits on the same date use one unit. This day-based rule also applies to flexible coaching in this release.
@@ -17,7 +60,7 @@ All reservation views and availability use the existing booking inventory. Admis
 
 ## Permissions and architecture
 
-Existing permissions are reused: `view_bookings` for reading, `manage_bookings` for enrollment/schedule management, `manage_attendance` for check-in/attendance, and `collect_payments` for collections. Owners can refund and correct attendance. All reads/writes check current organization membership and assigned business/resource scope. Coaches are staff (or the owner) with the `coach` permission; they mark attendance for their own classes in My classes without `manage_attendance`. See [Staff coaches](staff-coaches.md).
+Permissions are explicit: `view_bookings` for reading, `manage_subscriptions` for enrollment/renewal/schedule management, `mark_attendance` for check-in/attendance, and `collect_payments` for collections. Ordinary booking creation remains `manage_bookings`. The legacy `manage_attendance` marker is accepted as an attendance grant for older clients. Owners can refund and correct attendance. All reads/writes check current organization membership and assigned business/resource scope. Coach status alone permits My classes visibility; marking their own current classes additionally requires attendance permission. Coach status, resource assignments and coaching plans are managed inside staff details. See [Unified staff management](team-coaches.md), including the required permission data migration.
 
 Flutter feature: `lib/modules/admissions/{models,repositories,cubit,screens,widgets}`. Screens call Cubit commands; repositories own HTTP mapping. Session/access changes clear protected state and invalidate in-flight results. Unknown write outcomes retain the original command key and lock editing until retry resolves them. Calendar uses current admission/session versions for attendance.
 

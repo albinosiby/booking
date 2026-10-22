@@ -1,3 +1,4 @@
+import { ensureWebsiteDraft } from "../website/website.validation";
 import { z } from "zod";
 import {
   organizationEditSchema,
@@ -349,6 +350,11 @@ export class WorkspaceService {
           ]),
         ],
       );
+      await ensureWebsiteDraft(db, {
+        id,
+        name: v.name,
+        contact_phone: v.contact_phone,
+      });
       await this.audit(db, actor, id, "organization.created", id);
       return { id };
     });

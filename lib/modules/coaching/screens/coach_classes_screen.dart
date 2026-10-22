@@ -148,7 +148,7 @@ class _CoachClassesScreenState extends State<CoachClassesScreen> {
       title: 'My classes',
       compactHeader: true,
       subtitle:
-          'Your coaching classes. Mark attendance once a class starts, until 24 hours after it ends; the owner corrects marks from the admission.',
+          'Your coaching classes. Attendance permission is required to mark students, from class start until 24 hours after it ends. The owner handles corrections.',
       maxWidth: 900,
       actions: [
         IconButton(

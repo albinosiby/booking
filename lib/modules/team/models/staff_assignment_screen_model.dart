@@ -6,11 +6,8 @@ class StaffAssignmentScreenModel extends WorkspaceState {
     this.role = 'staff',
     Set<String> businesses = const {},
     Set<String> restricted = const {},
-    Set<String> permissions = const {
-      'view_bookings',
-      'manage_bookings',
-      'collect_payments',
-    },
+    Set<String> permissions = const {},
+    this.accessRevision = 0,
     Map<String, Set<String>> resources = const {},
   }) : businesses = Set.unmodifiable(businesses),
        restricted = Set.unmodifiable(restricted),
@@ -26,11 +23,13 @@ class StaffAssignmentScreenModel extends WorkspaceState {
          busy: snapshot.busy,
          error: snapshot.error,
        );
+  final int accessRevision;
   final String role;
   final Set<String> businesses, restricted, permissions;
   final Map<String, Set<String>> resources;
   StaffAssignmentScreenModel copyWith({
     WorkspaceState? snapshot,
+    int? accessRevision,
     String? role,
     Set<String>? businesses,
     Set<String>? restricted,
@@ -39,6 +38,7 @@ class StaffAssignmentScreenModel extends WorkspaceState {
   }) => StaffAssignmentScreenModel.fromSnapshot(
     snapshot ?? this,
     role: role ?? this.role,
+    accessRevision: accessRevision ?? this.accessRevision,
     businesses: businesses ?? this.businesses,
     restricted: restricted ?? this.restricted,
     permissions: permissions ?? this.permissions,
@@ -47,6 +47,7 @@ class StaffAssignmentScreenModel extends WorkspaceState {
   @override
   List<Object?> get props => [
     ...super.props,
+    accessRevision,
     role,
     businesses,
     restricted,

@@ -98,8 +98,21 @@ class AdmissionsFake extends Fake implements AdmissionRepository {
     String query = '',
     String kind = 'swimming',
     String? status,
+    String? businessId,
+    String? spaceId,
+    String? planId,
+    bool previousPlans = false,
     int cursor = 0,
-  }) async => AdmissionPage([record], null);
+  }) async => AdmissionPage(
+    previousPlans ||
+            kind != record.kind ||
+            (businessId != null && record.businessId != businessId) ||
+            (spaceId != null && record.poolId != spaceId) ||
+            (planId != null && record.planId != planId)
+        ? []
+        : [record],
+    null,
+  );
   @override
   Future<Admission> detail(String id) =>
       delayed?.future ?? Future.value(record);
@@ -385,21 +398,31 @@ void main() {
     await tester.pumpAndSettle();
     // Court-only organizations offer court plans and coaching, not swimming.
     expect(find.text('Swimming'), findsNothing);
-    expect(find.text('Court plans'), findsOneWidget);
+    expect(find.text('Court 1'), findsWidgets);
     expect(find.text('Coaching'), findsOneWidget);
-    expect(find.text('Anjali'), findsOneWidget);
-    expect(find.text('25 of 25 days left'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('Plans'));
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('plan-pass')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     expect(find.text('Play pass'), findsOneWidget);
     expect(find.text('20 days'), findsOneWidget);
     expect(find.text('Junior batch'), findsNothing);
     expect(tester.takeException(), isNull);
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 2000));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Coaching'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('plan-batch')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Junior batch'), findsOneWidget);
-    expect(find.text('3 active'), findsOneWidget);
+    expect(find.byTooltip('New coaching admission'), findsOneWidget);
     expect(find.text('8 per class'), findsOneWidget);
     expect(find.text('Enroll student'), findsOneWidget);
     expect(tester.takeException(), isNull);

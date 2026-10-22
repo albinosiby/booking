@@ -13,10 +13,12 @@ export const permissionNames = [
   "view_bookings",
   "manage_bookings",
   "collect_payments",
-  "manage_attendance",
+  "manage_attendance", // Legacy clients; new clients use the two explicit permissions.
+  "mark_attendance",
+  "manage_subscriptions",
   "record_expenses",
   "view_finance",
-  // Teaches coaching plans and marks attendance for their own classes.
+  // Coaching responsibility only; attendance requires mark_attendance.
   "coach",
 ] as const;
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);

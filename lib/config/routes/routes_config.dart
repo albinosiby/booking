@@ -1,3 +1,4 @@
+import '../../modules/booking_website/screens/website_settings_screen.dart';
 import '../../modules/coaching/screens/coach_classes_screen.dart';
 import '../../modules/booking_blocks/models/slot_block_models.dart';
 import '../../modules/booking_blocks/screens/slot_block_screens.dart';
@@ -8,7 +9,6 @@ import '../../modules/messages/screens/templates_screen.dart';
 import '../../modules/messages/screens/template_editor_screen.dart';
 import '../../modules/messages/screens/message_preview_screen.dart';
 import '../../modules/messages/models/message_template.dart';
-import '../../modules/team/screens/team_coaches_screen.dart';
 import '../../modules/profile/screens/organization_edit_screen.dart';
 import '../../modules/customers/screens/customers_screen.dart';
 import '../../modules/customers/screens/customer_detail_screen.dart';
@@ -102,6 +102,10 @@ GoRouter createRouter(
       ],
     ),
     routes: [
+      GoRoute(
+        path: Routes.bookingWebsite,
+        builder: (c, s) => const WebsiteSettingsScreen(),
+      ),
       GoRoute(
         path: Routes.sarvam,
         builder: (c, s) => const SarvamSettingsScreen(),
@@ -295,6 +299,13 @@ GoRouter createRouter(
       GoRoute(
         path: '/admissions/new',
         builder: (c, s) => AdmissionFormScreen(
+          formKind:
+              const {
+                'plans',
+                'coaching',
+              }.contains(s.uri.queryParameters['kind'])
+              ? s.uri.queryParameters['kind']
+              : null,
           renewalId: s.uri.queryParameters['renewal_id'],
           businessId: s.uri.queryParameters['business_id'],
           poolId: s.uri.queryParameters['space_id'],
@@ -420,14 +431,10 @@ GoRouter createRouter(
         },
       ),
       GoRoute(path: Routes.team, builder: (c, s) => const TeamScreen()),
-      GoRoute(
-        path: Routes.teamCoaches,
-        builder: (c, s) => const TeamCoachesScreen(),
-      ),
+      GoRoute(path: Routes.teamCoaches, redirect: (c, s) => Routes.team),
       GoRoute(
         path: '/team/invite',
-        builder: (c, s) =>
-            StaffAssignmentScreen(startAsCoach: s.extra == 'coach'),
+        builder: (c, s) => const StaffAssignmentScreen(),
       ),
       GoRoute(
         path: '/team/edit',

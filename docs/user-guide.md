@@ -7,8 +7,8 @@
 5. Choose days, opening/closing times, price, and booking duration/buffers. A closing time earlier than opening denotes an overnight operating period.
 6. For pools, add capacities/depths, tariffs and optional group/coaching/swimming plans. Swimming plans use 25 attendance days or a custom count with a separate expiry. Admission/attendance processing is a later module.
 7. Save rules, review, and activate. The setup button disappears for that business. Resource/rule edits require reactivation.
-8. Profile → Team & access → Invite staff. Choose businesses, optional selected resources, and explicit permissions. Create and privately share the invitation link. Creating it does not send an email.
-9. Staff open the link, sign in/register using the exact invited email, and accept. In production they must verify their email. The owner can edit assignments or remove access from Team.
+8. Profile → Team & access → Invite staff. Enter name, email and responsibility; optionally enable Also a coach. Choose businesses, optional selected resources, and explicit permissions, including Mark attendance and Manage subscriptions independently. Create and privately share the invitation link. Creating it does not send an email.
+9. Staff open the link, sign in/register using the exact invited email, and accept. In production they must verify their email. The owner can edit staff or remove access from Team. After acceptance, coaching plans are assigned inside that person’s staff details; save resource access before changing plans. There is no separate Coaches page. See [Unified staff management](team-coaches.md).
 10. Profile contains business setup, logo, address display, theme preference and sign-out. Long-press a business in Profile to rename it.
 
 Bookings, calendars and manual collections are available in the development build. Production setup and release validation are still required before live operations.

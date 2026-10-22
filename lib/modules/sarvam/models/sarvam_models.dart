@@ -1,15 +1,5 @@
 import 'package:equatable/equatable.dart';
 
-/// Endpoints Sarvam's voice agent calls, relative to [SarvamSettings.toolBaseUrl].
-const voiceTools = [
-  ('catalog', 'List spaces and activities'),
-  ('availability', 'Find free times and prices'),
-  ('bookings', 'Book a slot'),
-  ('my-bookings', "Caller's upcoming bookings"),
-  ('reschedule', 'Move a booking'),
-  ('cancel', 'Cancel a booking'),
-];
-
 class SarvamBusiness extends Equatable {
   const SarvamBusiness({
     required this.id,
@@ -29,51 +19,130 @@ class SarvamBusiness extends Equatable {
   List<Object?> get props => [id, name, ready, assigned];
 }
 
+class SarvamDeployment extends Equatable {
+  const SarvamDeployment({required this.id, required this.name});
+  final String id, name;
+  @override
+  List<Object?> get props => [id, name];
+}
+
 class SarvamSettings extends Equatable {
   const SarvamSettings({
     this.version = 0,
     this.enabled = false,
     this.connected = false,
+    this.hasCredentials = false,
+    this.callLogsAvailable = false,
     this.apiKeyLast4 = '',
     this.orgId = '',
     this.workspaceId = '',
     this.appId = '',
-    this.toolKeyPrefix = '',
-    this.toolBaseUrl = '',
+    this.status = 'disconnected',
+    this.step = '',
+    this.setupError = '',
+    this.authorizationUrl = '',
+    this.draftVersion,
+    this.publishedVersion,
+    this.deployments = const [],
     this.businesses = const [],
   });
   factory SarvamSettings.fromJson(Map<String, dynamic> j) => SarvamSettings(
     version: (j['version'] as num?)?.toInt() ?? 0,
     enabled: j['enabled'] == true,
     connected: j['connected'] == true,
+    hasCredentials: j['has_credentials'] == true,
+    callLogsAvailable: j['call_logs_available'] == true,
     apiKeyLast4: j['api_key_last4'] as String? ?? '',
     orgId: j['sarvam_org_id'] as String? ?? '',
     workspaceId: j['workspace_id'] as String? ?? '',
     appId: j['app_id'] as String? ?? '',
-    toolKeyPrefix: j['tool_key_prefix'] as String? ?? '',
-    toolBaseUrl: j['tool_base_url'] as String? ?? '',
+    status: j['setup_status'] as String? ?? 'disconnected',
+    step: j['setup_step'] as String? ?? '',
+    setupError: j['setup_error'] as String? ?? '',
+    authorizationUrl: j['authorization_url'] as String? ?? '',
+    draftVersion: (j['draft_version'] as num?)?.toInt(),
+    publishedVersion: (j['published_version'] as num?)?.toInt(),
+    deployments: [
+      for (final d in j['deployments'] as List? ?? [])
+        SarvamDeployment(id: d['id'] as String, name: d['name'] as String),
+    ],
     businesses: [
-      for (final b in j['businesses'] as List? ?? const [])
+      for (final b in j['businesses'] as List? ?? [])
         SarvamBusiness.fromJson(Map<String, dynamic>.from(b as Map)),
     ],
   );
   final int version;
-  final bool enabled, connected;
-  final String apiKeyLast4, orgId, workspaceId, appId;
-  final String toolKeyPrefix, toolBaseUrl;
+  final bool enabled, connected, hasCredentials, callLogsAvailable;
+  final String apiKeyLast4,
+      orgId,
+      workspaceId,
+      appId,
+      status,
+      step,
+      setupError,
+      authorizationUrl;
+  final int? draftVersion, publishedVersion;
+  final List<SarvamDeployment> deployments;
   final List<SarvamBusiness> businesses;
-  bool get hasToolKey => toolKeyPrefix.isNotEmpty;
+  bool get needsWork => [
+    'connecting',
+    'failed',
+    'publishing',
+    'cleanup_pending',
+  ].contains(status);
+  bool get canEnableBookings =>
+      status == 'legacy' || connected && publishedVersion != null;
+  bool get awaitingPublish => connected && draftVersion != publishedVersion;
+  String get statusLabel => switch (status) {
+    'connecting' => 'Connecting',
+    'authorization_required' => 'Authorize Sarvam',
+    'failed' => 'Setup failed — Retry',
+    'publishing' => 'Publishing',
+    'cleanup_pending' => 'Disconnected — cleanup pending',
+    'configured' =>
+      awaitingPublish ? 'Configured — awaiting publish' : 'Connected',
+    'legacy' => 'Connect to upgrade setup',
+    _ => 'Disconnected',
+  };
+  String get progressLabel => switch (step) {
+    'verify_credentials' => 'Verifying API key and IDs',
+    'authorize' =>
+      status == 'authorization_required'
+          ? 'Waiting for Sarvam sign-in'
+          : 'Preparing Sarvam sign-in',
+    'capabilities' => 'Checking authoring permissions',
+    'scope' => 'Verifying agent and workspace',
+    'secret' => 'Configuring secure tool authentication',
+    'variables' => 'Configuring agent variables',
+    'enable_tools' => 'Enabling booking tools',
+    'prompt' => 'Configuring booking instructions',
+    'verify' => 'Verifying booking configuration',
+    'deployments' => 'Loading phone deployments',
+    'commit' => 'Saving the reviewed agent version',
+    'deploy' => 'Updating the selected phone deployment',
+    'verify_publish' => 'Verifying the published version',
+    'cleanup_tools' => 'Disabling managed tools',
+    'cleanup_secret' => 'Revoking remote booking access',
+    _ => step.startsWith('tool_') ? 'Configuring booking tools' : '',
+  };
   @override
   List<Object?> get props => [
     version,
     enabled,
     connected,
+    hasCredentials,
+    callLogsAvailable,
     apiKeyLast4,
     orgId,
     workspaceId,
     appId,
-    toolKeyPrefix,
-    toolBaseUrl,
+    status,
+    step,
+    setupError,
+    authorizationUrl,
+    draftVersion,
+    publishedVersion,
+    deployments,
     businesses,
   ];
 }
@@ -167,7 +236,6 @@ class TranscriptLine extends Equatable {
 class SarvamSettingsState extends Equatable {
   const SarvamSettingsState({
     this.saved = const SarvamSettings(),
-    this.enabled = false,
     this.orgId = '',
     this.workspaceId = '',
     this.appId = '',
@@ -175,37 +243,25 @@ class SarvamSettingsState extends Equatable {
     this.businessIds = const {},
     this.loading = true,
     this.busy = false,
-    this.newToolKey,
     this.notice,
     this.error,
   });
   final SarvamSettings saved;
-  final bool enabled;
-  final String orgId, workspaceId, appId;
-
-  /// A newly typed key; empty keeps the saved one.
-  final String apiKey;
+  final String orgId, workspaceId, appId, apiKey;
   final Set<String> businessIds;
   final bool loading, busy;
-
-  /// Shown once after generating a tool key.
-  final String? newToolKey;
   final String? notice, error;
   bool get dirty =>
-      enabled != saved.enabled ||
       orgId != saved.orgId ||
       workspaceId != saved.workspaceId ||
       appId != saved.appId ||
       apiKey.isNotEmpty ||
-      !_sameSet(businessIds, {
-        for (final b in saved.businesses)
-          if (b.assigned) b.id,
-      });
-  static bool _sameSet(Set<String> a, Set<String> b) =>
-      a.length == b.length && a.containsAll(b);
+      businessIds.length != saved.businesses.where((b) => b.assigned).length ||
+      !businessIds.containsAll(
+        saved.businesses.where((b) => b.assigned).map((b) => b.id),
+      );
   SarvamSettingsState fromSaved(SarvamSettings s) => SarvamSettingsState(
     saved: s,
-    enabled: s.enabled,
     orgId: s.orgId,
     workspaceId: s.workspaceId,
     appId: s.appId,
@@ -216,7 +272,7 @@ class SarvamSettingsState extends Equatable {
     loading: false,
   );
   SarvamSettingsState copyWith({
-    bool? enabled,
+    SarvamSettings? saved,
     String? orgId,
     String? workspaceId,
     String? appId,
@@ -224,12 +280,10 @@ class SarvamSettingsState extends Equatable {
     Set<String>? businessIds,
     bool? loading,
     bool? busy,
-    String? newToolKey,
     String? notice,
     String? error,
   }) => SarvamSettingsState(
-    saved: saved,
-    enabled: enabled ?? this.enabled,
+    saved: saved ?? this.saved,
     orgId: orgId ?? this.orgId,
     workspaceId: workspaceId ?? this.workspaceId,
     appId: appId ?? this.appId,
@@ -237,14 +291,12 @@ class SarvamSettingsState extends Equatable {
     businessIds: businessIds ?? this.businessIds,
     loading: loading ?? this.loading,
     busy: busy ?? this.busy,
-    newToolKey: newToolKey,
     notice: notice,
     error: error,
   );
   @override
   List<Object?> get props => [
     saved,
-    enabled,
     orgId,
     workspaceId,
     appId,
@@ -252,7 +304,6 @@ class SarvamSettingsState extends Equatable {
     businessIds,
     loading,
     busy,
-    newToolKey,
     notice,
     error,
   ];

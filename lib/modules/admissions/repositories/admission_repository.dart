@@ -10,6 +10,10 @@ abstract class AdmissionRepository {
     String query = '',
     String kind = 'swimming',
     String? status,
+    String? businessId,
+    String? spaceId,
+    String? planId,
+    bool previousPlans = false,
     int cursor = 0,
   });
   Future<Admission> detail(String id);

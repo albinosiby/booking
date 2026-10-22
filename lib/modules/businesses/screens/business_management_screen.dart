@@ -411,12 +411,15 @@ class _BusinessManagementScreenState extends State<BusinessManagementScreen> {
                   message: 'Only the owner can manage businesses.',
                 )
               else ...[
-                FilledButton.icon(
-                  onPressed: s.busy || s.reordering
-                      ? null
-                      : () => context.push(Routes.addBusiness),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add business'),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: FilledButton.icon(
+                    onPressed: s.busy || s.reordering
+                        ? null
+                        : () => context.push(Routes.addBusiness),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add business'),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 const Text(

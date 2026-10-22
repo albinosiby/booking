@@ -1,0 +1,39 @@
+import Link from "next/link";
+import { Icon } from "./icons";
+import type { Website } from "../lib/types";
+import { siteLink } from "../lib/site-links";
+
+export function SiteHeader({
+  site,
+  preview,
+}: {
+  site: Website;
+  preview?: string;
+}) {
+  return (
+    <header className="site-header">
+      <div className="header-inner">
+        <Link className="site-brand" href={siteLink(site.slug, "", preview)}>
+          <span className="brand-logo">
+            {site.has_logo ? (
+              <img
+                src={`/api/sites/${site.slug}/logo${preview ? `?preview=${preview}` : ""}`}
+                alt=""
+              />
+            ) : (
+              <Icon name="calendar" size={23} />
+            )}
+          </span>
+          <span>{site.title}</span>
+        </Link>
+        <a
+          className="venue-contact"
+          href={`tel:${site.contact_phone.replace(/[^\d+]/g, "")}`}
+        >
+          <Icon name="phone" size={17} />
+          <span>Contact venue</span>
+        </a>
+      </div>
+    </header>
+  );
+}

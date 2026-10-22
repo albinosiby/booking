@@ -13,7 +13,11 @@ class TeamCoachesCubit extends Cubit<TeamCoachesModel> {
         scope = _scope;
         generation++;
         if (!isClosed) {
-          emit(TeamCoachesModel(error: 'Your access changed. Reopen Coaches.'));
+          emit(
+            TeamCoachesModel(
+              error: 'Your access changed. Reopen staff details.',
+            ),
+          );
         }
       }
     });
@@ -42,7 +46,9 @@ class TeamCoachesCubit extends Cubit<TeamCoachesModel> {
           state.copy(
             loading: false,
             team: accessFailure(e) ? CoachTeam() : null,
-            error: e is AppException ? e.message : 'Could not load coaches.',
+            error: e is AppException
+                ? e.message
+                : 'Could not load coaching plans.',
           ),
         );
       }
@@ -133,7 +139,7 @@ class TeamCoachesCubit extends Cubit<TeamCoachesModel> {
     if (b == null || coachId == null) return false;
     return _change(
       () => repository.assign(b.id, b.version, coachId, state.planIds),
-      'Could not save coaches. Refresh and retry.',
+      'Could not save coaching plans. Refresh and retry.',
     );
   }
 

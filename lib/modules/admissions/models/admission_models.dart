@@ -29,6 +29,9 @@ class AdmissionPlan extends Equatable {
     this.activeCount,
   });
   final String id, name, kind, coach;
+  bool matchesKind(String? filter) =>
+      filter == null ||
+      (filter == 'plans' ? kind != 'coaching' : kind == filter);
 
   /// Class size for coaching plans; null for swimming and court plans.
   final int? seats;
@@ -215,6 +218,7 @@ class Admission extends Equatable {
     this.poolName = '',
     this.today = '',
     this.localNow = '',
+    this.canMarkAttendance = true,
     this.renewalId,
     this.visits = const [],
     this.payments = const [],
@@ -237,6 +241,7 @@ class Admission extends Equatable {
       poolName,
       today,
       localNow;
+  final bool canMarkAttendance;
   final String? renewalId;
   final BookingCustomer customer;
   final int allowance, used, remaining, total, paid, balance, version, duration;
@@ -273,6 +278,7 @@ class Admission extends Equatable {
     payments,
     history,
     renewalId,
+    canMarkAttendance,
   ];
 }
 

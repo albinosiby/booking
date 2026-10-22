@@ -8,16 +8,13 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { z } from "zod";
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-  randomUUID,
-} from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { Database, Queryable } from "../common/database";
 import { Actor } from "../common/auth.guard";
 import { WorkspaceService } from "../workspace/workspace.service";
+import { sealSecret, openSecret, hashToolKey } from "./sarvam-secrets";
+export { sealSecret, openSecret, hashToolKey } from "./sarvam-secrets";
+import { SarvamSetup } from "./sarvam-setup";
 type Row = Record<string, any>;
 
 /** Voice-agent memberships use this user_id prefix and never appear in Team. */
@@ -39,7 +36,7 @@ const interactionId = z
   .refine((v) => !v.includes(".."), "Invalid interaction ID.");
 const settingsSchema = z
   .object({
-    version: z.number().int().positive(),
+    version: z.number().int().nonnegative(),
     enabled: z.boolean(),
     business_ids: z.array(z.uuid()).max(100),
     sarvam_org_id: id.or(z.literal("")),
@@ -65,41 +62,6 @@ const callsSchema = z
     "Choose at most 31 days.",
   );
 
-/** AES-256-GCM with the server-only BOOKING_SECRETS_KEY (base64, 32 bytes). */
-function secretKey() {
-  const raw = process.env.BOOKING_SECRETS_KEY ?? "";
-  const key = Buffer.from(raw, "base64");
-  if (key.length !== 32)
-    throw new ServiceUnavailableException(
-      "Server secret storage is not configured. Set BOOKING_SECRETS_KEY.",
-    );
-  return key;
-}
-export function sealSecret(plain: string) {
-  const iv = randomBytes(12),
-    cipher = createCipheriv("aes-256-gcm", secretKey(), iv);
-  const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  return ["v1", iv, cipher.getAuthTag(), data]
-    .map((p) => (typeof p === "string" ? p : p.toString("base64")))
-    .join(".");
-}
-export function openSecret(sealed: string) {
-  const [v, iv, tag, data] = sealed.split(".");
-  if (v !== "v1") throw new Error("Unknown secret format");
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    secretKey(),
-    Buffer.from(iv, "base64"),
-  );
-  decipher.setAuthTag(Buffer.from(tag, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(data, "base64")),
-    decipher.final(),
-  ]).toString("utf8");
-}
-export const hashToolKey = (key: string) =>
-  createHash("sha256").update(key).digest("hex");
-
 @Injectable()
 export class SarvamService {
   /** Replaced in tests; Sarvam is only contacted over HTTPS at SARVAM_ORIGIN. */
@@ -108,6 +70,37 @@ export class SarvamService {
     private readonly db: Database,
     private readonly workspace: WorkspaceService,
   ) {}
+  private get setup() {
+    return new SarvamSetup(
+      this.db,
+      this.workspace,
+      (...a) => this.http(...a),
+      (db, org) => this.ensure(db, org),
+    );
+  }
+  async connect(actor: Actor, input: unknown) {
+    await this.setup.connect(actor, input);
+    return this.settings(actor);
+  }
+  async setupStep(actor: Actor) {
+    await this.setup.step(actor);
+    return this.settings(actor);
+  }
+  async disconnect(actor: Actor) {
+    await this.setup.disconnect(actor);
+    return this.settings(actor);
+  }
+  async bookingEnabled(actor: Actor, input: unknown) {
+    await this.setup.enabled(actor, input);
+    return this.settings(actor);
+  }
+  async publish(actor: Actor, input: unknown) {
+    await this.setup.publish(actor, input);
+    return this.settings(actor);
+  }
+  oauthCallback(input: unknown) {
+    return this.setup.callback(input);
+  }
   private toolBaseUrl() {
     return `${this.workspace.publicAppUrl || process.env.PUBLIC_APP_URL || "http://localhost:3000"}/voice/v1`;
   }
@@ -165,7 +158,20 @@ export class SarvamService {
     return {
       version: s?.version ?? 0,
       enabled: s?.enabled ?? false,
-      connected: !!s?.api_key_ciphertext,
+      connected: !!s?.api_key_ciphertext && s?.setup_status === "configured",
+      has_credentials:
+        !!s?.api_key_ciphertext || !!s?.setup_state?.pending_api_key_ciphertext,
+      call_logs_available: !!s?.api_key_ciphertext,
+      setup_status: s?.setup_status ?? "disconnected",
+      setup_step: s?.setup_state?.step ?? "",
+      setup_error: s?.setup_error ?? "",
+      authorization_url:
+        s?.setup_status === "authorization_required"
+          ? (s?.setup_state?.authorization_url ?? "")
+          : "",
+      draft_version: s?.setup_state?.draft_version ?? null,
+      published_version: s?.setup_state?.published_version ?? null,
+      deployments: s?.setup_state?.deployments ?? [],
       api_key_last4: s?.api_key_last4 ?? "",
       sarvam_org_id: s?.sarvam_org_id ?? "",
       workspace_id: s?.workspace_id ?? "",
@@ -174,12 +180,18 @@ export class SarvamService {
       tool_base_url: this.toolBaseUrl(),
       businesses: businesses.map((b) => ({
         ...b,
-        assigned: assigned.includes(b.id),
+        assigned: (s?.setup_state?.business_ids ?? assigned).includes(b.id),
       })),
     };
   }
   async save(actor: Actor, input: unknown) {
     const v = settingsSchema.parse(input);
+    const member = await this.workspace.member(actor, true);
+    const existing = await this.row(member.organization_id);
+    if (existing?.setup_status && existing.setup_status !== "legacy")
+      throw new ConflictException(
+        "Use Connect or the phone booking switch to update this integration.",
+      );
     if (v.enabled && !v.business_ids.length)
       throw new BadRequestException(
         "Choose at least one business the voice agent can book.",
@@ -254,6 +266,10 @@ export class SarvamService {
     return this.db.transaction(async (db) => {
       const m = await this.workspace.member(actor, true, db);
       const s = await this.ensure(db, m.organization_id);
+      if (s.setup_status && s.setup_status !== "legacy")
+        throw new ConflictException(
+          "Tool keys are managed internally by Connect.",
+        );
       const key = "bkv_" + randomBytes(32).toString("base64url");
       await db.query(
         "UPDATE sarvam_integrations SET tool_key_hash=$1,tool_key_prefix=$2,version=version+1,updated_at=now() WHERE organization_id=$3",
@@ -275,7 +291,7 @@ export class SarvamService {
       throw new UnauthorizedException("A valid voice tool key is required.");
     const s = (
       await this.db.query<Row>(
-        "SELECT organization_id,enabled FROM sarvam_integrations WHERE tool_key_hash=$1",
+        "SELECT organization_id,enabled FROM sarvam_integrations WHERE tool_key_hash=$1 OR (setup_status='publishing' AND pending_tool_key_hash=$1)",
         [hashToolKey(key)],
       )
     ).rows[0];

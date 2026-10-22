@@ -1,3 +1,4 @@
+import 'dart:convert';
 import '../../../core/state/workspace_screen_cubit.dart';
 import '../../workspace/repositories/workspace_session.dart';
 import '../repositories/team_repository.dart';
@@ -30,11 +31,29 @@ class StaffAssignmentCubit
           businesses: businesses,
           restricted: restricted,
           resources: resources,
-          permissions: Set<String>.from(member['permissions']),
+          permissions: {
+            ...List<String>.from(member['permissions'] ?? const []),
+            if ((member['permissions'] as List? ?? []).contains(
+              'manage_attendance',
+            ))
+              'mark_attendance',
+          }..remove('manage_attendance'),
         ),
       );
     }
+    _savedCoachingScope = _coachingScope;
   }
+  late String _savedCoachingScope;
+  String get _coachingScope => jsonEncode({
+    'coach': state.permissions.contains('coach'),
+    'assignments': {
+      for (final id in state.businesses.toList()..sort())
+        id: state.restricted.contains(id)
+            ? ((state.resources[id]?.toList() ?? <String>[])..sort())
+            : <String>[],
+    },
+  });
+  bool get coachingAccessChanged => _coachingScope != _savedCoachingScope;
   final TeamRepository repository;
   @override
   StaffAssignmentScreenModel mapSnapshot(WorkspaceState snapshot) =>
@@ -69,6 +88,13 @@ class StaffAssignmentCubit
     return ok ? link : null;
   }
 
-  Future<bool> update(String id, StaffAccessDraft draft) =>
-      save(() => repository.update(id, draft));
+  Future<bool> update(String id, StaffAccessDraft draft) async {
+    final savedScope = _coachingScope;
+    final ok = await save(() => repository.update(id, draft));
+    if (ok && !isClosed) {
+      _savedCoachingScope = savedScope;
+      emit(state.copyWith(accessRevision: state.accessRevision + 1));
+    }
+    return ok;
+  }
 }

@@ -57,7 +57,7 @@ export function admissionSpaces(c: Row | null | undefined): Row[] {
 export function planSpaceIds(plan: Row): string[] {
   return plan.pool_ids ?? plan.court_ids ?? [];
 }
-// Coaches are reassigned in Team → Coaches after admissions exist, so the
+// Coaches are reassigned in staff details after admissions exist, so the
 // current configuration decides who teaches a plan. The admission snapshot
 // only answers for plans that were removed from the configuration.
 export function currentCoachId(

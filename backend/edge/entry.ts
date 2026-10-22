@@ -1,3 +1,4 @@
+import { WebsiteService } from "../src/website/website.service";
 import { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
 import { AdmissionService } from "../src/admissions/admission.service";
 import { MessagesService } from "../src/messages/messages.service";
@@ -29,6 +30,7 @@ workspace.publicAppUrl = `${projectUrl}/functions/v1/booking-api`;
 const accounts = new AccountsService(db as never, workspace);
 const bookings = new BookingService(db as never, workspace);
 export const services = {
+  website: new WebsiteService(db as never, workspace),
   blocks: new SlotBlocksService(db as never),
   admissions: new AdmissionService(db as never),
   messages: new MessagesService(db as never, workspace),

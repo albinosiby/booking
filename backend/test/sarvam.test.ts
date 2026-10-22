@@ -150,7 +150,8 @@ test("seals the Sarvam API key", () => {
 
 test("settings are owner-only, hide the key and keep the agent out of Team", async () => {
   const o = await connect();
-  assert.equal(o.settings.connected, true);
+  assert.equal(o.settings.connected, false);
+  assert.equal(o.settings.setup_status, "legacy");
   assert.equal(o.settings.api_key_last4, "1234");
   assert.equal(JSON.stringify(o.settings).includes("sk_test_secret"), false);
   assert.match(o.settings.tool_base_url, /\/voice\/v1$/);
