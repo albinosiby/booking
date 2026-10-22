@@ -23,7 +23,9 @@ abstract class AdmissionRepository {
     AdmissionPreview preview,
     String key,
   );
-  Future<void> checkIn(Admission a, String time, int duration, String key);
+
+  /// The server resolves the current visit or the running coaching class.
+  Future<void> checkIn(Admission a, String key);
   Future<void> attendance(
     Admission a,
     AdmissionVisit v,

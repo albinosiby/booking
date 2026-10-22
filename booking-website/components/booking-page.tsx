@@ -3,6 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { SiteHeader } from "./site-header";
 import { SpaceGallery } from "./space-gallery";
+import { BookingTimePicker } from "./booking-time-picker";
+import { BookingReview } from "./booking-review";
+import { BookingConfirmation } from "./booking-confirmation";
+import { BookingCustomerDetails } from "./booking-customer-details";
 import { siteLink } from "../lib/site-links";
 import {
   useBooking,
@@ -87,11 +91,11 @@ export function BookingPage({
   const selectedName = (r: Resource) =>
     isTurf ? (r.name.split(" · ").at(-1) ?? r.name) : r.name;
   const selectedQuote = confirmation ?? quote;
+  const reviewQuote = quote ?? b.pending?.quote;
   const canContinue = !!quote && !b.quoting && !b.pending;
   const lastDate = business ? dateAfter(business.today, site.advance_days) : "";
   const firstDate =
     b.date || business?.today || new Date().toISOString().slice(0, 10);
-  const finishMode = !!b.start && !!option?.minimum_duration;
   const remaining = Math.min(
     14,
     Math.max(
@@ -175,42 +179,6 @@ export function BookingPage({
             Continue to details <Icon name="arrow" />
           </button>
         )}
-        {b.mode === "details" && (
-          <p className="summary-note">
-            Enter your details to review your reservation.
-          </p>
-        )}
-        {b.mode === "review" && (
-          <>
-            <p className="summary-note">
-              {site.is_preview
-                ? "Preview only — booking is disabled."
-                : "Pay at the venue. No online payment is collected."}
-            </p>
-            <button
-              className="primary"
-              disabled={
-                b.confirming ||
-                site.is_preview ||
-                (!b.pending && !quote) ||
-                (!b.pending && site.status !== "published")
-              }
-              onClick={b.confirm}
-            >
-              {b.confirming
-                ? "Confirming…"
-                : b.uncertain
-                  ? "Retry confirmation"
-                  : "Confirm booking"}
-              <Icon name="check" />
-            </button>
-          </>
-        )}
-        {b.mode === "success" && (
-          <span className="confirmed-badge">
-            <Icon name="check" /> Booking confirmed
-          </span>
-        )}
         <p className="timezone-note">
           {business?.timezone ?? selectedQuote?.timezone}
         </p>
@@ -235,37 +203,32 @@ export function BookingPage({
             Online bookings are temporarily paused. Please contact the venue.
           </div>
         )}
-        <nav className="booking-breadcrumb" aria-label="Breadcrumb">
-          <Link href={siteLink(slug, "", preview)}>
-            <Icon name="back" size={17} /> All services
-          </Link>
-          <span>/</span>
-          <span>{business?.name}</span>
-        </nav>
-        <div className="page-intro">
-          <div>
-            <p className="eyebrow">
-              {b.mode === "success" ? "You’re all set" : "Reservation details"}
-            </p>
-            <h1>
-              {b.mode === "success"
-                ? "See you at the venue."
-                : b.mode === "slots"
-                  ? "Choose your space and time"
-                  : b.mode === "details"
-                    ? "A few details, then you’re booked."
-                    : "Review your reservation"}
-            </h1>
-            {business && b.mode === "slots" && (
-              <p className="site-description">
-                {business.name} · {business.location_name}
-              </p>
-            )}
+        {b.mode !== "success" && (
+          <nav className="booking-breadcrumb" aria-label="Breadcrumb">
+            <Link href={siteLink(slug, "", preview)}>
+              <Icon name="back" size={17} /> All services
+            </Link>
+            <span>/</span>
+            <span>{business?.name}</span>
+          </nav>
+        )}
+        {b.mode === "slots" && (
+          <div className="page-intro">
+            <div>
+              <p className="eyebrow">Reservation details</p>
+              <h1>Choose your space and time</h1>
+              {business && (
+                <p className="site-description">
+                  {business.name} · {business.location_name}
+                </p>
+              )}
+            </div>
+            <div className="secure-label">
+              <span />
+              Direct booking with the venue
+            </div>
           </div>
-          <div className="secure-label">
-            <span /> Direct booking with the venue
-          </div>
-        </div>
+        )}
         {b.mode === "slots" && resource && (
           <SpaceGallery
             key={resource.id}
@@ -304,7 +267,9 @@ export function BookingPage({
             <p>Please contact the venue for bookings.</p>
           </div>
         ) : (
-          <div className="booking-layout">
+          <div
+            className={`booking-layout ${b.mode !== "slots" ? "checkout-layout" : ""}`}
+          >
             <div className="booking-main">
               {b.mode === "slots" && business && resource && option && (
                 <>
@@ -664,267 +629,74 @@ export function BookingPage({
                         </div>
                       )}
                       <Step number={isPool ? "04" : "03"} icon="clock">
-                        Choose start and end time
+                        {option.minimum_duration
+                          ? "Choose start and end time"
+                          : "Choose a session"}
                       </Step>
-                      <div className="time-card">
-                        <div className="time-card-heading">
-                          <h3>
-                            {finishMode
-                              ? "Choose your finish time"
-                              : "Choose your time"}
-                          </h3>
-                          {finishMode ? (
-                            <p>
-                              Starting at <strong>{timeLabel(b.start)}</strong>.
-                              Now tap your finish time.
-                              {b.duration > 0 && (
-                                <> Selected: {durationLabel(b.duration)}.</>
-                              )}
-                            </p>
-                          ) : (
-                            <p>
-                              {option.minimum_duration
-                                ? `Tap your start time, then your finish time in this grid. Minimum booking: ${durationLabel(option.minimum_duration)}.`
-                                : "Choose an available session below."}
-                            </p>
-                          )}
-                          {finishMode && (
-                            <button
-                              className="text-button"
-                              onClick={b.changeStart}
-                            >
-                              <Icon name="back" size={15} /> Change start time
-                            </button>
-                          )}
-                        </div>
-                        {b.slotLoading ? (
-                          <div className="slots-loading" role="status">
-                            <div className="loader" />
-                            Checking availability…
-                          </div>
-                        ) : b.slots.length === 0 ? (
-                          <div className="empty-state">
-                            <Icon name="clock" size={28} />
-                            <h3>No times available</h3>
-                            <p>Try another date or space.</p>
-                            <button className="text-button" onClick={b.retry}>
-                              Refresh availability
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="time-grid">
-                            {b.slots.map((slot, n) => {
-                              const selected = finishMode
-                                ? b.duration === slot.duration_minutes
-                                : slot.time === b.start;
-                              return (
-                                <button
-                                  key={`${slot.date ?? b.date}-${slot.time}-${n}`}
-                                  className={`time-tile ${selected ? "selected" : ""} ${!slot.available ? "unavailable" : ""}`}
-                                  disabled={!slot.available}
-                                  aria-pressed={selected}
-                                  aria-label={`${finishMode ? "Finish at " : "Start at "}${timeLabel(slot.time)}, ${slot.available ? "available" : slot.status}`}
-                                  onClick={() => b.chooseSlot(slot)}
-                                >
-                                  <strong>
-                                    {timeLabel(slot.time)}
-                                    {slot.date && slot.date !== b.date && (
-                                      <small> +1 day</small>
-                                    )}
-                                  </strong>
-                                  <span>
-                                    {slot.available
-                                      ? finishMode && slot.duration_minutes
-                                        ? durationLabel(slot.duration_minutes)
-                                        : "Available"
-                                      : slot.status === "minimum"
-                                        ? `Min. ${durationLabel(option.minimum_duration ?? 0)}`
-                                        : slot.status === "end_only"
-                                          ? "Unavailable"
-                                          : slot.status[0].toUpperCase() +
-                                            slot.status.slice(1)}
-                                  </span>
-                                  {finishMode && slot.available && (
-                                    <small>{money(slot.total_minor)}</small>
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+                      <BookingTimePicker
+                        date={b.date}
+                        start={b.start}
+                        duration={b.duration}
+                        finish={b.finish}
+                        minimum={option.minimum_duration}
+                        cells={b.timeCells}
+                        loading={b.slotLoading || b.endLoading}
+                        locked={!!b.pending}
+                        onSelect={b.chooseCell}
+                        onRefresh={b.retry}
+                      />
                     </section>
                   </div>
                 </>
               )}
-              {b.mode === "details" && (
-                <section className="details-card">
-                  <button className="text-button" onClick={b.back}>
-                    <Icon name="back" size={16} /> Back to times
-                  </button>
-                  <Step number="04" icon="people">
-                    Your details
-                  </Step>
-                  <p className="helper">
-                    The venue will use these details to identify your booking
-                    and contact you.
-                  </p>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      b.review();
-                    }}
-                  >
-                    <label htmlFor="customer-name">Full name</label>
-                    <input
-                      id="customer-name"
-                      autoComplete="name"
-                      value={b.name}
-                      minLength={2}
-                      maxLength={100}
-                      required
-                      onChange={(e) => b.setName(e.target.value)}
-                      placeholder="Enter your name"
-                    />
-                    <label htmlFor="customer-phone">Phone number</label>
-                    <input
-                      id="customer-phone"
-                      type="tel"
-                      autoComplete="tel"
-                      value={b.phone}
-                      required
-                      minLength={7}
-                      maxLength={25}
-                      pattern={"\\+?[0-9\\s\\(\\)\\-]{7,25}"}
-                      onChange={(e) => b.setPhone(e.target.value)}
-                      placeholder="e.g. +91 98765 43210"
-                    />
-                    <p className="helper">
-                      Include your country code. Phone ownership is not
-                      verified.
-                    </p>
-                    {site.instructions && (
-                      <div className="policy">
-                        <h3>Before you visit</h3>
-                        <p>{site.instructions}</p>
-                      </div>
-                    )}
-                    {site.cancellation_policy && (
-                      <div className="policy">
-                        <h3>Cancellation policy</h3>
-                        <p>{site.cancellation_policy}</p>
-                      </div>
-                    )}
-                    <p className="privacy-note">
-                      By continuing, you agree to share your name and phone
-                      number with {site.title} for this booking.
-                    </p>
-                    <button className="primary" type="submit">
-                      Review booking <Icon name="arrow" />
-                    </button>
-                  </form>
-                </section>
+              {b.mode === "details" && reviewQuote && (
+                <BookingCustomerDetails
+                  site={site}
+                  business={business}
+                  booking={reviewQuote}
+                  name={b.name}
+                  phone={b.phone}
+                  people={b.people}
+                  onNameChange={b.setName}
+                  onPhoneChange={b.setPhone}
+                  onBack={b.back}
+                  onReview={b.review}
+                />
               )}
-              {b.mode === "review" && (
-                <section className="details-card">
-                  <button
-                    className="text-button"
-                    disabled={!!b.pending}
-                    onClick={b.back}
-                  >
-                    <Icon name="back" size={16} /> Edit details
-                  </button>
-                  <Step number="04" icon="people">
-                    Ready to book
-                  </Step>
-                  <h2>{b.name}</h2>
-                  <p className="review-phone">{b.phone}</p>
-                  <div className="review-grid">
-                    <div>
-                      <span>Business</span>
-                      <strong>{business?.name ?? site.title}</strong>
-                    </div>
-                    <div>
-                      <span>Space</span>
-                      <strong>
-                        {quote?.space_name ?? b.pending?.quote.space_name}
-                      </strong>
-                    </div>
-                    <div>
-                      <span>Date</span>
-                      <strong>
-                        {b.date &&
-                          dayName(b.date, {
-                            weekday: "long",
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                          })}
-                      </strong>
-                    </div>
-                    <div>
-                      <span>Payment</span>
-                      <strong>Pay at the venue</strong>
-                    </div>
-                  </div>
-                  {site.cancellation_policy && (
-                    <div className="policy">
-                      <h3>Cancellation policy</h3>
-                      <p>{site.cancellation_policy}</p>
-                    </div>
-                  )}
-                  {site.instructions && (
-                    <div className="policy">
-                      <h3>Venue instructions</h3>
-                      <p>{site.instructions}</p>
-                    </div>
-                  )}
-                  {b.uncertain && (
-                    <div className="notice">
-                      Your confirmation result is uncertain. Retry confirmation
-                      to verify the same request. Your details are locked to
-                      prevent a duplicate booking.
-                    </div>
-                  )}
-                  <p className="helper">
-                    Your slot is secured when the confirmation succeeds.
-                  </p>
-                </section>
+              {b.mode === "review" && reviewQuote && (
+                <BookingReview
+                  site={site}
+                  business={business}
+                  booking={reviewQuote}
+                  name={b.name}
+                  phone={b.phone}
+                  people={b.people}
+                  confirming={b.confirming}
+                  uncertain={b.uncertain}
+                  locked={b.confirming || !!b.pending}
+                  disabled={
+                    b.confirming ||
+                    site.is_preview ||
+                    (!b.pending && !quote) ||
+                    (!b.pending && site.status !== "published")
+                  }
+                  onEdit={b.back}
+                  onConfirm={b.confirm}
+                />
               )}
               {b.mode === "success" && confirmation && (
-                <section className="success-card">
-                  <div className="success-icon">
-                    <Icon name="check" size={38} />
-                  </div>
-                  <p className="eyebrow">Booking confirmed</p>
-                  <h2>You’re booked, {b.name.split(" ")[0]}.</h2>
-                  <p>Your reservation at {site.title} is confirmed.</p>
-                  <div className="booking-reference">
-                    <span>Your booking reference</span>
-                    <strong>{confirmation.reference}</strong>
-                  </div>
-                  <p>Keep this reference and show it when you arrive.</p>
-                  <div className="notice">
-                    {confirmation.payment_status === "paid"
-                      ? "No payment is due for this booking."
-                      : `${money(confirmation.total_minor)} is payable at the venue. No online payment has been collected.`}
-                  </div>
-                  {site.instructions && (
-                    <p className="policy">{site.instructions}</p>
-                  )}
-                  <a className="primary" href={`/${slug}`}>
-                    Make another booking <Icon name="arrow" />
-                  </a>
-                  <a
-                    className="text-button"
-                    href={`tel:${site.contact_phone.replace(/[^\d+]/g, "")}`}
-                  >
-                    Contact venue
-                  </a>
-                </section>
+                <BookingConfirmation
+                  key={confirmation.reference}
+                  site={site}
+                  business={business}
+                  booking={confirmation}
+                  name={b.name}
+                  phone={b.phone}
+                  people={b.people}
+                />
               )}
             </div>
-            {summary}
+            {b.mode === "slots" && summary}
           </div>
         )}
         <footer className="site-footer">

@@ -1,3 +1,4 @@
+import 'package:eden_booking/modules/team/widgets/team_desktop_widgets.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -302,7 +303,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('team shows member cards with roles and header invite', (
+  testWidgets('team shows compact staff tiles with actions and header invite', (
     tester,
   ) async {
     final (session, team) = await teamSession();
@@ -311,17 +312,31 @@ void main() {
     expect(find.byType(AppStatTile), findsWidgets);
     expect(find.text('Invite staff'), findsOneWidget);
     expect(find.text('Coaches'), findsNothing);
-    expect(find.text('Manage responsibilities'), findsOneWidget);
+    expect(find.byType(TeamPersonTile), findsNWidgets(5));
     expect(find.text('Manager'), findsWidgets);
-    expect(find.text('Edit staff'), findsNWidgets(2));
+    await tester.tap(find.byTooltip('Staff actions for Priya Nair'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit staff'), findsOneWidget);
+    expect(find.text('Remove access'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
     final alex = tester.getCenter(find.text('Alex Thomas'));
     final priya = tester.getCenter(find.text('Priya Nair'));
     expect(alex.dy, priya.dy, reason: 'members share a grid row');
-    await tester.ensureVisible(find.text('Cancel invitation'));
+    await tester.ensureVisible(find.byTooltip('Cancel invitation'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel invitation'));
+    await tester.tap(find.byTooltip('Cancel invitation'));
     await tester.pumpAndSettle();
     expect(team.revoked, ['invite']);
+    tester.view.physicalSize = const Size(320, 1000);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Alex Thomas'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TeamPersonTile), findsNWidgets(5));
+    expect(
+      tester.getTopLeft(find.text('Priya Nair')).dy,
+      greaterThan(tester.getTopLeft(find.text('Alex Thomas')).dy),
+    );
     expect(tester.takeException(), isNull);
   });
 

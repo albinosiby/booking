@@ -206,6 +206,24 @@ class AdmissionCubit extends Cubit<AdmissionState> {
     await _fetchRoster(id, generation, more: more);
   }
 
+  Future<void> loadMoreStudents() async {
+    if (!authorized ||
+        state.loading ||
+        state.overview.rosters.values.any((r) => r.loading)) {
+      return;
+    }
+    final g = generation;
+    final ids = state.overview.rosters.values
+        .where((r) => r.next != null)
+        .map((r) => r.id)
+        .toList();
+    for (var i = 0; i < ids.length && valid(g); i += 4) {
+      await Future.wait(
+        ids.skip(i).take(4).map((id) => loadRoster(id, more: true)),
+      );
+    }
+  }
+
   void _putRoster(AdmissionRoster roster) => emit(
     state.copyWith(
       overview: state.overview.copyWith(
@@ -715,9 +733,26 @@ class AdmissionCubit extends Cubit<AdmissionState> {
 
   Future<void> retry() =>
       mutate(pending ?? () async {}, reload: state.savedId == null);
-  Future<void> checkIn(String time, int duration) {
-    final a = state.detail!, k = key;
-    return mutate(() => repository.checkIn(a, time, duration, k));
+  Future<void> checkIn() async {
+    if (!authorized || state.loading || state.busy || state.locked) return;
+    final id = state.detail?.id;
+    if (id == null) return;
+    // Refresh permissions and the optimistic version before recording attendance.
+    await loadDetail(id);
+    if (!authorized || state.error != null || state.busy || state.locked) {
+      return;
+    }
+    final a = state.detail;
+    if (a == null ||
+        a.id != id ||
+        !a.canCheckIn ||
+        !a.canMarkAttendance ||
+        !state.catalog.canAttend) {
+      return;
+    }
+    final k = key;
+    // Keep this exact command for retries; the server owns time selection.
+    await mutate(() => repository.checkIn(a, k));
   }
 
   Future<void> attendance(AdmissionVisit v, String value, String reason) {

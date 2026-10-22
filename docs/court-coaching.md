@@ -15,7 +15,7 @@ Badminton, tennis and basketball businesses can now sell **court plans** (like s
 Use **Profile → Plans & Coaching → New admission**, or the booking form: on a court business, pick a court, then choose **Coaching** instead of **Court booking**. Select the plan, activation date and attendance mode:
 
 - **Fixed weekly schedule:** chosen weekdays and start time reserve every class up front, within validity.
-- **Flexible:** no reservation until check-in. Check-in reserves the court for the class duration at that moment, or joins a matching class that is already running.
+- **Flexible:** no advance student reservation. **Mark present** automatically joins the matching coaching class currently running on the selected court, using its scheduled start/end time. If no class is running, no arbitrary class is created; attendance is marked from a scheduled class. Ordinary flexible court access plans use the server's current business-local time and the admission's saved visit duration. There is no attendance time picker.
 
 ## How a batch uses the court
 

@@ -145,7 +145,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           _Destination(
             Icons.support_agent_outlined,
-            'Sarvam voice agent',
+            'Automated Call Bookings',
             'Phone bookings, call logs and transcripts',
             Routes.sarvam,
           ),

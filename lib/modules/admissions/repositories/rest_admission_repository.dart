@@ -261,22 +261,11 @@ class RestAdmissionRepository implements AdmissionRepository {
     data: {...body(d), 'preview_token': p.token, 'command_key': key},
   ))['id'];
   @override
-  Future<void> checkIn(
-    Admission a,
-    String time,
-    int duration,
-    String key,
-  ) async {
+  Future<void> checkIn(Admission a, String key) async {
     await api.request(
       '/admissions/${a.id}/check-ins',
       method: 'POST',
-      data: {
-        'command_key': key,
-        'version': a.version,
-        'date': a.today,
-        'time': time,
-        'duration_minutes': duration,
-      },
+      data: {'command_key': key, 'version': a.version},
     );
   }
 

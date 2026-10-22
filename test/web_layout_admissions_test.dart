@@ -121,20 +121,19 @@ void main() {
     expect(find.byTooltip('Refresh admissions'), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsOneWidget);
     expect(find.text('Pool 1'), findsWidgets);
-    expect(find.text('INR 3000.00'), findsWidgets);
-    expect(find.byType(AppGrid), findsWidgets);
+    expect(find.text('Due INR 3000.00'), findsOneWidget);
     expect(find.byKey(const ValueKey('admission-admission')), findsOneWidget);
     expect(find.text('Search name, phone or admission no.'), findsOneWidget);
-    // Enrollment is available from the persistent FAB and each plan.
+    // Enrollment is available from the persistent FAB.
     expect(find.byType(AppButton), findsNothing);
     await tester.tap(find.text('Plans'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('plan-plan')), findsOneWidget);
-    expect(find.text('Enroll student'), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-plan')), findsNothing);
+    expect(find.text('Enroll student'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('coaching tab lists the selected court’s coaching plans', (
+  testWidgets('coaching tab shows students without package cards', (
     tester,
   ) async {
     await pumpDesktop(tester, CourtAdmissionsFake(), const AdmissionsScreen());
@@ -144,8 +143,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Coaching'));
     await tester.pumpAndSettle();
-    expect(find.text('Junior batch'), findsOneWidget);
-    expect(find.text('8 per class'), findsOneWidget);
+    expect(find.text('Junior batch'), findsNothing);
+    expect(find.text('8 per class'), findsNothing);
+    expect(find.byTooltip('New coaching admission'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

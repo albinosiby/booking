@@ -305,7 +305,7 @@ class _SarvamSettingsScreenState extends State<SarvamSettingsScreen>
       if (s.notice != null) showMessage(context, s.notice!);
     },
     builder: (context, s) => AppPage(
-      title: 'Sarvam voice agent',
+      title: 'Automated Call Bookings',
       subtitle: 'Automatic setup, phone booking controls and call logs.',
       back: true,
       showAppBar: true,

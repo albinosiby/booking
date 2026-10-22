@@ -79,26 +79,6 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
     if (why != null && mounted) await cubit.attendance(v, value, why);
   }
 
-  Future<void> checkIn() async {
-    // Refresh first so timezone-local date and optimistic version are current.
-    await cubit.loadDetail(widget.id);
-    if (!mounted) return;
-    final a = cubit.state.detail;
-    if (a == null || !a.canCheckIn) return;
-    final local = DateTime.tryParse(a.localNow) ?? DateTime.now();
-    final time = await showTimePicker(
-      context: context,
-      helpText: 'Visit start time (must include now)',
-      initialTime: TimeOfDay(hour: local.hour, minute: local.minute),
-    );
-    if (time != null && mounted) {
-      await cubit.checkIn(
-        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-        a.duration,
-      );
-    }
-  }
-
   Future<void> payment(bool refund) async {
     final a = cubit.state.detail!;
     final result = await showAdaptiveSheet<(List<BookingPaymentDraft>, String)>(
@@ -441,7 +421,7 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
       AppButton(
         label: 'Mark present',
         icon: Icons.how_to_reg,
-        onPressed: enabled ? checkIn : null,
+        onPressed: enabled ? cubit.checkIn : null,
       ),
       SizedBox(height: 10.h),
     ],

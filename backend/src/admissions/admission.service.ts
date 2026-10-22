@@ -1106,8 +1106,66 @@ export class AdmissionService {
       history,
     };
   }
+  /** Join the exact running class interval, preserving its reserved capacity. */
+  private async runningCoachingVisit(
+    db: Queryable,
+    a: Row,
+    b: Row,
+    pool: Row,
+    now: number,
+  ) {
+    const occupied = await this.allocations(
+      db,
+      b.id,
+      new Date(now).toISOString(),
+      new Date(now + 1).toISOString(),
+    );
+    const classes = new Map<string, Row>();
+    for (const row of occupied) {
+      const start = Date.parse(row.starts_at),
+        end = Date.parse(row.ends_at);
+      if (
+        row.plan_id !== a.plan_id ||
+        row.plan_snapshot?.kind !== "coaching" ||
+        row.inventory_key !== `${b.id}:${a.resource_id}` ||
+        start > now ||
+        end <= now ||
+        end - start !== a.plan_snapshot.class_duration_minutes * 60000
+      )
+        continue;
+      classes.set(`${start}:${end}`, row);
+    }
+    if (!classes.size)
+      throw new BadRequestException(
+        "No coaching class is running now for this plan and space. Mark attendance from a scheduled class.",
+      );
+    if (classes.size > 1)
+      throw new ConflictException(
+        "More than one coaching class is running. Open the student's scheduled class to mark attendance.",
+      );
+    const row = [...classes.values()][0];
+    const start = localStamp(Date.parse(row.starts_at), a.timezone);
+    const session = interval(
+      pool,
+      a.plan_snapshot,
+      start.slice(0, 10),
+      start.slice(11, 16),
+      a.plan_snapshot.class_duration_minutes,
+      a.timezone,
+    );
+    return {
+      ...session,
+      starts_at: new Date(row.starts_at).toISOString(),
+      ends_at: new Date(row.ends_at).toISOString(),
+    };
+  }
+
   async checkIn(actor: Actor, id: string, input: unknown) {
-    const v = z
+    // New clients omit the clock; older clients may still send a complete visit.
+    const automatic = z
+      .object({ command_key: z.uuid(), version: z.number().int().positive() })
+      .strict();
+    const explicit = z
       .object({
         command_key: z.uuid(),
         version: z.number().int().positive(),
@@ -1115,8 +1173,8 @@ export class AdmissionService {
         time: clock,
         duration_minutes: z.number().int().min(30).max(1440),
       })
-      .strict()
-      .parse(input);
+      .strict();
+    const v = z.union([automatic, explicit]).parse(input);
     const original = await this.find(await this.member(actor), id);
     return this.command(
       actor,
@@ -1138,19 +1196,10 @@ export class AdmissionService {
           throw new BadRequestException(
             "Mark attendance on a scheduled session.",
           );
-        const today = localStamp(Date.now(), a.timezone).slice(0, 10);
-        const sameDay = (
-          await db.query<Row>(
-            "SELECT id FROM bookings WHERE admission_id=$1 AND status<>'cancelled' AND admission_attendance='present' AND (starts_at AT TIME ZONE $2)::date=$3::date ORDER BY starts_at DESC LIMIT 1",
-            [id, a.timezone, today],
-          )
-        ).rows[0];
-        if (
-          !["active", "completed"].includes(a.status) ||
-          v.date !== today ||
-          (a.status === "completed" && !sameDay) ||
-          today > a.expires_on
-        )
+        const now = Date.now();
+        const local = localStamp(now, a.timezone),
+          today = local.slice(0, 10);
+        if (!["active", "completed"].includes(a.status) || today > a.expires_on)
           throw new BadRequestException(
             "The plan is not active, has expired, or has no remaining days.",
           );
@@ -1159,15 +1208,42 @@ export class AdmissionService {
         );
         if (!pool || b.status !== "ready")
           throw new BadRequestException("This space is unavailable.");
-        const s = interval(
-          pool,
-          a.plan_snapshot,
-          v.date,
-          v.time,
-          v.duration_minutes,
-          a.timezone,
-        );
-        const now = Date.now();
+        const s =
+          "time" in v
+            ? interval(
+                pool,
+                a.plan_snapshot,
+                v.date,
+                v.time,
+                v.duration_minutes,
+                a.timezone,
+              )
+            : a.plan_snapshot.kind === "coaching"
+              ? await this.runningCoachingVisit(db, a, b, pool, now)
+              : interval(
+                  pool,
+                  a.plan_snapshot,
+                  today,
+                  local.slice(11, 16),
+                  a.schedule.duration_minutes,
+                  a.timezone,
+                );
+        const attendanceDate = s.date;
+        const sameDay = (
+          await db.query<Row>(
+            "SELECT id FROM bookings WHERE admission_id=$1 AND status<>'cancelled' AND admission_attendance='present' AND (starts_at AT TIME ZONE $2)::date=$3::date ORDER BY starts_at DESC LIMIT 1",
+            [id, a.timezone, attendanceDate],
+          )
+        ).rows[0];
+        if (
+          ("date" in v && v.date !== today) ||
+          attendanceDate < a.starts_on ||
+          attendanceDate > a.expires_on ||
+          (a.status === "completed" && !sameDay)
+        )
+          throw new BadRequestException(
+            "The plan is not active, has expired, or has no remaining days.",
+          );
         if (
           localStamp(Date.parse(s.ends_at) - 1, a.timezone).slice(0, 10) >
           a.expires_on
@@ -1194,7 +1270,7 @@ export class AdmissionService {
         ]);
         await this.audit(db, m, actor, id, "checked_in", {
           visit_id: visitId,
-          local_date: v.date,
+          local_date: attendanceDate,
           deducted: !sameDay,
         });
         return { id, visit_id: visitId };

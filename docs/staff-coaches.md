@@ -5,7 +5,7 @@ A coach is a team member: staff, a manager or the owner with **Coach** turned on
 ## Setting up
 
 1. **Team & access → Invite staff** (or **Edit staff**): enter name/email/responsibility, enable **Also a coach**, and select businesses and resources. Enable **Mark attendance** independently if needed. New operational permissions start off.
-2. The owner chooses **Manage responsibilities** on their own Team card, then enables **Also a coach**; owners cover every space and retain full permissions.
+2. The owner opens their own Team tile, then enables **Also a coach**; owners cover every space and retain full permissions.
 3. After acceptance, open **Edit staff → Coaching plans → Assign coaching plans**. Save resource/coach-status changes with **Save staff access** first; the details page stays open. Plan selection offers only covered plans and preserves overlap warnings and version checks. There is no separate Coaches page.
 
 

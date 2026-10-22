@@ -295,3 +295,37 @@ For a code rollback, restore the previous app/API/Next releases and keep the add
 - Next production build and type-check passed with both homepage and dedicated booking routes. Browser checks verified the service cards, pool/court routes, start/finish UI and navigation back to the homepage against the isolated fixture API.
 - Screenshots: `screenshots/public-booking-homepage.png` and `screenshots/public-booking-services.png` show the homepage fallback and service cards before any venue photos are uploaded.
 - No live migration or hosted deployment was performed. The local homepage remains fictional test data.
+
+
+## One grid for start and end selection
+
+The public website now matches the app's **New Booking** behaviour: choose a start tile, then an end tile in the same persistent grid. Both selected boundaries remain visible with the interval highlighted. Start, End and Duration appear above the grid. Tap End again to clear only the end; tap Start again to clear the range. After completing a range, another available tile starts a new one.
+
+The client keeps the original start list and merges valid finish boundaries by date and time. A time that is booked as a start may still be a valid end, and next-day midnight remains distinct from midnight on the selected date. Prevalidated `end_options` avoid replacing or reloading the grid when choosing a start. If those options are absent, an abortable end-availability request fills the same grid. Minimum durations, blocks, capacity and notice rules still come from the existing booking API; selecting an end requests an authoritative quote. Fixed hall sessions retain their single-click selection.
+
+Checked locally: **8 grid regression tests passed**, Next type-check/production build passed, and browser checks confirmed a one-hour court quote, persistent start/end highlights, interval highlights and clearing either boundary. The local preview stays running with isolated fixture data. Screenshot: `screenshots/public-booking-shared-slot-grid.png`.
+
+To run the standalone grid tests with the verified Node 24 runtime:
+
+```sh
+cd "/Users/albinosiby/Tatos Dev/booking/booking-website"
+npm test
+npm run typecheck
+```
+
+This update changes only the website UI/state. No database migration or backend deployment is needed for the grid update on an already configured booking website.
+
+
+## Review and confirmation screens
+
+The review step and final confirmation use a shared booking receipt: venue/space, local date and start/end time, duration/timezone, customer name/phone, pool party size where applicable, venue address and a separate amount/pay-at-venue panel. These stages use one full-width card rather than duplicating the booking details in a second sidebar. The layout stacks on small screens, includes reduced-motion support, and keeps configured venue instructions and cancellation guidance available.
+
+The review step preserves the original confirmation guards, preview restrictions and locked retry behaviour. Editing returns to the retained customer details. The final screen adds a success heading, confirmed status, booking reference, user-triggered clipboard copy with success/error feedback, browser printing and another-booking/contact links. Nothing sends messages or collects an online payment. Zero-value bookings show that no payment is due. The print layout excludes navigation and action controls.
+
+Verified locally with fictional customer details and an in-memory court reservation: retained edits, the one-hour ₹400 review, successful confirmation and reference-copy feedback. Next production build/type-check and all eight existing frontend grid regression tests passed. Screenshots: `screenshots/public-booking-review.png` and `screenshots/public-booking-confirmation-redesign.png`. This presentation update requires no database migration or API change; the local development servers remain running.
+
+## Customer details screen
+
+The customer details step now matches the review/confirmation design, with booking progress, a compact contact form and an integrated navy-headed recap showing the chosen space, local date/time, duration, timezone, pool party size where applicable, location and quoted amount. The review button follows the fields directly; venue instructions, cancellation guidance and contact links appear below the card. The layout stacks on narrow screens and uses labelled, autofill-enabled fields with visible keyboard focus.
+
+The existing client/server validation and booking state remain in place. Details are retained when returning from review or changing the selected time. Entering details and reviewing do not submit a reservation. Browser checks against isolated fixture data verified required fields, phone digit validation, error recovery, review navigation and retained time/customer details. The production build/type-check and eight grid regression tests passed. Screenshot: `screenshots/public-booking-customer-details.png`. No database migration or API change is required.

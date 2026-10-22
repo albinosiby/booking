@@ -271,6 +271,31 @@ test("flexible court coaching checks in on a free court", async () => {
   const detail = await service.detail(f.owner, created.id);
   assert.equal(detail.used, 1);
   assert.equal(detail.sessions[0].admission_attendance, "present");
+  // New clients join the exact running batch instead of reserving a new court.
+  const second = await enroll(
+    f,
+    {
+      mode: "flexible",
+      weekdays: [],
+      starts_on: today,
+    },
+    "9000000015",
+  );
+  const secondDetail = await service.detail(f.owner, second.id);
+  await service.checkIn(f.owner, second.id, {
+    command_key: randomUUID(),
+    version: secondDetail.version,
+  });
+  const joined = await service.detail(f.owner, second.id);
+  assert.equal(joined.sessions.length, 1);
+  assert.equal(
+    Date.parse(joined.sessions[0].starts_at),
+    Date.parse(detail.sessions[0].starts_at),
+  );
+  assert.equal(
+    Date.parse(joined.sessions[0].ends_at),
+    Date.parse(detail.sessions[0].ends_at),
+  );
 });
 test("courts with admission history cannot be deleted", async () => {
   const f = await fixture();

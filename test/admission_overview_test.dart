@@ -13,6 +13,7 @@ import 'package:eden_booking/di/injection.dart';
 import 'package:eden_booking/modules/admissions/cubit/admission_cubit.dart';
 import 'package:eden_booking/modules/admissions/models/admission_models.dart';
 import 'package:eden_booking/modules/admissions/screens/admissions_screen.dart';
+import 'package:eden_booking/modules/admissions/widgets/admission_cards.dart';
 import 'package:eden_booking/modules/admissions/screens/admission_form_screen.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_session.dart';
 import 'package:eden_booking/utils/exceptions/app_exception.dart';
@@ -362,7 +363,7 @@ void main() {
         'B',
       ]);
       expect(c.state.overview.rosters['previous-plans']!.items.single.id, 'F');
-      await c.loadRoster('plan', more: true);
+      await c.loadMoreStudents();
       expect(c.state.overview.rosters['plan']!.items.map((a) => a.id), [
         'A',
         'B',
@@ -519,14 +520,16 @@ void main() {
         expect(find.text('Plans'), findsOneWidget);
         expect(find.text('Coaching'), findsOneWidget);
         expect(find.byType(FloatingActionButton), findsOneWidget);
+        expect(find.byType(AdmissionPlanCard), findsNothing);
+        expect(find.text('Enroll student'), findsNothing);
         await captureOverview(tester, boundary, 'overview-${width.toInt()}');
         await tester.scrollUntilVisible(
-          find.byKey(const ValueKey('plan-plan')),
+          find.byKey(const ValueKey('admission-A')),
           150,
           scrollable: find.byType(Scrollable).first,
         );
         await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('plan-plan')), findsOneWidget);
+        expect(find.byKey(const ValueKey('admission-A')), findsOneWidget);
         expect(find.byKey(const ValueKey('admission-A')), findsOneWidget);
         expect(tester.takeException(), isNull);
         await captureOverview(tester, boundary, 'plans-${width.toInt()}');
@@ -551,12 +554,12 @@ void main() {
         expect(c.state.overview.coaching, isTrue);
         await captureOverview(tester, boundary, 'coaching-${width.toInt()}');
         await tester.scrollUntilVisible(
-          find.byKey(const ValueKey('plan-coaching')),
+          find.byKey(const ValueKey('admission-E')),
           150,
           scrollable: find.byType(Scrollable).first,
         );
         await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('plan-coaching')), findsOneWidget);
+        expect(find.byKey(const ValueKey('admission-E')), findsOneWidget);
         await tester.tap(find.byKey(const ValueKey('admissions-new')));
         await tester.pumpAndSettle();
         expect(find.text('New coaching admission'), findsOneWidget);

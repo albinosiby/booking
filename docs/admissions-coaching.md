@@ -4,24 +4,25 @@
 
 Open **Profile → Plans & Coaching**. The two tabs are **Plans** (swimming/court
 access packages) and **Coaching** (taught classes). Below the tabs, select the
-business and a specific pool or court. Every matching package shows its terms
-and its enrolled students together. Search and status chips filter students;
-each package has independent pagination. Previous-plan enrollments for that
-space remain available under **Previous plans**, including disabled or removed
-packages. Student cards open the existing attendance, payment and renewal details.
+business and a specific pool or court. The page shows a single student list,
+without package cards or **Enroll student** buttons. Search and status chips
+filter students, and **Load more students**
+fetches additional enrollments. Students from previous, disabled or removed
+packages remain included in the selected space’s list. Student cards open the
+existing attendance, payment and renewal details.
 
 The **New admission** floating action button opens **New plan admission** or
 **New coaching admission** according to the current tab. It preserves business
-and space, and restricts the form's plan choices to that category. **Enroll
-student** on a specific package also preselects that package. Returning from
-forms/details refreshes the roster while retaining the tab, space and filters.
+and space, and restricts the form's plan choices to that category. The package
+itself is selected inside the admission form. Returning from forms/details
+refreshes the roster while retaining the tab, space and filters.
 The two tabs remember their own space selection. Coaches continue to use
 **My classes** for their daily roster and attendance.
 
 The Flutter screen is owned by `AdmissionCubit`; typed `AdmissionOverview` and
 `AdmissionRoster` models hold selection and per-plan loading, errors, rows and
 cursors. Requests run at most four at a time. Late responses are discarded after
-scope/selection changes; access failures clear protected data. Roster sections
+scope/selection changes; access failures clear protected data. Student rows
 are built lazily, and retained rows remain visible during refresh failures.
 
 The existing `GET /v1/admissions` now also accepts `resource_id` and `plan_id`
@@ -32,7 +33,8 @@ resource restrictions apply to every query. The existing admission scope index
 supports business/space filtering; no database migration is needed for this UI.
 
 **Release:** deploy the updated API before releasing this client; older APIs
-reject the new strict query parameters. Run backend `npm run build`,
+reject the new strict query parameters and require a manually supplied check-in
+time. Run backend `npm run build`,
 `npm run edge:check`, `npm run edge:build`, then deploy the generated existing
 `booking-api` function through the normal release process. No live deployment,
 database change or device installation is performed by this UI change. The
@@ -48,7 +50,8 @@ Verification: `flutter analyze`; Flutter tests `admission_overview_test.dart`,
 Profile → Plans & Coaching manages customer purchases of configured swimming and coaching plans for pool businesses, and access/coaching plans for court businesses (see [Court coaching](court-coaching.md)). The booking form links to the same admission form. Select a customer, business, pool or court and plan, activation date, attendance mode, and optional split payments. Review the calculated expiry and every fixed session before confirming.
 
 - **Fixed weekly schedule:** selected weekdays/time reserve the complete allowance, up to 1,000 sessions, within validity. Each non-cancelled session uses one unit after its end, even when absent or unmarked. Present/Absent records actual attendance separately. An insufficient schedule or a full interval rejects the entire purchase; it never silently skips a day.
-- **Flexible:** no standing reservation. Mark present on arrival, selecting a start time whose configured duration contains the current time. The visit reserves one pool place and consumes one unit per location-local attendance date. Multiple non-overlapping visits on the same date use one unit. This day-based rule also applies to flexible coaching in this release.
+- **Flexible access plans:** no standing reservation. Tap **Mark present** on arrival; there is no date/time picker. The server uses the current minute in the admission's business timezone and the saved visit duration. The visit reserves capacity and consumes one unit per location-local attendance date. Multiple non-overlapping visits on the same date use one unit.
+- **Coaching attendance:** scheduled-session **Present** uses that session's original time. Flexible coaching **Mark present** joins the unique running class for the same plan, pool/court and class duration, preserving its exact start/end and seat limit. If no matching class is running, a clear error is shown and no arbitrary class is created. If multiple matching intervals are running, open the intended scheduled class to mark attendance. Existing expiry, opening-hours, coach-conflict and capacity checks still apply. Flexible coaching retains its day-based allowance rule.
 - **Coaching:** configured class duration, seats, pool and snapshotted coach apply. Matching plan/pool/start/end reservations share a class capacity. Independent overlapping classes cannot use the same coach. Calendar displays each student's reservation so attendance can be marked individually. Dedicated named batches and bulk roster attendance are not included.
 - **Completed:** all units used. The final flexible visit remains valid until its end; repeat visits on that final attendance date remain subject to capacity and expiry. No later-date attendance can be added.
 - **Expired:** the location-local date is later than the inclusive expiry date. Unused units remain visible but cannot be used. Visits must end within validity. Existing day/month/year expiry calculations are retained, including clamping month/year boundaries.
@@ -79,6 +82,19 @@ API: `backend/src/admissions`. Both Nest and hosted Edge route adapters expose:
 | POST | `/v1/admissions/:id/sessions/:visitId/change` | Cancel/reschedule/waive fixed session |
 | POST | `/v1/admissions/:id/payments` | Collections/refunds |
 | POST | `/v1/admissions/:id/cancel` | Cancel admission |
+
+Automatic check-in sends only `{ "command_key": "<uuid>", "version": 1 }` to
+`POST /v1/admissions/:id/check-ins`. Clock resolution happens inside the existing
+business-locked, idempotent command, after permissions are checked. Replaying the
+same command returns the original visit even if the clock has advanced. The API
+still accepts the legacy complete `date`, `time`, `duration_minutes` payload;
+partial clock payloads are rejected. The Flutter Cubit refreshes the admission
+before submission, prevents repeated taps, and retains the exact version/key for
+uncertain retries. A failed refresh never records attendance using stale data.
+
+Verify with `flutter test test/automatic_attendance_test.dart` and the backend
+admissions, court-admissions and coach-classes tests. No database migration is
+required for automatic attendance; deploy the generated API before the app.
 
 Creation body includes `business_id`, `resource_id`, `plan_id`, `starts_on`, `mode`, `weekdays`, `time`, `duration_minutes`, `customer`, `payments`, nullable `renewed_from`, plus `preview_token` and `command_key`. Preview accepts the same body without token/key. Customer and payment formats match ordinary bookings. Mutations use UUID command keys and optimistic versions. Errors use the existing 401/403, 404, 409 and validation envelopes.
 

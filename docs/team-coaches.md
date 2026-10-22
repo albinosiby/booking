@@ -2,7 +2,7 @@
 
 Open **Profile → Team & access → Invite staff**. There is one staff list and invitation flow for everyone, including coaches. Enter the name, email and responsibility (Staff or Manager), optionally enable **Also a coach**, select businesses and optionally restrict them to specific resources. Select the required permissions explicitly; new invitations start with all permissions off. Create and share the private invitation link. No email is sent automatically; it expires after seven days and acceptance requires the invited verified email.
 
-Coach status makes an active team member eligible to teach coaching plans. It does not grant bookings, payments, subscriptions or attendance access. Staff and Manager remain responsibility labels; selected permissions and assignments determine access. Team cards identify coaches with a badge. The former `/team/coaches` URL redirects to Team & access; there is no separate Coaches page.
+Coach status makes an active team member eligible to teach coaching plans. It does not grant bookings, payments, subscriptions or attendance access. Staff and Manager remain responsibility labels; selected permissions and assignments determine access. Compact staff tiles identify coaches with a badge. Tap a tile to open staff details; its menu contains Edit staff and Remove access. Phone layouts use one column and wide screens use a grid. The former `/team/coaches` URL redirects to Team & access; there is no separate Coaches page.
 
 ## Permissions
 
@@ -16,11 +16,11 @@ Owner permissions continue to cover all operations. Attendance corrections still
 
 ## Assign coaching plans inside staff details
 
-Once an invitation is accepted, choose **Edit staff** on that person's card. Coach status, business/resource access, permissions and the **Coaching plans** section are managed here in both web and app layouts. **Save staff access** keeps the details page open.
+Once an invitation is accepted, tap that person’s tile or choose **Edit staff** from its menu. Coach status, business/resource access, permissions and the **Coaching plans** section are managed here in both web and app layouts. **Save staff access** keeps the details page open.
 
 Save changes to Coach status or resource assignments before changing coaching plans. The plan section explains this and disables assignments until access has been saved. New invitations show an explanation that plans can be assigned after acceptance. Under each eligible business, choose **Assign coaching plans**, select covered plans, and **Save assignments**. These plan changes have their own explicit save and publish immediately. Only plans fully covered by the staff member's saved resources are offered, together with already-assigned plans so they can be removed. Selecting another coach's plan replaces its coach. Existing overlap warnings and version-conflict rejection are preserved. Failed saves retain edits and report the error.
 
-Removing access, disabling Coach or narrowing resources releases coaching plans that are no longer eligible, after the existing confirmation. Removing only attendance permission preserves teaching assignments. Owners choose **Manage responsibilities** on their own Team card to enable **Also a coach** and assign their own plans, within staff management.
+Removing access, disabling Coach or narrowing resources releases coaching plans that are no longer eligible, after the existing confirmation. Removing only attendance permission preserves teaching assignments. Owners open their own Team tile to enable **Also a coach** and assign their own plans, within staff management.
 
 ## Permission data migration: user applies it
 

@@ -11,6 +11,8 @@ export function Icon({
     | "back"
     | "pin"
     | "phone"
+    | "copy"
+    | "print"
     | "chevron";
   size?: number;
 }) {
@@ -44,6 +46,18 @@ export function Icon({
     ),
     phone: (
       <path d="m6 3 3 5-2 3c2 3 3 4 6 6l3-2 5 3c-1 4-4 5-7 3C7 18 3 13 2 7c0-3 1-4 4-4Z" />
+    ),
+    copy: (
+      <>
+        <rect x="8" y="8" width="12" height="13" rx="2" />
+        <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3" />
+      </>
+    ),
+    print: (
+      <>
+        <path d="M7 8V3h10v5M7 17H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-3" />
+        <path d="M7 14h10v7H7zM18 11h.01" />
+      </>
     ),
     chevron: <path d="m9 5 7 7-7 7" />,
   };

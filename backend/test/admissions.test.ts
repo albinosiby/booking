@@ -122,14 +122,10 @@ async function fixture(mode = "flexible", kind = "swimming") {
   return { owner, config, input, q, command, id: created.id, today };
 }
 async function checkin(f: any) {
-  const a = await service.detail(f.owner, f.id),
-    now = localStamp(Date.now(), "UTC");
+  const a = await service.detail(f.owner, f.id);
   return service.checkIn(f.owner, f.id, {
     command_key: randomUUID(),
     version: a.version,
-    date: now.slice(0, 10),
-    time: now.slice(11, 16),
-    duration_minutes: 60,
   });
 }
 test("calendar expiry and insufficient fixed schedules", () => {
@@ -793,4 +789,139 @@ test("plan rosters filter before pagination and keep previous plans reachable", 
       .items.length,
     0,
   );
+});
+
+test("automatic flexible check-in uses business-local server time and duration, and replay keeps the original visit", async (t) => {
+  const f = await fixture();
+  await db.query(
+    "UPDATE locations SET timezone='Asia/Kolkata' WHERE id=(SELECT location_id FROM businesses WHERE id=$1)",
+    [f.input.business_id],
+  );
+  await db.query(
+    `UPDATE admissions SET timezone='Asia/Kolkata',
+    starts_on=(now() AT TIME ZONE 'Asia/Kolkata')::date,
+    expires_on=(now() AT TIME ZONE 'Asia/Kolkata')::date+45,
+    schedule=jsonb_set(schedule,'{duration_minutes}','90') WHERE id=$1`,
+    [f.id],
+  );
+  const detail = await service.detail(f.owner, f.id);
+  const request = { command_key: randomUUID(), version: detail.version };
+  const before = Date.now();
+  const result = await service.checkIn(f.owner, f.id, request);
+  const after = Date.now();
+  const saved = await service.detail(f.owner, f.id);
+  const visit = saved.sessions[0];
+  const start = Date.parse(visit.starts_at);
+  assert.ok(start >= Math.floor(before / 60000) * 60000);
+  assert.ok(start <= Math.floor(after / 60000) * 60000);
+  assert.equal(Date.parse(visit.ends_at) - start, 90 * 60000);
+  const booking = (
+    await db.query<any>("SELECT selection FROM bookings WHERE id=$1", [
+      visit.id,
+    ])
+  ).rows[0];
+  assert.equal(
+    booking.selection.date,
+    localStamp(start, "Asia/Kolkata").slice(0, 10),
+  );
+  assert.equal(
+    booking.selection.time,
+    localStamp(start, "Asia/Kolkata").slice(11, 16),
+  );
+  assert.equal(saved.used, 1);
+  t.mock.method(Date, "now", () => after + 5 * 60000);
+  assert.deepEqual(await service.checkIn(f.owner, f.id, request), result);
+  assert.equal((await service.detail(f.owner, f.id)).sessions.length, 1);
+  t.mock.restoreAll();
+  await assert.rejects(() =>
+    service.checkIn(f.owner, f.id, {
+      command_key: randomUUID(),
+      version: saved.version,
+      time: "09:00",
+    }),
+  );
+});
+
+test("automatic coaching joins the scheduled class interval and preserves attendance and class capacity", async () => {
+  const f = await fixture("fixed", "coaching");
+  const now = Date.now(),
+    today = localStamp(now, "UTC").slice(0, 10);
+  const minutesToday =
+    new Date(now).getUTCHours() * 60 + new Date(now).getUTCMinutes();
+  const start =
+    Math.floor(now / 60000) * 60000 - Math.min(15, minutesToday) * 60000;
+  const end = start + 60 * 60000;
+  await db.query(
+    "UPDATE admissions SET starts_on=$1,expires_on=$1::date+45 WHERE id=$2",
+    [today, f.id],
+  );
+  const initial = await service.detail(f.owner, f.id);
+  const scheduled = initial.sessions[0];
+  await db.query("UPDATE bookings SET starts_at=$1,ends_at=$2 WHERE id=$3", [
+    new Date(start).toISOString(),
+    new Date(end).toISOString(),
+    scheduled.id,
+  ]);
+  await service.attendance(f.owner, f.id, scheduled.id, {
+    command_key: randomUUID(),
+    version: scheduled.version,
+    attendance: "present",
+    reason: "",
+  });
+  const source = await service.detail(f.owner, f.id);
+  assert.equal(source.sessions.length, 2);
+  const sourceVisit = source.sessions.find((v: any) => v.id === scheduled.id);
+  assert.equal(Date.parse(sourceVisit.starts_at), start);
+  async function flexibleStudent(phone: string) {
+    const input = {
+      ...f.input,
+      mode: "flexible",
+      weekdays: [],
+      starts_on: today,
+      customer: { id: null, name: "Flexible student", phone, email: null },
+    };
+    const preview = await service.preview(f.owner, input);
+    return service.create(f.owner, {
+      ...input,
+      preview_token: preview.preview_token,
+      command_key: randomUUID(),
+    });
+  }
+  const second = await flexibleStudent("9000000011");
+  const a = await service.detail(f.owner, second.id);
+  const request = { command_key: randomUUID(), version: a.version };
+  const result = await service.checkIn(f.owner, second.id, request);
+  assert.deepEqual(await service.checkIn(f.owner, second.id, request), result);
+  const joined = await service.detail(f.owner, second.id);
+  assert.equal(joined.sessions.length, 1);
+  assert.equal(Date.parse(joined.sessions[0].starts_at), start);
+  assert.equal(Date.parse(joined.sessions[0].ends_at), end);
+  assert.equal(joined.sessions[0].admission_attendance, "present");
+  assert.equal(joined.used, 1);
+  const third = await flexibleStudent("9000000012");
+  const b = await service.detail(f.owner, third.id);
+  await assert.rejects(
+    () =>
+      service.checkIn(f.owner, third.id, {
+        command_key: randomUUID(),
+        version: b.version,
+      }),
+    /class is full|capacity/,
+  );
+});
+
+test("automatic coaching without a running class fails without creating a visit", async () => {
+  const f = await fixture("flexible", "coaching");
+  const a = await service.detail(f.owner, f.id);
+  await assert.rejects(
+    () =>
+      service.checkIn(f.owner, f.id, {
+        command_key: randomUUID(),
+        version: a.version,
+      }),
+    /No coaching class is running/,
+  );
+  const after = await service.detail(f.owner, f.id);
+  assert.equal(after.sessions.length, 0);
+  assert.equal(after.used, 0);
 });

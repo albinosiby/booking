@@ -49,12 +49,96 @@ class _TeamScreenState extends State<TeamScreen> {
         : 'Pending';
   }
 
-  // Wide windows: header actions, team figures and people as a card grid.
-  Widget desktop(BuildContext context, TeamState s) {
+  Widget memberTile(
+    BuildContext context,
+    TeamState s,
+    Map<String, dynamic> member,
+  ) {
     final colors = Theme.of(context).colorScheme;
+    final active = member['active'] == true;
+    final owner = member['role'] == 'owner';
+    return TeamPersonTile(
+      name: member['display_name'],
+      email: member['email'],
+      muted: !active,
+      onTap: active && !s.busy ? () => edit(member) : null,
+      chips: [
+        TeamChip(
+          roleLabel(member['role']),
+          icon: owner ? Icons.verified_outlined : null,
+        ),
+        if ((member['permissions'] as List? ?? []).contains('coach'))
+          const TeamChip('Coach', icon: Icons.sports_outlined),
+        TeamChip(
+          active ? 'Active' : 'Access removed',
+          color: active ? colors.tertiary : colors.onSurfaceVariant,
+        ),
+      ],
+      trailing: !owner && active
+          ? PopupMenuButton<String>(
+              tooltip: 'Staff actions for ${member['display_name']}',
+              enabled: !s.busy,
+              onSelected: (action) {
+                if (action == 'edit') edit(member);
+                if (action == 'remove') remove(member);
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'edit', child: Text('Edit staff')),
+                PopupMenuItem(
+                  value: 'remove',
+                  child: Text(
+                    'Remove access',
+                    style: TextStyle(color: colors.error),
+                  ),
+                ),
+              ],
+            )
+          : null,
+    );
+  }
+
+  Widget invitationTile(
+    BuildContext context,
+    TeamState s,
+    Map<String, dynamic> invitation,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    final status = invitationStatus(invitation);
+    return TeamPersonTile(
+      name: invitation['display_name'],
+      email: invitation['email'],
+      muted: status != 'Pending',
+      note: status == 'Pending' ? null : 'Send a new invitation to give access',
+      chips: [
+        if (invitation['role'] is String)
+          TeamChip(roleLabel(invitation['role'])),
+        if ((invitation['permissions'] as List? ?? []).contains('coach'))
+          const TeamChip('Coach', icon: Icons.sports_outlined),
+        TeamChip(
+          status,
+          icon: Icons.mail_outline,
+          color: status == 'Pending' ? colors.primary : colors.onSurfaceVariant,
+        ),
+      ],
+      trailing: status == 'Pending'
+          ? IconButton(
+              tooltip: 'Cancel invitation',
+              onPressed: s.busy
+                  ? null
+                  : () => cubit.revoke(invitation['id'], invitation: true),
+              icon: const Icon(Icons.close),
+            )
+          : null,
+    );
+  }
+
+  Widget page(BuildContext context, TeamState s) {
+    final wide = isDesktopWidth(context);
     final active = s.members.where((m) => m['active'] == true).toList();
-    final open = s.invitations.where((i) => i['accepted_at'] == null).toList();
-    final pending = open.where((i) => invitationStatus(i) == 'Pending');
+    final invitations = s.invitations
+        .where((i) => i['accepted_at'] == null)
+        .toList();
+    final pending = invitations.where((i) => invitationStatus(i) == 'Pending');
     final empty = s.members.isEmpty && s.invitations.isEmpty;
     return AppPage(
       back: true,
@@ -63,14 +147,24 @@ class _TeamScreenState extends State<TeamScreen> {
       subtitle:
           'Assign businesses and resources. Keep each person’s access clear.',
       maxWidth: 1200,
-      actions: [
-        FilledButton.icon(
-          icon: const Icon(Icons.person_add_alt, size: 18),
-          label: const Text('Invite staff'),
-          onPressed: invite,
-        ),
-      ],
+      actions: wide
+          ? [
+              FilledButton.icon(
+                icon: const Icon(Icons.person_add_alt, size: 18),
+                label: const Text('Invite staff'),
+                onPressed: s.busy ? null : invite,
+              ),
+            ]
+          : const [],
       children: [
+        if (!wide) ...[
+          AppButton(
+            label: 'Invite staff',
+            icon: Icons.person_add_alt,
+            onPressed: s.busy ? null : invite,
+          ),
+          const SizedBox(height: 24),
+        ],
         if (s.loading)
           AppLoadingState(
             initial: empty,
@@ -78,7 +172,7 @@ class _TeamScreenState extends State<TeamScreen> {
           ),
         if (s.error != null)
           AppErrorWidget(message: s.error!, onRetry: cubit.load),
-        if (!empty) ...[
+        if (wide && !empty) ...[
           AppStatRow(
             children: [
               AppStatTile(
@@ -110,268 +204,35 @@ class _TeamScreenState extends State<TeamScreen> {
           AppPanel(
             title: 'Members',
             subtitle:
-                '${s.members.length} '
-                '${s.members.length == 1 ? 'person' : 'people'} · ${active.length} active',
+                '${s.members.length} ${s.members.length == 1 ? 'person' : 'people'} · ${active.length} active',
             child: AppGrid(
               minTileWidth: 340,
-              maxColumns: 3,
+              maxColumns: wide ? 3 : 1,
+              gap: 12,
               children: [
-                for (final m in s.members)
-                  TeamPersonCard(
-                    name: m['display_name'],
-                    email: m['email'],
-                    muted: m['active'] != true,
-                    note: m['role'] == 'owner'
-                        ? 'Organization owner · full access'
-                        : 'No longer has organization access',
-                    chips: [
-                      if ((m['permissions'] as List? ?? []).contains('coach'))
-                        const TeamChip('Coach', icon: Icons.sports_outlined),
-                      TeamChip(
-                        roleLabel(m['role']),
-                        icon: m['role'] == 'owner'
-                            ? Icons.verified_outlined
-                            : null,
-                      ),
-                      TeamChip(
-                        m['active'] ? 'Active' : 'Access removed',
-                        color: m['active']
-                            ? colors.tertiary
-                            : colors.onSurfaceVariant,
-                      ),
-                    ],
-                    actions: [
-                      if (m['role'] == 'owner' && m['active'])
-                        TextButton(
-                          onPressed: () => edit(m),
-                          child: const Text('Manage responsibilities'),
-                        ),
-                      if (m['role'] != 'owner' && m['active']) ...[
-                        TextButton.icon(
-                          onPressed: s.busy ? null : () => edit(m),
-                          icon: const Icon(Icons.tune, size: 18),
-                          label: const Text('Edit staff'),
-                        ),
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: colors.error,
-                          ),
-                          onPressed: s.busy ? null : () => remove(m),
-                          child: const Text('Remove access'),
-                        ),
-                      ],
-                    ],
-                  ),
+                for (final member in s.members) memberTile(context, s, member),
               ],
             ),
           ),
-        if (open.isNotEmpty) ...[
-          const SizedBox(height: 8),
+        if (invitations.isNotEmpty)
           AppPanel(
             title: 'Invitations',
             subtitle: 'Invitations that have not been accepted yet',
             child: AppGrid(
               minTileWidth: 340,
-              maxColumns: 3,
+              maxColumns: wide ? 3 : 1,
+              gap: 12,
               children: [
-                for (final i in open)
-                  Builder(
-                    builder: (context) {
-                      final status = invitationStatus(i);
-                      return TeamPersonCard(
-                        name: i['display_name'],
-                        email: i['email'],
-                        muted: status != 'Pending',
-                        note: status == 'Pending'
-                            ? null
-                            : 'Send a new invitation to give access',
-                        chips: [
-                          if ((i['permissions'] as List? ?? []).contains(
-                            'coach',
-                          ))
-                            const TeamChip(
-                              'Coach',
-                              icon: Icons.sports_outlined,
-                            ),
-                          TeamChip(
-                            status,
-                            icon: Icons.mail_outline,
-                            color: status == 'Pending'
-                                ? colors.primary
-                                : colors.onSurfaceVariant,
-                          ),
-                        ],
-                        actions: [
-                          if (status == 'Pending')
-                            TextButton(
-                              onPressed: s.busy
-                                  ? null
-                                  : () =>
-                                        cubit.revoke(i['id'], invitation: true),
-                              child: const Text('Cancel invitation'),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
+                for (final invitation in invitations)
+                  invitationTile(context, s, invitation),
               ],
             ),
           ),
-        ],
       ],
     );
   }
 
   @override
-  Widget build(BuildContext context) => BlocBuilder<TeamCubit, TeamState>(
-    bloc: cubit,
-    builder: (context, s) => isDesktopWidth(context)
-        ? desktop(context, s)
-        : AppPage(
-            back: true,
-            eyebrow: 'TEAM & ACCESS',
-            title: 'Your people.',
-            subtitle:
-                'Assign businesses and resources. Keep each person’s access clear.',
-            children: [
-              AppButton(
-                label: 'Invite staff',
-                icon: Icons.person_add_alt,
-                onPressed: () async {
-                  await context.push('/team/invite');
-                  cubit.load();
-                },
-              ),
-              const SizedBox(height: 24),
-              if (s.loading)
-                AppLoadingState(
-                  initial: s.members.isEmpty && s.invitations.isEmpty,
-                  label: s.members.isEmpty && s.invitations.isEmpty
-                      ? 'Loading your team…'
-                      : null,
-                ),
-              if (s.error != null)
-                AppErrorWidget(message: s.error!, onRetry: cubit.load),
-              ...s.members.map(
-                (m) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          m['display_name'],
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        Text(m['email']),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${roleLabel(m['role'])} · ${m['active'] ? 'Active' : 'Access removed'}',
-                          style: TextStyle(
-                            color: m['active']
-                                ? Theme.of(context).colorScheme.tertiary
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                            fontSize: 12,
-                          ),
-                        ),
-                        if ((m['permissions'] as List? ?? []).contains('coach'))
-                          const TeamChip('Coach', icon: Icons.sports_outlined),
-                        if (m['role'] == 'owner' && m['active'])
-                          TextButton(
-                            onPressed: () => edit(m),
-                            child: const Text('Manage responsibilities'),
-                          ),
-                        if (m['role'] != 'owner' && m['active'])
-                          Wrap(
-                            spacing: 10,
-                            children: [
-                              TextButton(
-                                onPressed: s.busy
-                                    ? null
-                                    : () async {
-                                        await context.push(
-                                          '/team/edit',
-                                          extra: m,
-                                        );
-                                        cubit.load();
-                                      },
-                                child: const Text('Edit staff'),
-                              ),
-                              TextButton(
-                                onPressed: s.busy
-                                    ? null
-                                    : () async {
-                                        if (await confirmAction(
-                                          context,
-                                          'Remove staff access?',
-                                          'This person will lose organization access immediately. Coaching plans they teach become Unassigned.',
-                                        )) {
-                                          await cubit.revoke(m['id']);
-                                        }
-                                      },
-                                child: const Text('Remove access'),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              if (s.invitations.any((i) => i['accepted_at'] == null)) ...[
-                const SizedBox(height: 20),
-                Text(
-                  'Invitations',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                ...s.invitations.where((i) => i['accepted_at'] == null).map((
-                  i,
-                ) {
-                  final expired = DateTime.parse(
-                    i['expires_at'],
-                  ).isBefore(DateTime.now());
-                  final status = i['revoked_at'] != null
-                      ? 'Cancelled'
-                      : expired
-                      ? 'Expired'
-                      : 'Pending';
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: AppCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            i['display_name'],
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          Text(i['email']),
-                          if ((i['permissions'] as List? ?? []).contains(
-                            'coach',
-                          ))
-                            const TeamChip(
-                              'Coach',
-                              icon: Icons.sports_outlined,
-                            ),
-                          Text(status, style: const TextStyle(fontSize: 12)),
-                          if (status == 'Pending')
-                            TextButton(
-                              onPressed: s.busy
-                                  ? null
-                                  : () =>
-                                        cubit.revoke(i['id'], invitation: true),
-                              child: const Text('Cancel invitation'),
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-              ],
-            ],
-          ),
-  );
+  Widget build(BuildContext context) =>
+      BlocBuilder<TeamCubit, TeamState>(bloc: cubit, builder: page);
 }

@@ -83,84 +83,72 @@ class TeamAvatar extends StatelessWidget {
   }
 }
 
-/// Desktop card for one person: avatar, name, email, chips and actions.
-class TeamPersonCard extends StatelessWidget {
-  const TeamPersonCard({
+/// Compact, tappable person tile shared by every Team & access layout.
+class TeamPersonTile extends StatelessWidget {
+  const TeamPersonTile({
     super.key,
     required this.name,
     required this.email,
     required this.chips,
-    this.actions = const [],
+    this.onTap,
+    this.trailing,
     this.muted = false,
     this.note,
   });
   final String name, email;
-
-  /// Shown in place of actions when there are none.
   final String? note;
-  final List<Widget> chips, actions;
+  final List<Widget> chips;
+  final VoidCallback? onTap;
+  final Widget? trailing;
   final bool muted;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context), colors = theme.colorScheme;
     return AppCard(
-      padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      onTap: onTap,
+      padding: const EdgeInsets.all(16),
+      child: Row(
         children: [
-          Row(
-            children: [
-              TeamAvatar(name, muted: muted),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      email,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: colors.onSurface.withValues(alpha: .65),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Wrap(spacing: 8, runSpacing: 6, children: chips),
-          ),
-          const SizedBox(height: 8),
-          Divider(color: colors.outline.withValues(alpha: .35)),
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 44),
-            child: actions.isEmpty
-                ? Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 2),
-                      child: Text(note ?? '', style: theme.textTheme.bodySmall),
-                    ),
-                  )
-                : OverflowBar(
-                    alignment: MainAxisAlignment.spaceBetween,
-                    children: actions,
+          TeamAvatar(name, muted: muted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(spacing: 6, runSpacing: 6, children: chips),
+                if (note != null) ...[
+                  const SizedBox(height: 8),
+                  Text(note!, style: theme.textTheme.bodySmall),
+                ],
+              ],
+            ),
           ),
+          if (trailing != null) ...[
+            const SizedBox(width: 4),
+            trailing!,
+          ] else if (onTap != null) ...[
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
+          ],
         ],
       ),
     );

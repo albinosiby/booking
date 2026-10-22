@@ -4,6 +4,13 @@ import {
   BookingRequestError,
   PublicBookingRepository,
 } from "./booking-repository";
+import {
+  bookingTimeCells,
+  chooseTimeCell,
+  preloadedEnds,
+  rangeEnd,
+} from "./booking-time-grid";
+import type { TimeCell } from "./booking-time-grid";
 import type {
   Confirmation,
   Quote,
@@ -23,18 +30,7 @@ export const dateAfter = (date: string, days: number) =>
   new Date(Date.parse(date + "T12:00:00Z") + days * 86400000)
     .toISOString()
     .slice(0, 10);
-export const durationLabel = (minutes: number) =>
-  `${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} hr` : ""}${minutes % 60 ? `${minutes >= 60 ? " " : ""}${minutes % 60} min` : ""}`;
-export const timeLabel = (time: string) => {
-  const hour = Number(time.slice(0, 2));
-  return `${hour % 12 || 12}:${time.slice(3, 5)} ${hour < 12 ? "am" : "pm"}`;
-};
-export const moneyLabel = (minor: number, currency: string) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: minor % 100 ? 2 : 0,
-  }).format(minor / 100);
+export { durationLabel, timeLabel, moneyLabel } from "./booking-format";
 const message = (e: unknown) =>
   e instanceof Error ? e.message : "Something went wrong. Please retry.";
 
@@ -64,7 +60,12 @@ export function useBooking(
     [start, setStart] = useState(""),
     [duration, setDuration] = useState(0),
     [slots, setSlots] = useState<Slot[]>([]),
-    [slotLoading, setSlotLoading] = useState(false);
+    [slotLoading, setSlotLoading] = useState(false),
+    [fallbackEnds, setFallbackEnds] = useState<{
+      key: string;
+      slots: Slot[];
+    } | null>(null);
+  const loadedSlotKey = useRef("");
   const [quote, setQuote] = useState<Quote | null>(null),
     [quoting, setQuoting] = useState(false),
     [mode, setMode] = useState<"slots" | "details" | "review" | "success">(
@@ -218,6 +219,7 @@ export function useBooking(
     selection
       ? {
           ...selection,
+          time: option?.fixed_time ?? "00:00",
           duration_minutes:
             option?.minimum_duration ?? option?.default_duration,
         }
@@ -227,20 +229,19 @@ export function useBooking(
     if (!selection || pending || mode !== "slots") return;
     const abort = new AbortController();
     setSlotLoading(true);
-    setSlots([]);
+    if (loadedSlotKey.current !== availabilityKey) setSlots([]);
     setError("");
     repository
       .availability(
-        {
-          ...selection,
-          duration_minutes:
-            option?.minimum_duration ?? option!.default_duration,
-        },
-        !!start && !!option?.minimum_duration,
+        JSON.parse(availabilityKey) as Selection,
+        false,
         abort.signal,
       )
       .then((v) => {
-        if (!abort.signal.aborted) setSlots(v.slots);
+        if (!abort.signal.aborted) {
+          loadedSlotKey.current = availabilityKey;
+          setSlots(v.slots);
+        }
       })
       .catch((e) => {
         if (!abort.signal.aborted) setError(message(e));
@@ -251,7 +252,67 @@ export function useBooking(
     return () => abort.abort();
     // The canonical key includes all availability inputs; duration changes only reprice.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repository, availabilityKey, refresh, pending, mode, start]);
+  }, [repository, availabilityKey, refresh, pending, mode]);
+  const startSlot = slots.find(
+    (slot) => slot.time === start && (!slot.date || slot.date === date),
+  );
+  const cachedEnds = useMemo(() => preloadedEnds(startSlot), [startSlot]);
+  const endKey = JSON.stringify([availabilityKey, start, refresh]);
+  useEffect(() => {
+    if (
+      !selection ||
+      !start ||
+      !option?.minimum_duration ||
+      cachedEnds !== undefined ||
+      slotLoading ||
+      pending ||
+      mode !== "slots"
+    )
+      return;
+    const abort = new AbortController();
+    setFallbackEnds(null);
+    repository
+      .availability(
+        { ...selection, duration_minutes: option.minimum_duration },
+        true,
+        abort.signal,
+      )
+      .then((value) => {
+        if (!abort.signal.aborted)
+          setFallbackEnds({ key: endKey, slots: value.slots });
+      })
+      .catch((error) => {
+        if (!abort.signal.aborted) {
+          setFallbackEnds({ key: endKey, slots: [] });
+          setError(message(error));
+        }
+      });
+    return () => abort.abort();
+    // End validation never replaces the original start grid; late responses are ignored.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repository, endKey, cachedEnds, slotLoading, pending, mode]);
+  const endSlots =
+    !start || !option?.minimum_duration
+      ? []
+      : (cachedEnds ??
+        (fallbackEnds?.key === endKey ? fallbackEnds.slots : []));
+  const endLoading =
+    !!start &&
+    !!option?.minimum_duration &&
+    cachedEnds === undefined &&
+    fallbackEnds?.key !== endKey;
+  const timeCells = bookingTimeCells({
+    date,
+    start,
+    duration,
+    slots,
+    endSlots,
+    minimum: option?.minimum_duration ?? null,
+    loading: slotLoading || endLoading,
+    locked: !!pending,
+    pool: business?.type === "pool",
+  });
+  const finish = rangeEnd(date, start, duration, endSlots);
   // The selection falls back to the minimum before a finish is chosen. Track
   // duration/start as dependencies too, including a minimum-length or midnight choice.
   const quoteKey = JSON.stringify(selection);
@@ -284,18 +345,19 @@ export function useBooking(
     return () => abort.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repository, quoteKey, refresh, pending, mode, duration, start]);
-  function chooseSlot(slot: Slot) {
-    if (!slot.available || pending) return;
+  function chooseCell(cell: TimeCell) {
+    if (!cell.enabled || pending || !option) return;
+    const next = chooseTimeCell(
+      { start, duration },
+      cell,
+      option.minimum_duration,
+      option.default_duration,
+    );
     setError("");
     setQuote(null);
-    if (!start || !option?.minimum_duration) {
-      setStart(slot.time);
-      setDuration(
-        option?.minimum_duration ? 0 : (option?.default_duration ?? 0),
-      );
-    } else {
-      setDuration(slot.duration_minutes ?? 0);
-    }
+    setQuoting(false);
+    setStart(next.start);
+    setDuration(next.duration);
   }
   async function confirm() {
     if (
@@ -374,6 +436,9 @@ export function useBooking(
     duration,
     slots,
     slotLoading,
+    endLoading,
+    timeCells,
+    finish,
     quote,
     quoting,
     mode,
@@ -389,12 +454,18 @@ export function useBooking(
     chooseOption,
     chooseDate,
     changePeople,
-    chooseSlot,
+    chooseCell,
     confirm,
     setName,
     setPhone,
     changeStart: () => {
-      if (!pending) reset();
+      if (!pending) {
+        setStart("");
+        setDuration(0);
+        setQuote(null);
+        setQuoting(false);
+        setError("");
+      }
     },
     continue: () => {
       if (quote && !pending) setMode("details");
