@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { SESSION_COOKIE } from "./session-name";
 import { validSession } from "./session-token";
 import { signAdminRequest } from "./request-signature";
+import { adminRedirectUrl } from "./redirect-url";
 
 export function apiBase() {
   const base = new URL(
@@ -12,7 +13,10 @@ export function apiBase() {
   );
   if (
     base.protocol !== "https:" &&
-    !(base.protocol === "http:" && ["localhost", "127.0.0.1"].includes(base.hostname))
+    !(
+      base.protocol === "http:" &&
+      ["localhost", "127.0.0.1"].includes(base.hostname)
+    )
   )
     throw new Error("Booking API must use HTTPS");
   return base.toString().replace(/\/$/, "");
@@ -33,7 +37,7 @@ export async function admin<T = any>(
   init: { method?: string; body?: unknown } = {},
 ): Promise<T> {
   if (!(await validSession((await cookies()).get(SESSION_COOKIE)?.value)))
-    redirect("/login");
+    redirect(await adminRedirectUrl("/login"));
   const method = init.method ?? "GET";
   const body = init.body === undefined ? undefined : JSON.stringify(init.body);
   const target = new URL(`${apiBase()}/v1/admin${path}`);
@@ -41,9 +45,15 @@ export async function admin<T = any>(
   const response = await fetch(target, {
     method,
     headers: {
-      "x-bookingos-admin": signAdminRequest(method, logical.pathname + logical.search, body),
+      "x-bookingos-admin": signAdminRequest(
+        method,
+        logical.pathname + logical.search,
+        body,
+      ),
       apikey: process.env.BOOKING_API_PUBLISHABLE_KEY ?? "",
-      ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(init.body === undefined
+        ? {}
+        : { "Content-Type": "application/json" }),
     },
     body,
     cache: "no-store",
@@ -53,7 +63,10 @@ export async function admin<T = any>(
     let message = "Request failed.";
     try {
       const data = await response.json();
-      message = typeof data.message === "string" ? data.message : data.message?.[0] ?? message;
+      message =
+        typeof data.message === "string"
+          ? data.message
+          : (data.message?.[0] ?? message);
     } catch {}
     throw new ApiError(message, response.status);
   }

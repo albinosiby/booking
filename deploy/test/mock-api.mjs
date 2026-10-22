@@ -21,6 +21,12 @@ const website = {
   }],
 };
 
+const organizations = [
+  { id: "00000000-0000-4000-8000-000000000001", name: "Northstar Sports", owner_email: "owner@northstar.example.invalid", users: 8, businesses: 3, bookings: 18, agent_status: "active", created_at: "2026-10-22T09:30:00Z" },
+  { id: "00000000-0000-4000-8000-000000000002", name: "Riverside Arena", owner_email: "team@riverside.example.invalid", users: 4, businesses: 2, bookings: 12, agent_status: null, created_at: "2026-10-21T10:00:00Z" },
+  { id: "00000000-0000-4000-8000-000000000003", name: "The Clubhouse", owner_email: "hello@clubhouse.example.invalid", users: 3, businesses: 1, bookings: 6, agent_status: null, created_at: "2026-10-20T11:00:00Z" },
+];
+
 createServer((request, response) => {
   const path = new URL(request.url, "http://localhost").pathname;
   const send = (value, status = 200) => response.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(value));
@@ -42,7 +48,25 @@ createServer((request, response) => {
   } else if (path === "/v1/admin/me") {
     send({ email: "fixture@example.invalid", role: "super_admin" });
   } else if (path === "/v1/admin/overview") {
-    send(Object.fromEntries(["organizations", "users", "active_users", "businesses", "bookings", "customers", "open_tickets", "pending_agent_requests"].map((key) => [key, 0])));
+    send({ organizations: 3, users: 15, active_users: 12, businesses: 6, bookings: 36, customers: 24, open_tickets: 0, pending_agent_requests: 0 });
+  } else if (path === "/v1/admin/organizations") {
+    const query = new URL(request.url, "http://localhost").searchParams;
+    const search = (query.get("q") || "").toLowerCase();
+    send({ organizations: organizations.filter((org) => `${org.name} ${org.owner_email}`.toLowerCase().includes(search)).slice(0, Number(query.get("limit") || 100)) });
+  } else if (path.startsWith("/v1/admin/organizations/")) {
+    const organization = organizations.find((org) => org.id === path.split("/").at(-1));
+    if (!organization) { send({ message: "Not found." }, 404); return; }
+    send({ organization: { ...organization, currency: "INR", contact_phone: "0000000000" }, stats: { bookings: organization.bookings, cancelled: 0, booked_minor: 250000, customers: 8, last_booking_at: "2026-10-22T08:00:00Z" }, website: null, agent_request: null, members: [], businesses: [], locations: [], invitations: [], tickets: [] });
+  } else if (path === "/v1/admin/users") {
+    const query = new URL(request.url, "http://localhost").searchParams.get("q") || "";
+    const users = [{ id: "00000000-0000-4000-8000-000000000010", display_name: "Alex Morgan", email: "owner@northstar.example.invalid", organization_id: organizations[0].id, organization_name: organizations[0].name, role: "owner", active: true }];
+    send({ users: users.filter((user) => `${user.display_name} ${user.email} ${user.organization_name}`.toLowerCase().includes(query.toLowerCase())) });
+  } else if (path === "/v1/admin/support/tickets") {
+    send({ tickets: [] });
+  } else if (path === "/v1/admin/agent-requests") {
+    send({ requests: [] });
+  } else if (path === "/v1/admin/audit") {
+    send({ events: [] });
   } else if (path === "/public/v1/sites/railway-smoke") {
     send(website);
   } else if (path.startsWith("/public/v1/sites/railway-smoke/")) {

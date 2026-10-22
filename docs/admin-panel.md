@@ -5,6 +5,14 @@ Next.js app in `admin-panel/` (port 3100, base path `/admin`). Open `http://127.
 ## Pages
 Overview, Organizations (+ full detail: profile, team, businesses, locations, invitations, website, bookings summary, tickets, call-service request), Users (activate/deactivate), Support inbox (reply, status), Agent call requests (status, user-facing message, internal notes), Audit log.
 
+## Interface
+
+The admin workspace uses a light theme with white cards, a soft grey canvas and green accents. Navigation is grouped into Workspace and Operations, with an active-page indicator. At narrow widths a native modal navigation drawer supports keyboard focus and Escape dismissal. Overview uses live totals and the five most recently created organizations; its active-user bar is calculated from the returned membership counts. There are no invented trends or chart datasets.
+
+Organization and user searches use shareable query parameters. Support and agent-call filters retain their URL-based behavior. Mutation buttons show a pending state. Loading, empty and retry views use the same visual system. The login keeps a single password field with an optional show/hide control; signing and session checks remain server-side. No extra UI, animation, chart or font dependency is required.
+
+Preview locally with the existing production build and `npm run start`. The disposable `deploy/test/mock-api.mjs` supports populated directory and overview screens and empty support/agent/audit screens for verification; it is never part of the production image. A Railway redeploy is required to publish source changes.
+
 ## Prerequisites (you apply these)
 1. Apply `supabase/migrations/20261023100000_admin_panel.sql` (not applied by this change).
 2. Generate a random secret with `openssl rand -hex 32`. Set `ADMIN_SESSION_SECRET` to that same value in the panel environment (Railway variables in production) and the `booking-api` Edge Function secrets. Keep this separate from the login password. Backend secret setup is documented by [Supabase](https://supabase.com/docs/guides/functions/secrets).

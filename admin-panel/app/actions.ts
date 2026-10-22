@@ -94,7 +94,7 @@ export async function saveConnection(form: FormData) {
       business_ids: form.getAll("business_ids").map(String),
     },
   });
-  revalidatePath(`/agent-requests/${org}`);
+  revalidatePath(adminPath(`/agent-requests/${org}`));
 }
 
 export async function generateToolKey(_: string | null, form: FormData) {
