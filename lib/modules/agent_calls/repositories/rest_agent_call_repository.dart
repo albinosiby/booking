@@ -12,11 +12,19 @@ class RestAgentCallRepository implements AgentCallRepository {
       _status(await api.request('/agent-calls'));
   @override
   Future<AgentServiceStatus> request(String note) async => _status(
-    await api.request('/agent-calls/request', method: 'POST', data: {'note': note}),
+    await api.request(
+      '/agent-calls/request',
+      method: 'POST',
+      data: {'note': note},
+    ),
   );
   @override
   Future<AgentServiceStatus> setEnabled(bool enabled) async => _status(
-    await api.request('/agent-calls/enabled', method: 'PUT', data: {'enabled': enabled}),
+    await api.request(
+      '/agent-calls/enabled',
+      method: 'PUT',
+      data: {'enabled': enabled},
+    ),
   );
   @override
   Future<AgentCallPage> calls(DateTime start, DateTime end) async =>

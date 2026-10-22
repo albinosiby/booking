@@ -123,7 +123,11 @@ String supportError(Object e) => e is AppException
     : 'Could not complete this action. Please try again.';
 
 class SupportListState extends Equatable {
-  const SupportListState({this.tickets = const [], this.loading = true, this.error});
+  const SupportListState({
+    this.tickets = const [],
+    this.loading = true,
+    this.error,
+  });
   final List<SupportTicket> tickets;
   final bool loading;
   final String? error;
@@ -141,14 +145,25 @@ class SupportListCubit extends Cubit<SupportListState> {
       if (!isClosed) emit(SupportListState(tickets: t, loading: false));
     } catch (e) {
       if (!isClosed) {
-        emit(SupportListState(tickets: state.tickets, loading: false, error: supportError(e)));
+        emit(
+          SupportListState(
+            tickets: state.tickets,
+            loading: false,
+            error: supportError(e),
+          ),
+        );
       }
     }
   }
 }
 
 class SupportThreadState extends Equatable {
-  const SupportThreadState({this.thread, this.loading = true, this.busy = false, this.error});
+  const SupportThreadState({
+    this.thread,
+    this.loading = true,
+    this.busy = false,
+    this.error,
+  });
   final SupportThread? thread;
   final bool loading, busy;
   final String? error;
@@ -157,7 +172,8 @@ class SupportThreadState extends Equatable {
 }
 
 class SupportThreadCubit extends Cubit<SupportThreadState> {
-  SupportThreadCubit(this.repository, this.id) : super(const SupportThreadState());
+  SupportThreadCubit(this.repository, this.id)
+    : super(const SupportThreadState());
   final SupportRepository repository;
   final String id;
   Future<void> load() async {
@@ -165,7 +181,15 @@ class SupportThreadCubit extends Cubit<SupportThreadState> {
       final t = await repository.thread(id);
       if (!isClosed) emit(SupportThreadState(thread: t, loading: false));
     } catch (e) {
-      if (!isClosed) emit(SupportThreadState(thread: state.thread, loading: false, error: supportError(e)));
+      if (!isClosed) {
+        emit(
+          SupportThreadState(
+            thread: state.thread,
+            loading: false,
+            error: supportError(e),
+          ),
+        );
+      }
     }
   }
 
@@ -177,7 +201,15 @@ class SupportThreadCubit extends Cubit<SupportThreadState> {
       if (!isClosed) emit(SupportThreadState(thread: t, loading: false));
       return true;
     } catch (e) {
-      if (!isClosed) emit(SupportThreadState(thread: state.thread, loading: false, error: supportError(e)));
+      if (!isClosed) {
+        emit(
+          SupportThreadState(
+            thread: state.thread,
+            loading: false,
+            error: supportError(e),
+          ),
+        );
+      }
       return false;
     }
   }

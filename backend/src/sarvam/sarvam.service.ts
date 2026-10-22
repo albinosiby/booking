@@ -311,7 +311,7 @@ export class SarvamService {
       !s.app_id
     )
       throw new BadRequestException(
-        "Connect Sarvam first: add the API key, organization, workspace and app IDs.",
+        "The call service is not connected yet. Contact support.",
       );
     const base = `${SARVAM_ORIGIN}/api/analytics/v1/${s.sarvam_org_id}/${s.workspace_id}/${s.app_id}`;
     const key = openSecret(s.api_key_ciphertext);
@@ -326,20 +326,20 @@ export class SarvamService {
         });
       } catch {
         throw new ServiceUnavailableException(
-          "Sarvam did not respond. Try again.",
+          "The call service did not respond. Try again.",
         );
       }
       if (res.status === 401 || res.status === 403)
         throw new BadRequestException(
-          "Sarvam rejected the API key. Check it in Sarvam settings.",
+          "The call service connection needs attention. Contact support.",
         );
       if (res.status === 404)
         throw new NotFoundException(
-          "Sarvam could not find this app or call. Check the IDs.",
+          "The call service could not find this call. Contact support if it persists.",
         );
       if (!res.ok)
         throw new ServiceUnavailableException(
-          `Sarvam returned an error (${res.status}). Try again.`,
+          `The call service returned an error (${res.status}). Try again.`,
         );
       return res;
     };
@@ -421,7 +421,9 @@ export class SarvamService {
     const get = await this.analytics(actor);
     const res = await get(`/recordings/${interaction}`);
     if (!res.headers.get("content-type")?.startsWith("audio/"))
-      throw new ServiceUnavailableException("Sarvam did not return audio.");
+      throw new ServiceUnavailableException(
+        "The call service did not return audio.",
+      );
     const bytes = new Uint8Array(await res.arrayBuffer());
     if (bytes.length > 25 * 1024 * 1024)
       throw new BadRequestException(

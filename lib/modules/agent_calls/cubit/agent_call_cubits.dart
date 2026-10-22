@@ -58,7 +58,9 @@ class AgentServiceCubit extends OwnerAgentCubit<AgentServiceState> {
       }
     } catch (e) {
       if (valid(g)) {
-        emit(state.copyWith(loading: false, busy: false, error: agentCallError(e)));
+        emit(
+          state.copyWith(loading: false, busy: false, error: agentCallError(e)),
+        );
       }
     }
   }
@@ -108,7 +110,9 @@ class CallLogsCubit extends OwnerAgentCubit<CallLogsState> {
       );
       if (valid(g)) emit(state.copyWith(page: page, loading: false));
     } catch (e) {
-      if (valid(g)) emit(state.copyWith(loading: false, error: agentCallError(e)));
+      if (valid(g)) {
+        emit(state.copyWith(loading: false, error: agentCallError(e)));
+      }
     }
   }
 }
@@ -138,7 +142,9 @@ class CallDetailCubit extends OwnerAgentCubit<CallDetailState> {
       final lines = await repository.transcript(call.id);
       if (valid(g)) emit(state.copyWith(lines: lines, loading: false));
     } catch (e) {
-      if (valid(g)) emit(state.copyWith(loading: false, error: agentCallError(e)));
+      if (valid(g)) {
+        emit(state.copyWith(loading: false, error: agentCallError(e)));
+      }
     }
   }
 
@@ -160,7 +166,9 @@ class CallDetailCubit extends OwnerAgentCubit<CallDetailState> {
         );
       }
     } catch (e) {
-      if (valid(g)) emit(state.copyWith(saving: false, error: agentCallError(e)));
+      if (valid(g)) {
+        emit(state.copyWith(saving: false, error: agentCallError(e)));
+      }
     }
   }
 }

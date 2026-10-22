@@ -80,3 +80,27 @@ export async function updateAgentRequest(form: FormData) {
   });
   revalidatePath(adminPath("/"), "layout");
 }
+
+export async function saveConnection(form: FormData) {
+  const org = String(form.get("org"));
+  const key = String(form.get("api_key") ?? "").trim();
+  await admin(`/agent-requests/${org}/connection`, {
+    method: "PUT",
+    body: {
+      ...(key ? { api_key: key } : {}),
+      sarvam_org_id: String(form.get("sarvam_org_id") ?? ""),
+      workspace_id: String(form.get("workspace_id") ?? ""),
+      app_id: String(form.get("app_id") ?? ""),
+      business_ids: form.getAll("business_ids").map(String),
+    },
+  });
+  revalidatePath(`/agent-requests/${org}`);
+}
+
+export async function generateToolKey(_: string | null, form: FormData) {
+  const res = await admin<{ tool_key: string }>(
+    `/agent-requests/${form.get("org")}/tool-key`,
+    { method: "POST" },
+  );
+  return res.tool_key;
+}

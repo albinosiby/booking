@@ -124,12 +124,16 @@ void registerFeatureDependencies(GetIt di) {
     WorkspaceSession,
     MessageTemplate?
   >((s, t) => TemplateEditorCubit(s, di(), t));
-  di.registerLazySingleton<AgentCallRepository>(() => RestAgentCallRepository(di()));
+  di.registerLazySingleton<AgentCallRepository>(
+    () => RestAgentCallRepository(di()),
+  );
   di.registerLazySingleton<RecordingSaver>(() => DeviceRecordingSaver());
   di.registerFactoryParam<AgentServiceCubit, WorkspaceSession, void>(
     (s, _) => AgentServiceCubit(s, di()),
   );
-  di.registerLazySingleton<SupportRepository>(() => RestSupportRepository(di()));
+  di.registerLazySingleton<SupportRepository>(
+    () => RestSupportRepository(di()),
+  );
   di.registerFactoryParam<CallLogsCubit, WorkspaceSession, void>(
     (s, _) => CallLogsCubit(s, di()),
   );

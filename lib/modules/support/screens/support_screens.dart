@@ -117,8 +117,9 @@ class _SupportScreenState extends State<SupportScreen> {
                       '${supportStatusLabels[t.status] ?? t.status} · ${_when(t.updatedAt)}',
                     ),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () =>
-                        context.push('${Routes.support}/${t.id}').then((_) => cubit.load()),
+                    onTap: () => context
+                        .push('${Routes.support}/${t.id}')
+                        .then((_) => cubit.load()),
                   ),
                 ),
             ],
@@ -126,22 +127,24 @@ class _SupportScreenState extends State<SupportScreen> {
   );
 
   @override
-  Widget build(BuildContext context) => BlocBuilder<SupportListCubit, SupportListState>(
-    bloc: cubit,
-    builder: (context, s) => AppPage(
-      title: 'Help & support',
-      subtitle: 'Report a problem and follow our replies.',
-      back: true,
-      showAppBar: true,
-      maxWidth: 900,
-      scrollId: 'support',
-      children: [
-        if (s.error != null) AppErrorWidget(message: s.error!, onRetry: cubit.load),
-        form(),
-        history(s),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) =>
+      BlocBuilder<SupportListCubit, SupportListState>(
+        bloc: cubit,
+        builder: (context, s) => AppPage(
+          title: 'Help & support',
+          subtitle: 'Report a problem and follow our replies.',
+          back: true,
+          showAppBar: true,
+          maxWidth: 900,
+          scrollId: 'support',
+          children: [
+            if (s.error != null)
+              AppErrorWidget(message: s.error!, onRetry: cubit.load),
+            form(),
+            history(s),
+          ],
+        ),
+      );
 }
 
 class SupportThreadScreen extends StatefulWidget {
@@ -152,7 +155,8 @@ class SupportThreadScreen extends StatefulWidget {
 }
 
 class _SupportThreadScreenState extends State<SupportThreadScreen> {
-  late final cubit = SupportThreadCubit(getIt<SupportRepository>(), widget.id)..load();
+  late final cubit = SupportThreadCubit(getIt<SupportRepository>(), widget.id)
+    ..load();
   final reply = TextEditingController();
 
   @override
@@ -169,7 +173,9 @@ class _SupportThreadScreenState extends State<SupportThreadScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => BlocConsumer<SupportThreadCubit, SupportThreadState>(
+  Widget build(
+    BuildContext context,
+  ) => BlocConsumer<SupportThreadCubit, SupportThreadState>(
     bloc: cubit,
     listener: (context, s) {
       if (s.error != null && s.thread != null) showMessage(context, s.error!);
@@ -188,11 +194,16 @@ class _SupportThreadScreenState extends State<SupportThreadScreen> {
         children: [
           if (s.loading) const AppRefreshIndicator(label: 'Loading…'),
           if (!s.loading && t == null)
-            AppErrorWidget(message: s.error ?? 'Not found.', onRetry: cubit.load),
+            AppErrorWidget(
+              message: s.error ?? 'Not found.',
+              onRetry: cubit.load,
+            ),
           if (t != null) ...[
             for (final m in t.messages)
               Align(
-                alignment: m.fromSupport ? Alignment.centerLeft : Alignment.centerRight,
+                alignment: m.fromSupport
+                    ? Alignment.centerLeft
+                    : Alignment.centerRight,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 560),
                   child: AppCard(

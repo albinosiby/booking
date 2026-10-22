@@ -41,7 +41,7 @@ export default async function AgentRequests({ searchParams }: { searchParams: Pr
           <label>Internal notes (admin only)
             <textarea name="admin_note" defaultValue={r.admin_note} maxLength={2000} />
           </label>
-          <div><button>Save</button></div>
+          <div className="row"><button>Save</button><a className="btn" href={`/agent-requests/${r.organization_id}`}>Connection</a></div>
         </form>
       ))}
       {!requests.length && <div className="card empty">No requests.</div>}

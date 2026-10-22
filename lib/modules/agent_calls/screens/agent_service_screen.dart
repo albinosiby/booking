@@ -94,7 +94,9 @@ class _AgentServiceScreenState extends State<AgentServiceScreen> {
                       : i == current
                       ? Icons.timelapse
                       : Icons.radio_button_unchecked,
-                  color: i <= current ? Theme.of(context).colorScheme.primary : null,
+                  color: i <= current
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
                 ),
                 title: Text(_steps[i].$2),
               ),
@@ -131,7 +133,9 @@ class _AgentServiceScreenState extends State<AgentServiceScreen> {
           ListTile(
             leading: const Icon(Icons.history),
             title: const Text('Call logs'),
-            subtitle: const Text('Calls, summaries, transcripts and recordings'),
+            subtitle: const Text(
+              'Calls, summaries, transcripts and recordings',
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push(Routes.callLogs),
           ),
@@ -141,37 +145,43 @@ class _AgentServiceScreenState extends State<AgentServiceScreen> {
   );
 
   @override
-  Widget build(BuildContext context) => BlocConsumer<AgentServiceCubit, AgentServiceState>(
-    bloc: cubit,
-    listener: (context, s) {
-      if (s.error != null && !s.loading) showMessage(context, s.error!);
-    },
-    builder: (context, s) {
-      final st = s.status.status;
-      return AppPage(
-        title: 'Agent call service',
-        subtitle: 'Request, track and control automated call answering.',
-        back: true,
-        showAppBar: true,
-        maxWidth: 800,
-        scrollId: 'agent-service',
-        children: [
-          if (s.loading) const AppRefreshIndicator(label: 'Loading…'),
-          if (!s.loading && !cubit.owner)
-            const AppEmptyState(
-              title: 'Owner access required',
-              message: 'Only the owner can manage the agent call service.',
-            ),
-          if (!s.loading && cubit.owner) ...[
-            if (st == 'none') intro(s, again: false),
-            if (st == 'rejected') intro(s, again: true),
-            if (['requested', 'in_review', 'setting_up', 'paused'].contains(st))
-              progress(s),
-            if (st == 'active' && !s.status.ready) progress(s),
-            if (st == 'active' && s.status.ready) controls(s),
-          ],
-        ],
+  Widget build(BuildContext context) =>
+      BlocConsumer<AgentServiceCubit, AgentServiceState>(
+        bloc: cubit,
+        listener: (context, s) {
+          if (s.error != null && !s.loading) showMessage(context, s.error!);
+        },
+        builder: (context, s) {
+          final st = s.status.status;
+          return AppPage(
+            title: 'Agent call service',
+            subtitle: 'Request, track and control automated call answering.',
+            back: true,
+            showAppBar: true,
+            maxWidth: 800,
+            scrollId: 'agent-service',
+            children: [
+              if (s.loading) const AppRefreshIndicator(label: 'Loading…'),
+              if (!s.loading && !cubit.owner)
+                const AppEmptyState(
+                  title: 'Owner access required',
+                  message: 'Only the owner can manage the agent call service.',
+                ),
+              if (!s.loading && cubit.owner) ...[
+                if (st == 'none') intro(s, again: false),
+                if (st == 'rejected') intro(s, again: true),
+                if ([
+                  'requested',
+                  'in_review',
+                  'setting_up',
+                  'paused',
+                ].contains(st))
+                  progress(s),
+                if (st == 'active' && !s.status.ready) progress(s),
+                if (st == 'active' && s.status.ready) controls(s),
+              ],
+            ],
+          );
+        },
       );
-    },
-  );
 }

@@ -17,12 +17,11 @@ import 'package:eden_booking/modules/messages/widgets/message_chat_preview.dart'
 import 'package:eden_booking/modules/messages/widgets/message_phone_preview.dart';
 import 'package:eden_booking/modules/agent_calls/repositories/agent_call_repository.dart';
 import 'package:eden_booking/modules/agent_calls/screens/call_logs_screen.dart';
-import 'package:eden_booking/modules/agent_calls/screens/sarvam_settings_screen.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'accounts_module_test.dart' show FakeAccountsRepository;
 import 'booking_module_test.dart' show BookingSource;
 import 'message_templates_test.dart' show TestMessages, TestShare, fixture;
-import 'sarvam_test.dart' show TestSarvam, TestSaver;
+import 'agent_calls_test.dart' show TestAgentCalls, TestSaver;
 
 /// Pumps [page] in a 1440x1000 desktop window.
 Future<void> pumpDesktop(
@@ -81,11 +80,11 @@ Future<(WorkspaceCubit, TestMessages, TestShare)> messages() async {
   return (w, r, share);
 }
 
-Future<(WorkspaceCubit, TestSaver)> sarvam() async {
+Future<(WorkspaceCubit, TestSaver)> agentCalls() async {
   final w = await session(), saver = TestSaver();
   registerFeatureDependencies(getIt);
-  await getIt.unregister<SarvamRepository>();
-  getIt.registerSingleton<SarvamRepository>(TestSarvam());
+  await getIt.unregister<AgentCallRepository>();
+  getIt.registerSingleton<AgentCallRepository>(TestAgentCalls());
   await getIt.unregister<RecordingSaver>();
   getIt.registerSingleton<RecordingSaver>(saver);
   return (w, saver);
@@ -236,37 +235,8 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets(
-    'Sarvam settings show automatic setup and separate booking controls',
-    (tester) async {
-      final (w, _) = await sarvam();
-      addTearDown(w.close);
-      await pumpDesktop(tester, w, const SarvamSettingsScreen());
-      expect(tester.takeException(), isNull);
-      expect(find.text('Configured — awaiting publish'), findsOneWidget);
-      expect(find.text('Connect Sarvam'), findsOneWidget);
-      expect(find.text('Phone bookings'), findsOneWidget);
-      expect(find.text('Connection status'), findsOneWidget);
-      expect(find.text('Accept phone bookings'), findsOneWidget);
-      expect(find.text('Publish changes'), findsOneWidget);
-      expect(find.text('Disconnect Sarvam'), findsOneWidget);
-      expect(find.text('Generate'), findsNothing);
-      expect(find.text('Replace'), findsNothing);
-      await tester.tap(find.text('Badminton'));
-      await tester.pumpAndSettle();
-      expect(
-        find.text(
-          'Connect to apply the edited credentials or business selection.',
-        ),
-        findsOneWidget,
-      );
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
-
   testWidgets('call logs open the transcript in a side pane', (tester) async {
-    final (w, saver) = await sarvam();
+    final (w, saver) = await agentCalls();
     addTearDown(w.close);
     await pumpDesktop(tester, w, const CallLogsScreen());
     expect(tester.takeException(), isNull);

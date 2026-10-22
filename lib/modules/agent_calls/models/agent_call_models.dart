@@ -163,7 +163,14 @@ class AgentServiceStatus extends Equatable {
   final bool ready, enabled;
   final DateTime? requestedAt, updatedAt;
   @override
-  List<Object?> get props => [status, message, ready, enabled, requestedAt, updatedAt];
+  List<Object?> get props => [
+    status,
+    message,
+    ready,
+    enabled,
+    requestedAt,
+    updatedAt,
+  ];
 }
 
 class AgentServiceState extends Equatable {
