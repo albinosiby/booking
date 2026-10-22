@@ -407,5 +407,5 @@ test("proxies Sarvam call logs with the stored key", async () => {
     /31 days/,
   );
   sarvam.http = async () => new Response("{}", { status: 401 });
-  await assert.rejects(sarvam.test(o.owner), /rejected the API key/);
+  await assert.rejects(sarvam.test(o.owner), /connection needs attention/);
 });

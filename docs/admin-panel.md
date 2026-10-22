@@ -30,5 +30,13 @@ npm install && npm run dev
 ```
 The login asks for one password, **`tatos tech`**, with no username. This value is configured by the server-side `ADMIN_PANEL_PASSWORD` variable in the local environment and deployment template. Set that same variable in Railway and redeploy to apply it there. The panel creates a signed, twelve-hour httpOnly session cookie scoped to `/admin`. The server signs each API request using the random shared secret; signatures expire after 60 seconds and cover the HTTP method, path, query and JSON body. The session cookie cannot be used as an API signature. `ADMIN_SERVICE_EMAIL` and `ADMIN_SERVICE_PASSWORD` are no longer used. Admin actions are audited as `admin-panel@bookingos.internal`; a shared password does not identify individual operators. Expired sessions return to `/admin/login`.
 
-## Not yet built
-Flutter support page and the agent-call request/track/toggle flow (owner side), and removing "Sarvam" wording from the app. Admin-side provider connection will reuse `backend/src/sarvam/*`.
+## Agent call service flow
+1. Owner: Profile → Agent call service → Request service (no provider name is shown anywhere in the app).
+2. Admin: Agent call requests → move status (Requested → In review → Setting up), write the message the owner sees, open **Connection** to save the provider IDs/API key and businesses, and generate the tool key (shown once; paste it into the provider agent with the tool base URL).
+3. Admin sets the request to **Active**. The owner's page then shows the on/off switch and Call logs. The service is "ready" only when Active *and* a connection and tool key exist; turning on also needs at least one business assigned.
+
+## Support
+Owners and team members use Profile → Help & support to report issues; admins reply from the panel and the thread updates in the app.
+
+## Removed
+The owner-facing connect/publish/disconnect screens and routes (`/v1/sarvam/*` owner routes) are gone; call routes moved to `/v1/agent-calls/*`. Old installed app builds will lose that screen. The tool/OAuth callback routes remain.
