@@ -270,13 +270,16 @@ class BookingAgendaView extends StatelessWidget {
       floatingActionButton: s.catalog.canManage
           ? NewBookingFab(onPressed: () => create(context))
           : null,
-      children: wide
-          ? [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 360,
+      fixedBody: wide
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: 360,
+                  child: SingleChildScrollView(
+                    key: const PageStorageKey('booking-calendar-month-pane'),
+                    primary: false,
+                    padding: const EdgeInsets.only(bottom: 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -315,25 +318,39 @@ class BookingAgendaView extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 32),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        dayHeader,
-                        const SizedBox(height: 18),
-                        ...results,
-                        if (empty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 48),
-                            child: _BookingEmptyMessage(calendar: calendar),
-                          ),
-                      ],
-                    ),
+                ),
+                const SizedBox(width: 32),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      dayHeader,
+                      const SizedBox(height: 18),
+                      Expanded(
+                        child: ListView(
+                          key: ValueKey('booking-calendar-results-${s.date}'),
+                          primary: false,
+                          padding: const EdgeInsets.only(bottom: 112),
+                          children: [
+                            ...results,
+                            if (empty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 48,
+                                ),
+                                child: _BookingEmptyMessage(calendar: calendar),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ]
+                ),
+              ],
+            )
+          : null,
+      children: wide
+          ? const []
           : desk
           ? [
               AppToolbar(

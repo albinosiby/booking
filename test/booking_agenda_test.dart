@@ -430,6 +430,99 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'desktop month stays fixed while bookings scroll and short screens keep Today reachable',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      addTearDown(workspace.close);
+      final repo = DateRepository()..seed('2030-06-05', 'Wednesday guest');
+      for (var i = 0; i < 20; i++) {
+        final id = 'scroll-booking-$i';
+        repo.records[id] = repo.row(
+          id,
+          const BookingSelection(
+            businessId: 'business',
+            resourceId: 'space',
+            optionId: 'hourly',
+            date: '2030-06-04',
+            time: '09:00',
+            duration: 60,
+            people: 1,
+          ),
+          BookingCustomer(name: 'Calendar guest $i', phone: '9876543210'),
+        );
+      }
+      final cubit = BookingListCubit(workspace, repo, BookingListMode.calendar);
+      addTearDown(cubit.close);
+      cubit.date('2030-06-04');
+      await tester.pumpWidget(
+        ScreenUtilInit(
+          designSize: const Size(1440, 900),
+          builder: (context, child) => MaterialApp(
+            theme: darkTheme(),
+            home: BlocBuilder<BookingListCubit, BookingListModel>(
+              bloc: cubit,
+              builder: (context, state) =>
+                  BookingAgendaView(state: state, cubit: cubit, calendar: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pumpAndSettle();
+      final calendar = find.byKey(const ValueKey('booking-month-calendar'));
+      final heading = find.textContaining('Bookings for ');
+      final monthPosition = tester.getTopLeft(calendar);
+      final headingPosition = tester.getTopLeft(heading);
+      final results = find.byKey(
+        const ValueKey('booking-calendar-results-2030-06-04'),
+      );
+      ScrollPosition position(Finder parent) => tester
+          .state<ScrollableState>(
+            find
+                .descendant(of: parent, matching: find.byType(Scrollable))
+                .first,
+          )
+          .position;
+      await tester.drag(results, const Offset(0, -550));
+      await tester.pumpAndSettle();
+      expect(position(results).pixels, greaterThan(100));
+      expect(tester.getTopLeft(calendar), monthPosition);
+      expect(tester.getTopLeft(heading), headingPosition);
+      await tester.tap(
+        find.byKey(const ValueKey('booking-month-day-2030-06-05')),
+      );
+      await tester.pumpAndSettle();
+      final nextDay = find.byKey(
+        const ValueKey('booking-calendar-results-2030-06-05'),
+      );
+      expect(find.text('Wednesday guest'), findsOneWidget);
+      expect(position(nextDay).pixels, 0);
+      tester.view.physicalSize = const Size(1440, 520);
+      await tester.pumpAndSettle();
+      final monthPane = find.byKey(
+        const PageStorageKey('booking-calendar-month-pane'),
+      );
+      await tester.ensureVisible(find.text('Today'));
+      await tester.pumpAndSettle();
+      expect(position(monthPane).pixels, greaterThan(0));
+      expect(
+        tester
+            .getRect(monthPane)
+            .contains(tester.getCenter(find.text('Today'))),
+        isTrue,
+      );
+      expect(position(nextDay).pixels, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('empty Calendar centers plain text below standalone day cards', (
     tester,
   ) async {

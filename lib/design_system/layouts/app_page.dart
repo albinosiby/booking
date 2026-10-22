@@ -21,7 +21,9 @@ class AppPage extends StatelessWidget {
     this.fillRemaining,
     this.header,
     this.slivers,
-  }) : assert(slivers == null || fillRemaining == null);
+    this.fixedBody,
+  }) : assert(slivers == null || fillRemaining == null),
+       assert(fixedBody == null || (slivers == null && fillRemaining == null));
   final String title;
   final VoidCallback? onBack;
   final Widget? bottomBar;
@@ -34,6 +36,10 @@ class AppPage extends StatelessWidget {
 
   /// Replaces the default heading block for pages with a custom introduction.
   final Widget? header;
+
+  /// Bounded content below a fixed heading, with its own scrolling panes.
+  /// Normal pages retain the existing full-page scrolling behavior.
+  final Widget? fixedBody;
 
   /// Native slivers share the page scroll position (including drag auto-scroll).
   /// They follow the normal heading and children and respect the content width.
@@ -77,7 +83,9 @@ class AppPage extends StatelessWidget {
         : floatingBar(context),
     floatingActionButton: floatingActionButton,
     body: SafeArea(
-      child: slivers != null
+      child: fixedBody != null
+          ? fixedContent(context, wide)
+          : slivers != null
           ? LayoutBuilder(
               builder: (context, constraints) {
                 final inset = math.max(
@@ -164,6 +172,32 @@ class AppPage extends StatelessWidget {
                 ),
               ],
             ),
+    ),
+  );
+
+  Widget fixedContent(BuildContext context, bool wide) => Padding(
+    padding: EdgeInsets.fromLTRB(
+      AppSpacing.page,
+      wide
+          ? 32
+          : back || showAppBar
+          ? 0
+          : 24,
+      AppSpacing.page,
+      0,
+    ),
+    child: Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            content(context, wide),
+            Expanded(child: fixedBody!),
+          ],
+        ),
+      ),
     ),
   );
 
