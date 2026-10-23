@@ -87,12 +87,34 @@ GoRouter createRouter(
   return GoRouter(
     initialLocation: Routes.register,
     refreshListenable: refresh,
-    redirect: (c, s) => routeRedirect(
-      auth.state,
-      workspace.state,
-      s.uri,
-      requireVerification: AppConfig.requireEmailVerification,
-    ),
+    redirect: (c, s) {
+      final next = routeRedirect(
+        auth.state,
+        workspace.state,
+        s.uri,
+        requireVerification: AppConfig.requireEmailVerification,
+        continuation: auth.continuation,
+      );
+      final target = next == null ? s.uri.path : Uri.parse(next).path;
+      if (auth.continuation != null &&
+          auth.state.status == AuthStatus.signedIn &&
+          !auth.state.busy &&
+          auth.state.user?.passwordRecovery != true &&
+          (!AppConfig.requireEmailVerification ||
+              auth.state.user?.verified == true) &&
+          !const {
+            '/loading',
+            '/verify',
+            '/sign-in',
+            '/register',
+            '/auth-callback',
+            '/auth-callback/',
+            '/update-password',
+          }.contains(target)) {
+        auth.consumeContinuation();
+      }
+      return next;
+    },
     errorBuilder: (c, s) => const AppPage(
       title: 'Page not found',
       children: [

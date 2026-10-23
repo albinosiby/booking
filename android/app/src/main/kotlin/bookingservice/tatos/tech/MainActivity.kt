@@ -1,4 +1,4 @@
-package com.eden.booking.eden_booking
+package bookingservice.tatos.tech
 
 import android.media.AudioAttributes
 import android.media.MediaPlayer

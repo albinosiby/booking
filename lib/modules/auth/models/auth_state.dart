@@ -10,11 +10,13 @@ class AuthState extends Equatable {
     this.busy = false,
     this.error,
     this.notice,
+    this.googleSignIn = false,
   });
   final AuthStatus status;
   final AppUser? user;
   final bool busy;
+  final bool googleSignIn;
   final String? error, notice;
   @override
-  List<Object?> get props => [status, user, busy, error, notice];
+  List<Object?> get props => [status, user, busy, error, notice, googleSignIn];
 }

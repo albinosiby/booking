@@ -15,3 +15,7 @@ abstract interface class AuthRepository {
 abstract interface class PasswordUpdateRepository {
   Future<void> updatePassword(String password);
 }
+
+abstract interface class GoogleSignInRepository {
+  Future<void> signInWithGoogle();
+}

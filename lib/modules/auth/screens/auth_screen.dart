@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../../../utils/helpers/validation.dart';
 import '../cubit/auth_cubit.dart';
+import '../widgets/google_sign_in_button.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
@@ -37,16 +38,22 @@ class _AuthScreenState extends State<AuthScreen> {
       eyebrow: widget.invitationToken != null
           ? 'STAFF INVITATION'
           : 'BOOKING OS',
-      title: widget.register
+      title: widget.invitationToken != null
+          ? 'Join your team.'
+          : widget.register
           ? 'Your business.\nOne calm workspace.'
           : 'Welcome back.',
       subtitle: widget.invitationToken != null
-          ? 'Use the email address your owner invited.'
+          ? context.read<AuthCubit>().supportsGoogleSignIn
+                ? 'Continue with the Google account or email address your owner invited.'
+                : 'Use the email address your owner invited.'
           : widget.register
-          ? 'Enter your personal name, email and password. You’ll name your organization on the next screen.'
+          ? context.read<AuthCubit>().supportsGoogleSignIn
+                ? 'Continue with Google or create an account with your email. You’ll name your organization next.'
+                : 'Enter your personal name, email and password. You’ll name your organization next.'
           : 'Sign in to your organization.',
       children: [
-        if (widget.register) ...[
+        if (widget.register && widget.invitationToken == null) ...[
           const AppCard(
             child: Row(
               children: [
@@ -60,6 +67,40 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
           const SizedBox(height: 24),
         ],
+        if (s.notice != null) ...[
+          Text(s.notice!, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+        ],
+        if (s.error != null) ...[
+          AppErrorWidget(message: s.error!),
+          const SizedBox(height: 16),
+        ],
+        if (context.read<AuthCubit>().supportsGoogleSignIn) ...[
+          GoogleSignInButton(
+            busy: s.busy && s.googleSignIn,
+            onPressed: s.busy
+                ? null
+                : () => context.read<AuthCubit>().signInWithGoogle(
+                    invitationToken: widget.invitationToken,
+                    returnTo: widget.returnTo,
+                  ),
+          ),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              const Expanded(child: Divider()),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Text(
+                  'or continue with email',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              const Expanded(child: Divider()),
+            ],
+          ),
+          const SizedBox(height: 22),
+        ],
         Form(
           key: form,
           child: AutofillGroup(
@@ -67,11 +108,14 @@ class _AuthScreenState extends State<AuthScreen> {
               children: [
                 if (widget.register) ...[
                   AppTextField(
-                    label: 'Owner’s full name',
+                    label: widget.invitationToken == null
+                        ? 'Owner’s full name'
+                        : 'Your full name',
                     hint: 'Your personal name',
                     controller: name,
                     validator: Validation.name,
                     autofillHints: const [AutofillHints.name],
+                    enabled: !s.busy,
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -81,6 +125,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   validator: Validation.email,
                   keyboardType: TextInputType.emailAddress,
                   autofillHints: const [AutofillHints.email],
+                  enabled: !s.busy,
                 ),
                 const SizedBox(height: 16),
                 AppTextField(
@@ -90,6 +135,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       ? Validation.password
                       : Validation.required,
                   password: true,
+                  enabled: !s.busy,
                   autofillHints: [
                     widget.register
                         ? AutofillHints.newPassword
@@ -97,31 +143,25 @@ class _AuthScreenState extends State<AuthScreen> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                if (s.notice != null) ...[
-                  Text(s.notice!, textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                ],
-                if (s.error != null) ...[
-                  AppErrorWidget(message: s.error!),
-                  const SizedBox(height: 16),
-                ],
                 AppButton(
                   label: widget.register ? 'Create account' : 'Sign in',
-                  busy: s.busy,
+                  busy: s.busy && !s.googleSignIn,
                   icon: Icons.arrow_forward,
-                  onPressed: () async {
-                    if (!form.currentState!.validate()) return;
-                    final cubit = context.read<AuthCubit>();
-                    if (widget.register) {
-                      await cubit.register(
-                        name.text,
-                        email.text,
-                        password.text,
-                      );
-                    } else {
-                      await cubit.signIn(email.text, password.text);
-                    }
-                  },
+                  onPressed: s.busy
+                      ? null
+                      : () async {
+                          if (!form.currentState!.validate()) return;
+                          final cubit = context.read<AuthCubit>();
+                          if (widget.register) {
+                            await cubit.register(
+                              name.text,
+                              email.text,
+                              password.text,
+                            );
+                          } else {
+                            await cubit.signIn(email.text, password.text);
+                          }
+                        },
                 ),
               ],
             ),

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "657910556425",
+    "project_id": "booking-760d5",
+    "storage_bucket": "booking-760d5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:657910556425:android:de262e8daf075952c315d8",
+        "android_client_info": {
+          "package_name": "bookingservice.tatos.tech"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6VNIKiwNscSKOhwQ7r5mch-DaNFB-bAI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

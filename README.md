@@ -6,7 +6,7 @@ The public marketing homepage lives in [`landing-page/`](landing-page/README.md)
 
 ## Implemented
 
-- Owner registration/sign-in, password reset, email verification, secure persistent Supabase sessions (legacy Firebase support remains selectable) and sign-out.
+- Owner registration/sign-in with Google or email/password, password reset, email verification, secure persistent Supabase sessions (legacy Firebase support remains selectable) and sign-out. Google sign-in preserves staff invitations across browser/app restarts; see [Google sign-in](docs/supabase-only.md#google-sign-in).
 - Organization and first location: name, contact, separate address columns, country/state dropdowns, city, text postal code, IANA timezone and currency.
 - Optional, private organization logo (PNG/JPEG/WebP, up to 2 MB).
 - Six separate business types: Turf, Badminton Court, Tennis Court, Basketball Court, Swimming Pool and Party Hall.
@@ -22,6 +22,8 @@ A Sarvam phone voice agent can book, reschedule and cancel by phone, with owner-
 Bookings, daily Calendar and manual payment collections are implemented, including split payments and atomic rescheduling. Home shows live booking and collection figures. Admissions and coaching now support fixed weekly reservations, flexible attendance, expiry/completion and renewals. No payment gateway or email-delivery provider is included. The public booking website is prepared in `booking-website/`; its new migration and API/frontend deployment are required before enabling live bookings. See [Public booking website](docs/public-booking-website.md).
 
 ## Current Supabase setup
+
+The Android application ID/namespace and iOS Runner bundle ID are `bookingservice.tatos.tech`; iOS RunnerTests uses `bookingservice.tatos.tech.RunnerTests`. Register these exact identifiers when configuring native Google sign-in or Apple signing/provisioning. The auth/invitation URL scheme remains `com.bookingos.app`, independently of the installation identifier. Builds with the new ID install as a separate app from the old ID and do not inherit its local session or stored data.
 
 The connected app uses Supabase Auth, Supabase PostgreSQL and the hosted `booking-api` Edge Function in the **booking** project. Existing data stays in the private `booking_app` schema. The app works over the internet without a running Mac, local API or ADB forwarding.
 

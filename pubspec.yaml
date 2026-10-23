@@ -36,3 +36,5 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.4
 flutter:
   uses-material-design: true
+  assets:
+    - assets/auth/google-g.png

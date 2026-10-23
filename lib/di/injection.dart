@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/app_config.dart';
 import '../modules/auth/repositories/supabase_auth_repository.dart';
+import '../modules/auth/repositories/auth_continuation_repository.dart';
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/settings/application_setting.dart';
@@ -43,7 +44,17 @@ Future<void> configureDependencies() async {
   );
   registerFeatureDependencies(getIt);
   getIt.registerLazySingleton<LogoPickerService>(() => LogoPickerService());
-  getIt.registerFactory<AuthCubit>(() => AuthCubit(getIt()));
+  getIt.registerLazySingleton<AuthContinuationRepository>(
+    () => SecureAuthContinuationRepository(AppConfig.supabaseUrl),
+  );
+  getIt.registerFactory<AuthCubit>(
+    () => AuthCubit(
+      getIt(),
+      continuations: AppConfig.useSupabase
+          ? getIt<AuthContinuationRepository>()
+          : null,
+    ),
+  );
   getIt.registerLazySingleton<WorkspacePreloader>(
     () => WorkspacePreloader(
       getIt(),

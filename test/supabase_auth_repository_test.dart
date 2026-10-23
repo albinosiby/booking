@@ -10,6 +10,105 @@ void main() {
   late sb.SupabaseClient client;
   tearDown(() async => client.dispose());
   test(
+    'Google launch uses PKCE, the registered callback and account selection',
+    () async {
+      final storage = MemoryPkceStorage();
+      client = sb.SupabaseClient(
+        'https://project.supabase.co',
+        'sb_publishable_test',
+        authOptions: sb.AuthClientOptions(
+          autoRefreshToken: false,
+          authFlowType: sb.AuthFlowType.pkce,
+          pkceAsyncStorage: storage,
+        ),
+        httpClient: MockClient(
+          (_) async => throw StateError(
+            'OAuth launch must not send credentials to the API',
+          ),
+        ),
+      );
+      Uri? launched;
+      final repository = SupabaseAuthRepository(
+        client.auth,
+        launchOAuth: (url) async {
+          launched = url;
+          return true;
+        },
+      );
+      await repository.signInWithGoogle();
+      expect(launched!.host, 'project.supabase.co');
+      expect(launched!.path, '/auth/v1/authorize');
+      expect(launched!.queryParameters['provider'], 'google');
+      expect(
+        launched!.queryParameters['redirect_to'],
+        'com.bookingos.app://auth-callback/',
+      );
+      expect(launched!.queryParameters['prompt'], 'select_account');
+      expect(launched!.queryParameters['code_challenge_method'], 's256');
+      expect(launched!.queryParameters['code_challenge'], isNotEmpty);
+      expect(launched!.queryParameters.containsKey('invite'), isFalse);
+      expect(storage.values, isNotEmpty);
+      expect(
+        repository.currentUser,
+        isNull,
+        reason: 'Opening a browser must not authenticate anyone',
+      );
+    },
+  );
+  test('failed browser launch provides a retryable error', () async {
+    client = sb.SupabaseClient(
+      'https://project.supabase.co',
+      'sb_publishable_test',
+      authOptions: sb.AuthClientOptions(
+        autoRefreshToken: false,
+        pkceAsyncStorage: MemoryPkceStorage(),
+      ),
+    );
+    final repository = SupabaseAuthRepository(
+      client.auth,
+      launchOAuth: (_) async => false,
+    );
+    await expectLater(
+      repository.signInWithGoogle(),
+      throwsA(
+        isA<AppException>().having(
+          (e) => e.code,
+          'code',
+          'GOOGLE_LAUNCH_FAILED',
+        ),
+      ),
+    );
+    expect(repository.currentUser, isNull);
+  });
+  test(
+    'Google callbacks keep the web mount without forwarding private query data',
+    () {
+      client = sb.SupabaseClient(
+        'https://project.supabase.co',
+        'sb_publishable_test',
+        authOptions: const sb.AuthClientOptions(autoRefreshToken: false),
+      );
+      for (final route in ['sign-in', 'register']) {
+        expect(
+          googleOAuthRedirect(
+            isWeb: true,
+            webUri: Uri.parse(
+              'https://bookingos.online/app/$route?invite=private&from=%2Fprofile#secret',
+            ),
+          ),
+          'https://bookingos.online/app/auth-callback',
+        );
+        expect(
+          googleOAuthRedirect(
+            isWeb: true,
+            webUri: Uri.parse('https://app.bookingos.online/$route'),
+          ),
+          'https://app.bookingos.online/auth-callback',
+        );
+      }
+    },
+  );
+  test(
     'email-confirmation signup stays signed out with a useful next step',
     () async {
       client = sb.SupabaseClient(

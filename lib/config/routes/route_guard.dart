@@ -1,47 +1,35 @@
 import '../../modules/auth/cubit/auth_state.dart';
 import '../../modules/workspace/cubit/workspace_state.dart';
 import 'routes.dart';
-
-String? _safeDestination(String? value) {
-  if (value == null) return null;
-  final uri = Uri.tryParse(value);
-  if (uri == null ||
-      uri.hasScheme ||
-      uri.hasAuthority ||
-      !value.startsWith('/') ||
-      value.startsWith('//')) {
-    return null;
-  }
-  if ([
-    Routes.register,
-    Routes.signIn,
-    Routes.loading,
-    Routes.organization,
-    Routes.onboarding,
-    Routes.invite,
-    '/verify',
-    '/auth-callback',
-    '/auth-callback/',
-    '/update-password',
-  ].contains(uri.path)) {
-    return null;
-  }
-  return uri.toString();
-}
+import '../../modules/auth/models/auth_continuation.dart';
+import '../../utils/helpers/safe_return_path.dart';
 
 String? routeRedirect(
   AuthState auth,
   WorkspaceState workspace,
   Uri uri, {
   required bool requireVerification,
+  AuthContinuation? continuation,
 }) {
   final path = uri.path;
+  final canRestore =
+      const {
+        '/register',
+        '/sign-in',
+        '/loading',
+        '/verify',
+        '/auth-callback',
+        '/auth-callback/',
+      }.contains(path) &&
+      continuation?.isValidAt(DateTime.now()) == true;
   final invite =
       uri.queryParameters['invite'] ??
-      (path == Routes.invite ? uri.queryParameters['token'] : null);
+      (path == Routes.invite ? uri.queryParameters['token'] : null) ??
+      (canRestore ? continuation?.invitationToken : null);
   final destination =
-      _safeDestination(uri.queryParameters['from']) ??
-      _safeDestination(uri.toString());
+      safeReturnPath(uri.queryParameters['from']) ??
+      (canRestore ? continuation?.returnTo : null) ??
+      safeReturnPath(uri.toString());
   String navigate(String target) => Uri(
     path: target,
     queryParameters: {'from': ?destination, 'invite': ?invite},

@@ -1,6 +1,6 @@
 # Owner and staff guide
 
-1. Create an owner account using your personal full name, email and password. The organization name is collected in the next step. In production, verify your email before proceeding.
+1. Choose **Continue with Google**, or create an owner account using your personal full name, email and password. Google sign-in does not require filling in the email/password fields. The organization name is collected in the next step. Your sign-in email must be verified before proceeding.
 2. Enter the organization name and first property/branch details. For example, the organization can be “Eden’s Area” and the property/branch “Eden’s Area, Kochi”. They may use the same name if there is only one property. Logo and address line 2 are optional. Country and state are separate searchable selectors. Confirm timezone and currency.
 3. Select one or more of the six service cards. Review the suggested name for each selected service, then tap Add selected businesses. You can add more businesses later from Home/Profile.
 4. Open Home → Configure. For turf, use the six-step shared-ground wizard described below. For swimming pools, use the direct section editor described below. Badminton, Tennis and Basketball use the court settings overview; Party Hall uses its dedicated hall settings overview.
@@ -8,7 +8,7 @@
 6. For pools, add capacities/depths, tariffs and optional group/coaching/swimming plans. Swimming plans use 25 attendance days or a custom count with a separate expiry. Admission/attendance processing is a later module.
 7. Save rules, review, and activate. The setup button disappears for that business. Resource/rule edits require reactivation.
 8. Profile → Team & access → Invite staff. Enter name, email and responsibility; optionally enable Also a coach. Choose businesses, optional selected resources, and explicit permissions, including Mark attendance and Manage subscriptions independently. Create and privately share the invitation link. Creating it does not send an email.
-9. Staff open the link, sign in/register using the exact invited email, and accept. In production they must verify their email. The owner can edit staff or remove access from Team. After acceptance, coaching plans are assigned inside that person’s staff details; save resource access before changing plans. There is no separate Coaches page. See [Unified staff management](team-coaches.md).
+9. Staff open the link and choose **Continue with Google** with the exact invited email, or sign in/register using that email and a password. They return to **Accept invitation** after sign-in; choosing a Google account does not itself grant team access. If the wrong account is selected, choose **Use another account** on the invitation page. Their sign-in email must be verified. The owner can edit staff or remove access from Team. After acceptance, coaching plans are assigned inside that person’s staff details; save resource access before changing plans. There is no separate Coaches page. See [Unified staff management](team-coaches.md).
 10. Profile contains business setup, logo, address display, theme preference and sign-out. Long-press a business in Profile to rename it.
 
 Bookings, calendars and manual collections are available in the development build. Production setup and release validation are still required before live operations.
