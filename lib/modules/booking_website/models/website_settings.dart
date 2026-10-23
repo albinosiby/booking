@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 import 'package:equatable/equatable.dart';
 
+const websitePhotoLimit = 40, websiteSpacePhotoLimit = 4;
+
 /// A booking space and its website overrides. Null rules use the website defaults.
 class WebsiteSpace extends Equatable {
   const WebsiteSpace({
@@ -54,14 +56,16 @@ class WebsiteImage extends Equatable {
     this.businessId,
     this.resourceId,
     this.bytes,
+    this.pending = false,
   });
 
   /// `hero`, `logo`, `card` (service card on the homepage) or `space` (booking page gallery).
   final String id, kind;
   final String? businessId, resourceId;
   final Uint8List? bytes;
+  final bool pending;
   @override
-  List<Object?> get props => [id, kind, businessId, resourceId, bytes];
+  List<Object?> get props => [id, kind, businessId, resourceId, bytes, pending];
 }
 
 class WebsiteBusiness extends Equatable {
@@ -180,6 +184,7 @@ class WebsiteSettings extends Equatable {
     int? advanceDays,
     List<WebsiteBusiness>? businesses,
     List<String>? businessIds,
+    List<WebsiteImage>? images,
   }) => WebsiteSettings(
     version: version ?? this.version,
     slug: slug ?? this.slug,
@@ -198,7 +203,7 @@ class WebsiteSettings extends Equatable {
     businessIds: List.unmodifiable(businessIds ?? this.businessIds),
     domain: domain,
     url: url ?? this.url,
-    images: images,
+    images: List.unmodifiable(images ?? this.images),
   );
 
   /// The address visitors will use once saved, e.g. `https://eden.bookingos.online`.

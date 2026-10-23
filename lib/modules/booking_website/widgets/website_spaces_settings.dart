@@ -9,7 +9,6 @@ class WebsiteSpacesSettings extends StatelessWidget {
     super.key,
     required this.settings,
     required this.busy,
-    required this.photosLocked,
     required this.onToggleBusiness,
     required this.onBusiness,
     required this.onSpace,
@@ -21,8 +20,7 @@ class WebsiteSpacesSettings extends StatelessWidget {
   final WebsiteSettings settings;
   final bool embedded;
 
-  /// [photosLocked] while there are unsaved edits; photo changes save immediately.
-  final bool busy, photosLocked;
+  final bool busy;
   final void Function(String id, bool enabled) onToggleBusiness;
   final void Function(String id, WebsiteBusiness business) onBusiness;
   final void Function(String businessId, WebsiteSpace space) onSpace;
@@ -34,7 +32,7 @@ class WebsiteSpacesSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final photosDisabled = busy || photosLocked;
+    final photosDisabled = busy;
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -47,9 +45,7 @@ class WebsiteSpacesSettings extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          photosLocked
-              ? 'Save your changes before uploading photos.'
-              : 'Photo changes save immediately and are visible on your published website.',
+          'Photo changes are applied when you save your website.',
           style: TextStyle(color: theme.colorScheme.primary),
         ),
         if (settings.businesses.isEmpty)

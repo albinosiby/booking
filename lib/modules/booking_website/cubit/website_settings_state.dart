@@ -20,6 +20,10 @@ class WebsiteSettingsState extends Equatable {
   /// Bumped when an action rewrites several fields at once so their inputs refresh.
   final int revision;
   bool get dirty => saved != draft;
+  bool get settingsDirty =>
+      saved != null &&
+      draft != null &&
+      saved != draft!.copyWith(images: saved!.images);
   bool get addressDirty =>
       saved != null && draft != null && draft!.slug != saved!.slug;
   WebsiteSettingsState copyWith({

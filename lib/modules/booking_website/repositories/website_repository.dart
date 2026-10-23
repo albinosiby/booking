@@ -6,6 +6,8 @@ abstract interface class WebsiteRepository {
   Future<WebsiteSettings> save(WebsiteSettings draft);
   Future<WebsiteSettings> publication(String action, int version);
   Future<String> preview();
+
+  /// Selects and prepares a bounded JPEG locally; does not persist anything.
   Future<LogoSelection?> pickImage();
 
   /// [kind] is `hero`, `logo`, `card` (needs [businessId]) or `space` (needs both ids).

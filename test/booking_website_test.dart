@@ -14,6 +14,7 @@ import 'package:eden_booking/modules/booking_website/repositories/website_reposi
 import 'package:eden_booking/modules/booking_website/repositories/rest_website_repository.dart';
 import 'package:eden_booking/modules/booking_website/screens/website_settings_screen.dart';
 import 'package:eden_booking/modules/booking_website/widgets/website_editor_section.dart';
+import 'package:eden_booking/modules/booking_website/widgets/website_photo_settings.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
@@ -63,9 +64,14 @@ class TestWebsiteRepository implements WebsiteRepository {
             : 'https://eden-sports.bookingos.online',
       );
   WebsiteSettings value;
-  int reads = 0, saves = 0, uploads = 0, picks = 0;
+  int reads = 0, saves = 0, uploads = 0, picks = 0, removals = 0;
   String? saveError;
+  int? failUploadAt;
+  final writeVersions = <int>[];
+  final photoWrites = <WebsiteImage>[];
+  final photoOperations = <String>[];
   Completer<void>? delayedSave;
+  Completer<void>? delayedUpload;
   String? uploadedBusiness, uploadedResource, uploadedKind;
   Completer<LogoSelection?>? delayedPick;
   LogoSelection? selectedPhoto;
@@ -80,9 +86,11 @@ class TestWebsiteRepository implements WebsiteRepository {
   @override
   Future<WebsiteSettings> save(WebsiteSettings draft) async {
     saves++;
+    writeVersions.add(draft.version);
     if (delayedSave != null) await delayedSave!.future;
     if (saveError != null) throw AppException(saveError!);
     value = draft.copyWith(
+      images: value.images,
       version: value.version + 1,
       url: draft.domain == null
           ? Uri.parse(value.url!).replace(path: '/${draft.slug}').toString()
@@ -112,14 +120,55 @@ class TestWebsiteRepository implements WebsiteRepository {
     String? resourceId,
   }) async {
     uploads++;
+    photoOperations.add('upload:$kind');
+    writeVersions.add(version);
+    expect(version, value.version);
+    if (uploads == failUploadAt) {
+      throw const AppException('Photo upload failed.', code: 'REQUEST_ERROR');
+    }
+    if (delayedUpload != null) await delayedUpload!.future;
     uploadedKind = kind;
     uploadedBusiness = businessId;
     uploadedResource = resourceId;
+    final photo = WebsiteImage(
+      id: 'saved-photo-$uploads',
+      kind: kind,
+      businessId: businessId,
+      resourceId: resourceId,
+      bytes: image.bytes,
+    );
+    photoWrites.add(photo);
+    value = value.copyWith(
+      version: value.version + 1,
+      images: [
+        for (final current in value.images)
+          if (kind == 'space' ||
+              current.kind != kind ||
+              current.businessId != businessId ||
+              current.resourceId != resourceId)
+            current,
+        photo,
+      ],
+    );
     return value;
   }
 
   @override
-  Future<WebsiteSettings> removeImage(String id, int version) async => value;
+  Future<WebsiteSettings> removeImage(String id, int version) async {
+    removals++;
+    photoOperations.add('remove:$id');
+    writeVersions.add(version);
+    expect(version, value.version);
+    value = value.copyWith(
+      version: value.version + 1,
+      images: [
+        for (final image in value.images)
+          if (image.id != id) image,
+      ],
+    );
+    return value;
+  }
+
   @override
   Future<String> preview() async => '${value.url}?preview=test';
   @override
@@ -282,7 +331,7 @@ void main() {
     },
   );
   test(
-    'photo upload is scoped to a space and blocked until edits are saved',
+    'all photo kinds stay local alongside text edits until Save changes',
     () async {
       final workspace = WorkspaceCubit(BookingSource());
       await workspace.load();
@@ -295,20 +344,36 @@ void main() {
       await cubit.load();
       cubit.update(cubit.state.draft!.copyWith(title: 'Unsaved title'));
       await cubit.photo();
-      expect(repo.picks, 0);
-      await cubit.save();
       await cubit.photo(businessId: 'business', resourceId: 'court-1');
-      expect(repo.uploads, 1);
-      expect(repo.uploadedBusiness, 'business');
-      expect(repo.uploadedResource, 'court-1');
-      expect(repo.uploadedKind, 'space');
       await cubit.photo(kind: 'card', businessId: 'pool');
-      expect(repo.uploadedKind, 'card');
-      expect(repo.uploadedResource, isNull);
       await cubit.photo(kind: 'logo');
+      expect(repo.picks, 4);
+      expect(repo.saves, 0);
+      expect(repo.uploads, 0);
+      expect(repo.value.images, isEmpty);
+      expect(repo.value.title, 'Eden Sports');
+      expect(cubit.state.draft!.title, 'Unsaved title');
+      expect(cubit.state.draft!.images, hasLength(4));
+      expect(cubit.state.draft!.images.every((i) => i.pending), isTrue);
+      expect(cubit.state.dirty, isTrue);
+      await cubit.save();
+      expect(repo.saves, 1);
+      expect(repo.uploads, 4);
+      expect(repo.photoWrites.map((i) => i.kind), [
+        'hero',
+        'space',
+        'card',
+        'logo',
+      ]);
+      expect(repo.photoWrites[1].businessId, 'business');
+      expect(repo.photoWrites[1].resourceId, 'court-1');
+      expect(repo.photoWrites[2].businessId, 'pool');
+      expect(repo.photoWrites[2].resourceId, isNull);
+      expect(repo.writeVersions, [1, 2, 3, 4, 5]);
       expect(repo.uploadedKind, 'logo');
       expect(repo.uploadedBusiness, isNull);
-      expect(cubit.state.message, 'Website photo saved.');
+      expect(cubit.state.saved!.images.every((i) => !i.pending), isTrue);
+      expect(cubit.state.message, 'Website settings saved.');
       expect(cubit.state.dirty, isFalse);
       expect(cubit.state.busy, isFalse);
       await cubit.close();
@@ -338,6 +403,387 @@ void main() {
       await scopedWorkspace.close();
     },
   );
+  test(
+    'replacing a logo twice uploads only the final selection on save',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository();
+      repo.value = repo.value.copyWith(
+        images: const [WebsiteImage(id: 'old-logo', kind: 'logo')],
+      );
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      repo.selectedPhoto = LogoSelection(Uint8List.fromList([1]), 'image/jpeg');
+      await cubit.photo(kind: 'logo');
+      repo.selectedPhoto = LogoSelection(Uint8List.fromList([2]), 'image/jpeg');
+      await cubit.photo(kind: 'logo');
+      expect(cubit.state.draft!.images, hasLength(1));
+      expect(repo.value.images.single.id, 'old-logo');
+      expect(repo.uploads, 0);
+      expect(cubit.state.settingsDirty, isFalse);
+      await cubit.save();
+      expect(repo.saves, 0);
+      expect(repo.removals, 0);
+      expect(repo.uploads, 1);
+      expect(repo.value.images.single.bytes, [2]);
+      expect(cubit.state.dirty, isFalse);
+    },
+  );
+
+  test(
+    'removals stay local and removing a new selection cancels its upload',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository();
+      repo.value = repo.value.copyWith(
+        images: const [WebsiteImage(id: 'old-logo', kind: 'logo')],
+      );
+      repo.selectedPhoto = LogoSelection(Uint8List.fromList([1]), 'image/jpeg');
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      await cubit.photo();
+      await cubit.photo(removeId: cubit.state.draft!.image('hero')!.id);
+      expect(cubit.state.dirty, isFalse);
+      await cubit.photo(removeId: 'old-logo');
+      expect(repo.value.images, hasLength(1));
+      expect(repo.removals, 0);
+      expect(cubit.state.dirty, isTrue);
+      await cubit.save();
+      expect(repo.removals, 1);
+      expect(repo.uploads, 0);
+      expect(repo.saves, 0);
+      expect(repo.value.images, isEmpty);
+      expect(cubit.state.dirty, isFalse);
+    },
+  );
+
+  test(
+    'failed photo save retains remaining changes without repeating acknowledged writes',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository()
+        ..selectedPhoto = LogoSelection(Uint8List.fromList([1]), 'image/jpeg')
+        ..failUploadAt = 2;
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      cubit.update(
+        cubit.state.draft!.copyWith(title: 'Saved after explicit click'),
+      );
+      await cubit.photo();
+      await cubit.photo(kind: 'logo');
+      await cubit.save();
+      expect(repo.saves, 1);
+      expect(repo.value.images.map((i) => i.kind), ['hero']);
+      expect(
+        cubit.state.draft!.images.where((i) => i.pending).map((i) => i.kind),
+        ['logo'],
+      );
+      expect(cubit.state.dirty, isTrue);
+      expect(cubit.state.settingsDirty, isFalse);
+      expect(cubit.state.error, contains('Photo upload failed'));
+      expect(cubit.state.busy, isFalse);
+      repo.failUploadAt = null;
+      await cubit.save();
+      expect(repo.saves, 1);
+      expect(repo.photoWrites.map((i) => i.kind), ['hero', 'logo']);
+      expect(repo.value.images, hasLength(2));
+      expect(cubit.state.dirty, isFalse);
+    },
+  );
+
+  test(
+    'address-only save preserves pending photos and other design edits',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository()
+        ..selectedPhoto = LogoSelection(Uint8List.fromList([1]), 'image/jpeg');
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      cubit.update(
+        cubit.state.draft!.copyWith(slug: 'new-name', title: 'Not saved yet'),
+      );
+      await cubit.photo(kind: 'logo');
+      await cubit.saveAddress();
+      expect(repo.value.slug, 'new-name');
+      expect(repo.value.title, 'Eden Sports');
+      expect(repo.value.images, isEmpty);
+      expect(repo.uploads, 0);
+      expect(cubit.state.draft!.images.single.pending, isTrue);
+      expect(cubit.state.draft!.title, 'Not saved yet');
+      expect(cubit.state.dirty, isTrue);
+      await cubit.save();
+      expect(repo.value.title, 'Not saved yet');
+      expect(repo.uploads, 1);
+      expect(cubit.state.dirty, isFalse);
+    },
+  );
+  test(
+    'saving a gallery replacement frees the persisted slot before uploading',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository()
+        ..selectedPhoto = LogoSelection(Uint8List.fromList([1]), 'image/jpeg');
+      repo.value = repo.value.copyWith(
+        images: [
+          for (var i = 0; i < 4; i++)
+            WebsiteImage(
+              id: 'saved-$i',
+              kind: 'space',
+              businessId: 'business',
+              resourceId: 'court-1',
+            ),
+        ],
+      );
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      await cubit.photo(removeId: 'saved-0');
+      await cubit.photo(businessId: 'business', resourceId: 'court-1');
+      expect(repo.value.images, hasLength(4));
+      expect(repo.removals, 0);
+      expect(repo.uploads, 0);
+      await cubit.save();
+      expect(repo.removals, 1);
+      expect(repo.uploads, 1);
+      expect(repo.writeVersions, [1, 2]);
+      expect(repo.photoOperations, ['remove:saved-0', 'upload:space']);
+      expect(repo.value.images, hasLength(4));
+      expect(repo.value.images.any((i) => i.id == 'saved-0'), isFalse);
+      expect(cubit.state.dirty, isFalse);
+    },
+  );
+
+  test(
+    'workspace changes during save stop the remaining photo uploads and publication',
+    () async {
+      final source = BookingSource();
+      final workspace = WorkspaceCubit(source);
+      await workspace.load();
+      final repo = TestWebsiteRepository()
+        ..selectedPhoto = LogoSelection(Uint8List.fromList([1]), 'image/jpeg')
+        ..delayedUpload = Completer<void>();
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      await cubit.photo();
+      await cubit.photo(kind: 'logo');
+      final saving = cubit.save(action: 'publish');
+      await cubit.save(action: 'publish');
+      expect(repo.uploads, 1);
+      source.value = const Workspace();
+      await workspace.load();
+      repo.delayedUpload!.complete();
+      await saving;
+      expect(repo.uploads, 1);
+      expect(repo.actions, isEmpty);
+      expect(cubit.state.saved, isNull);
+      expect(cubit.state.draft, isNull);
+    },
+  );
+
+  test(
+    'local gallery selection enforces the four-photo limit and frees removed slots',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository()
+        ..selectedPhoto = LogoSelection(Uint8List.fromList([1]), 'image/jpeg');
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      for (var i = 0; i < 5; i++) {
+        await cubit.photo(businessId: 'business', resourceId: 'court-1');
+      }
+      expect(repo.picks, 4);
+      expect(repo.uploads, 0);
+      expect(cubit.state.draft!.images, hasLength(4));
+      expect(cubit.state.error, contains('Photo limit'));
+      await cubit.photo(removeId: cubit.state.draft!.images.first.id);
+      await cubit.photo(businessId: 'business', resourceId: 'court-1');
+      expect(repo.picks, 5);
+      await cubit.save();
+      expect(repo.value.images, hasLength(4));
+      expect(repo.uploads, 4);
+      expect(cubit.state.dirty, isFalse);
+    },
+  );
+
+  test(
+    'cancelling photo selection keeps existing text edits without writing',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository();
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      cubit.update(cubit.state.draft!.copyWith(title: 'Keep this edit'));
+      await cubit.photo();
+      expect(cubit.state.draft!.title, 'Keep this edit');
+      expect(cubit.state.draft!.images, isEmpty);
+      expect(repo.saves, 0);
+      expect(repo.uploads, 0);
+      expect(cubit.state.busy, isFalse);
+      expect(cubit.state.dirty, isTrue);
+    },
+  );
+  test(
+    'the total draft photo limit allows replacing an existing single-photo slot',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository()
+        ..selectedPhoto = LogoSelection(Uint8List.fromList([1]), 'image/jpeg');
+      repo.value = repo.value.copyWith(
+        images: [
+          const WebsiteImage(id: 'hero', kind: 'hero'),
+          for (var i = 1; i < websitePhotoLimit; i++)
+            WebsiteImage(
+              id: 'photo-$i',
+              kind: 'space',
+              businessId: 'business',
+              resourceId: 'space-$i',
+            ),
+        ],
+      );
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      addTearDown(() async {
+        await cubit.close();
+        await workspace.close();
+      });
+      await cubit.load();
+      await cubit.photo(kind: 'logo');
+      expect(repo.picks, 0);
+      expect(cubit.state.error, contains('Photo limit'));
+      await cubit.photo();
+      expect(repo.picks, 1);
+      expect(cubit.state.draft!.images, hasLength(websitePhotoLimit));
+      await cubit.save();
+      expect(repo.uploads, 1);
+      expect(repo.removals, 0);
+      expect(cubit.state.dirty, isFalse);
+    },
+  );
+
+  for (final width in [390.0, 1440.0]) {
+    testWidgets(
+      'logo selection stays unsaved until the save button at $width pixels',
+      (tester) async {
+        tester.view.physicalSize = Size(width, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final workspace = WorkspaceCubit(BookingSource());
+        await workspace.load();
+        final repo = TestWebsiteRepository()
+          ..selectedPhoto = LogoSelection(
+            Uint8List.fromList(img.encodeJpg(img.Image(width: 4, height: 4))),
+            'image/jpeg',
+          );
+        getIt
+            .registerFactoryParam<WebsiteSettingsCubit, WorkspaceSession, void>(
+              (s, _) => WebsiteSettingsCubit(s, repo),
+            );
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox());
+          await workspace.close();
+        });
+        await tester.pumpWidget(
+          BlocProvider.value(
+            value: workspace,
+            child: ScreenUtilInit(
+              designSize: const Size(390, 844),
+              builder: (_, _) =>
+                  MaterialApp(home: const WebsiteSettingsScreen()),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final editor = find.byKey(
+          const PageStorageKey('website-editor-content'),
+        );
+        final brand = width >= 1180
+            ? find.byKey(const ValueKey('website-nav-1'))
+            : find.descendant(
+                of: editor,
+                matching: find.text('Brand & homepage'),
+              );
+        await tester.ensureVisible(brand);
+        await tester.tap(brand);
+        await tester.pumpAndSettle();
+        final title = find.widgetWithText(TextFormField, 'Website title');
+        await tester.ensureVisible(title);
+        await tester.enterText(title, 'Venue with a pending logo');
+        await tester.pumpAndSettle();
+        final slot = find.ancestor(
+          of: find.text('Website logo'),
+          matching: find.byType(WebsitePhotoSlot),
+        );
+        final upload = find.descendant(
+          of: slot,
+          matching: find.widgetWithText(OutlinedButton, 'Upload photo'),
+        );
+        await tester.ensureVisible(upload);
+        await tester.tap(upload);
+        await tester.pumpAndSettle();
+        expect(repo.picks, 1);
+        expect(repo.saves, 0);
+        expect(repo.uploads, 0);
+        expect(repo.value.images, isEmpty);
+        expect(find.text('Not saved yet'), findsOneWidget);
+        expect(find.text('You have unsaved changes'), findsOneWidget);
+        final save = find.widgetWithText(AppButton, 'Save changes');
+        expect(tester.widget<AppButton>(save).onPressed, isNotNull);
+        expect(
+          tester
+              .widget<AppButton>(find.widgetWithText(AppButton, 'Preview'))
+              .onPressed,
+          isNull,
+        );
+        await tester.tap(save);
+        await tester.pumpAndSettle();
+        expect(repo.saves, 1);
+        expect(repo.uploads, 1);
+        expect(repo.value.title, 'Venue with a pending logo');
+        expect(repo.value.images.single.kind, 'logo');
+        expect(find.text('Not saved yet'), findsNothing);
+        expect(find.text('All changes saved'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   test(
     'one space\'s booking rules can be copied to every space and saved',
     () async {

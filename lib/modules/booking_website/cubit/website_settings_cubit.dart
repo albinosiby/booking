@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../utils/exceptions/app_exception.dart';
+import '../../../utils/services/logo_picker_service.dart';
 import '../../workspace/models/workspace_access.dart';
 import '../../workspace/repositories/workspace_session.dart';
 import '../models/website_settings.dart';
@@ -28,6 +30,7 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
   late final String scope;
   late final StreamSubscription subscription;
   int generation = 0;
+  int photoSequence = 0;
   bool get owner =>
       session.state.data.isOwner &&
       session.state.data.organization != null &&
@@ -160,13 +163,63 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
   }
 
   Future<void> save({String? action}) async {
-    if (!owner || state.busy || state.draft == null) return;
-    final g = ++generation, draft = state.draft!;
+    if (!owner || state.busy || state.saved == null || state.draft == null) {
+      return;
+    }
+    final g = ++generation;
+    var draft = state.draft!, saved = state.saved!;
     emit(state.copyWith(busy: true));
+    void accept(WebsiteSettings result, {List<WebsiteImage>? images}) {
+      saved = result;
+      draft = saved.copyWith(images: images ?? draft.images);
+      emit(state.copyWith(saved: saved, draft: draft, busy: true));
+    }
+
     try {
-      var saved = state.dirty ? await repository.save(draft) : state.saved!;
-      if (!valid(g)) return;
-      emit(state.copyWith(saved: saved, draft: saved, busy: true));
+      if (state.settingsDirty) {
+        final result = await repository.save(draft);
+        if (!valid(g)) return;
+        accept(result);
+      }
+      // Single-photo uploads replace their existing slot atomically on the API.
+      // Other removals run first to free gallery positions and the photo budget.
+      final removals = saved.images
+          .where(
+            (image) =>
+                !draft.images.any((i) => i.id == image.id) &&
+                !draft.images.any(
+                  (i) =>
+                      i.pending && i.kind != 'space' && samePhotoSlot(i, image),
+                ),
+          )
+          .toList();
+      for (final image in removals) {
+        final result = await repository.removeImage(image.id, saved.version);
+        if (!valid(g)) return;
+        accept(result);
+      }
+      for (final image in draft.images.where((i) => i.pending).toList()) {
+        final previousIds = saved.images.map((i) => i.id).toSet();
+        final result = await repository.uploadImage(
+          LogoSelection(image.bytes!, 'image/jpeg'),
+          saved.version,
+          kind: image.kind,
+          businessId: image.businessId,
+          resourceId: image.resourceId,
+        );
+        if (!valid(g)) return;
+        final uploaded = result.images
+            .where(
+              (i) => !previousIds.contains(i.id) && samePhotoSlot(i, image),
+            )
+            .single;
+        accept(
+          result,
+          images: [
+            for (final i in draft.images) i.id == image.id ? uploaded : i,
+          ],
+        );
+      }
       if (action != null) {
         saved = await repository.publication(action, saved.version);
       }
@@ -193,70 +246,99 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
             busy: false,
             addressError: state.addressDirty ? failure(e) : null,
             error:
-                '${failure(e)} Reload settings before retrying an uncertain save.',
+                '${failure(e)} Your remaining edits are kept here. Reload settings before retrying an uncertain save.',
           ),
         );
       }
     }
   }
 
-  /// Uploads a `hero` (default), `logo`, `card` or `space` photo, or removes [removeId].
+  bool samePhotoSlot(WebsiteImage a, WebsiteImage b) =>
+      a.kind == b.kind &&
+      a.businessId == b.businessId &&
+      a.resourceId == b.resourceId;
+
+  /// Stages a local photo selection/removal. Only [save] persists photo changes.
   Future<void> photo({
     String? kind,
     String? businessId,
     String? resourceId,
     String? removeId,
   }) async {
-    if (!owner || state.busy || state.draft == null || state.dirty) return;
+    if (!owner || state.busy || state.loading || state.draft == null) return;
+    final draft = state.draft!;
+    if (removeId != null) {
+      update(
+        draft.copyWith(
+          images: [
+            for (final image in draft.images)
+              if (image.id != removeId) image,
+          ],
+        ),
+      );
+      return;
+    }
+    final photoKind =
+        kind ??
+        (resourceId != null
+            ? 'space'
+            : businessId != null
+            ? 'card'
+            : 'hero');
+    final slot = WebsiteImage(
+      id: '',
+      kind: photoKind,
+      businessId: businessId,
+      resourceId: resourceId,
+    );
+    final existing = draft.images.where((i) => samePhotoSlot(i, slot)).length;
+    final replaces = photoKind != 'space' && existing > 0;
+    if ((!replaces && draft.images.length >= websitePhotoLimit) ||
+        (photoKind == 'space' && existing >= websiteSpacePhotoLimit)) {
+      emit(
+        state.copyWith(
+          error: 'Photo limit reached. Remove a photo before adding another.',
+        ),
+      );
+      return;
+    }
     final g = ++generation;
     emit(state.copyWith(busy: true));
     try {
-      final version = state.saved!.version;
-      WebsiteSettings saved;
-      if (removeId != null) {
-        saved = await repository.removeImage(removeId, version);
-      } else {
-        final image = await repository.pickImage();
-        if (!valid(g)) return;
-        if (image == null) {
-          emit(state.copyWith(busy: false));
-          return;
-        }
-        saved = await repository.uploadImage(
-          image,
-          version,
-          kind:
-              kind ??
-              (resourceId != null
-                  ? 'space'
-                  : businessId != null
-                  ? 'card'
-                  : 'hero'),
-          businessId: businessId,
-          resourceId: resourceId,
-        );
+      final selected = await repository.pickImage();
+      if (!valid(g)) return;
+      if (selected == null) {
+        emit(state.copyWith(busy: false));
+        return;
       }
-      if (valid(g)) {
-        emit(
-          WebsiteSettingsState(
-            saved: saved,
-            draft: saved,
-            loading: false,
-            message: removeId == null
-                ? 'Website photo saved.'
-                : 'Website photo removed.',
+      if (selected.bytes.isEmpty || selected.bytes.length > 1024 * 1024) {
+        throw const AppException('Choose an image up to 1 MB.');
+      }
+      final image = WebsiteImage(
+        id: 'pending-photo-${++photoSequence}',
+        kind: photoKind,
+        businessId: businessId,
+        resourceId: resourceId,
+        bytes: Uint8List.fromList(selected.bytes).asUnmodifiableView(),
+        pending: true,
+      );
+      emit(
+        state.copyWith(
+          draft: draft.copyWith(
+            images: [
+              for (final current in draft.images)
+                if (photoKind == 'space' || !samePhotoSlot(current, image))
+                  current,
+              image,
+            ],
           ),
-        );
-      }
+          busy: false,
+          message: 'Photo selected. Save changes to apply it.',
+        ),
+      );
     } catch (e) {
       if (valid(g)) {
-        emit(
-          state.copyWith(
-            busy: false,
-            error:
-                '${failure(e)} Reload settings before retrying an uncertain upload.',
-          ),
-        );
+        emit(state.copyWith(busy: false, error: failure(e)));
       }
     }
   }

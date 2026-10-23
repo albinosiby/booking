@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../models/website_settings.dart';
 
-/// Website photo limits enforced by the API.
-const websitePhotoLimit = 40, websiteSpacePhotoLimit = 4;
-
 class WebsitePhotoTile extends StatelessWidget {
   const WebsitePhotoTile({
     super.key,
@@ -48,6 +45,14 @@ class WebsitePhotoTile extends StatelessWidget {
                     ),
                   ),
           ),
+          if (image.pending)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Not saved yet',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ),
           TextButton.icon(
             onPressed: disabled ? null : () => onRemove(image.id),
             icon: const Icon(Icons.delete_outline, size: 18),

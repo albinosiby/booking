@@ -357,7 +357,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
       help: 'A square logo works best. It appears in the header of every page.',
       image: d.image('logo'),
       settings: d,
-      disabled: s.busy || s.dirty,
+      disabled: s.busy,
       height: 96,
       onUpload: () => cubit.photo(kind: 'logo'),
       onRemove: (id) => cubit.photo(removeId: id),
@@ -420,19 +420,18 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
           'Use a wide photo of your venue. The heading and description are placed over it.',
       image: d.image('hero'),
       settings: d,
-      disabled: s.busy || s.dirty,
+      disabled: s.busy,
       wide: true,
       onUpload: () => cubit.photo(kind: 'hero'),
       onRemove: (id) => cubit.photo(removeId: id),
     ),
-    if (s.dirty)
-      Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(
-          'Save your changes before uploading photos.',
-          style: TextStyle(color: Theme.of(context).colorScheme.primary),
-        ),
+    Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        'Logo and photo changes are applied when you save your website.',
+        style: TextStyle(color: Theme.of(context).colorScheme.primary),
       ),
+    ),
   ]);
 
   Widget social(WebsiteSettings d) => section(
@@ -722,7 +721,6 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
                 embedded: true,
                 settings: d,
                 busy: s.busy,
-                photosLocked: s.dirty,
                 onToggleBusiness: cubit.toggleBusiness,
                 onBusiness: (id, b) => cubit.updateBusiness(id, (_) => b),
                 onSpace: cubit.updateSpace,
