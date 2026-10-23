@@ -30,11 +30,15 @@ Future<void> mountAuth(
   bool invitation = false,
   Size size = const Size(390, 844),
   bool light = false,
+  double textScale = 1,
+  double keyboardInset = 0,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
+  tester.view.viewInsets = FakeViewPadding(bottom: keyboardInset);
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.resetViewInsets);
   await tester.pumpWidget(
     BlocProvider.value(
       value: auth,
@@ -71,6 +75,12 @@ Future<void> mountAuth(
           }
           return MaterialApp(
             theme: theme,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(textScale)),
+              child: child!,
+            ),
             home: RepaintBoundary(
               key: const ValueKey('auth-preview'),
               child: AuthSplitLayout(
@@ -87,32 +97,38 @@ Future<void> mountAuth(
     ),
   );
   await tester.pumpAndSettle();
-  if (find.byType(GoogleSignInButton).evaluate().isNotEmpty) {
+  for (final asset in [
+    'assets/branding/booking_os_launcher.png',
+    if (find.byType(GoogleSignInButton).evaluate().isNotEmpty)
+      'assets/auth/google-g.png',
+  ]) {
     await tester.runAsync(
       () => precacheImage(
-        const AssetImage('assets/auth/google-g.png'),
-        tester.element(find.byType(GoogleSignInButton)),
+        AssetImage(asset),
+        tester.element(find.byType(AuthScreen)),
       ),
     );
     await tester.pumpAndSettle();
   }
 }
 
+Future<void> loadAuthPreviewFonts() async {
+  if (!const bool.fromEnvironment('AUTH_PREVIEWS')) return;
+  for (final font in {
+    'Roboto': 'Roboto-Regular.ttf',
+    'MaterialIcons': 'MaterialIcons-Regular.otf',
+  }.entries) {
+    final bytes = await File(
+      '/tmp/home-preview-fonts/${font.value}',
+    ).readAsBytes();
+    await (FontLoader(
+      font.key,
+    )..addFont(Future.value(ByteData.sublistView(bytes)))).load();
+  }
+}
+
 void main() {
-  setUpAll(() async {
-    if (!const bool.fromEnvironment('AUTH_PREVIEWS')) return;
-    for (final font in {
-      'Roboto': 'Roboto-Regular.ttf',
-      'MaterialIcons': 'MaterialIcons-Regular.otf',
-    }.entries) {
-      final bytes = await File(
-        '/tmp/home-preview-fonts/${font.value}',
-      ).readAsBytes();
-      await (FontLoader(
-        font.key,
-      )..addFont(Future.value(ByteData.sublistView(bytes)))).load();
-    }
-  });
+  setUpAll(loadAuthPreviewFonts);
   for (final config in [
     (390.0, false, false),
     (1440.0, true, false),

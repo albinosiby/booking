@@ -1,5 +1,7 @@
 # Owner and staff guide
 
+On app and web, the sign-in card supports email/password or **Continue with Google** below the form. The email keyboard's Next action moves to Password, and Done submits the form. Use the eye icon to show or hide your password. **Forgot password?** sits beside the password label and requests a reset for the email entered above. The form scrolls when the keyboard is open or text is enlarged. Wide web windows also show an illustrative calendar beside the form.
+
 1. Choose **Continue with Google**, or create an owner account using your personal full name, email and password. Google sign-in does not require filling in the email/password fields. The organization name is collected in the next step. Your sign-in email must be verified before proceeding.
 2. Enter the organization name and first property/branch details. For example, the organization can be “Eden’s Area” and the property/branch “Eden’s Area, Kochi”. They may use the same name if there is only one property. Logo and address line 2 are optional. Country and state are separate searchable selectors. Confirm timezone and currency.
 3. Select one or more of the six service cards. Review the suggested name for each selected service, then tap Add selected businesses. You can add more businesses later from Home/Profile.

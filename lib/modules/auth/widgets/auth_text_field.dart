@@ -94,7 +94,7 @@ class _AuthTextFieldState extends State<AuthTextField> {
                 color: scheme.onSurface.withValues(alpha: .45),
               ),
               hintStyle: TextStyle(
-                color: scheme.onSurface.withValues(alpha: .38),
+                color: scheme.onSurface.withValues(alpha: .6),
                 fontSize: 14,
               ),
               errorMaxLines: 3,

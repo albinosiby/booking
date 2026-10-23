@@ -50,6 +50,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> resetPassword() async {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     if (Validation.email(email.text) != null) {
       showMessage(context, 'Enter your email address first.');
       emailFocus.requestFocus();
@@ -179,10 +180,13 @@ class _AuthScreenState extends State<AuthScreen> {
                                   horizontal: 2,
                                 ),
                                 minimumSize: const Size(48, 48),
-                                textStyle: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                                textStyle: Theme.of(context)
+                                    .textTheme
+                                    .labelMedium
+                                    ?.copyWith(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                               ),
                               child: const Text('Forgot password?'),
                             ),

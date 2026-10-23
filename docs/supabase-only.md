@@ -26,6 +26,12 @@ Staff invitation URLs use the hosted function. A validated `/invite?token=...` r
 
 ## Google sign-in
 
+### Shared app and web login layout
+
+The native app and Flutter web use the same focused authentication card. `AuthFormLayout` caps its width at 420 logical pixels, vertically centers it when there is room and scrolls when the keyboard, landscape viewport, validation messages or enlarged text need more space. The original lime B/check artwork is bundled from `assets/branding/booking_os_launcher.png` and rendered by the shared `BookingBrand` component. At 1200 logical pixels and wider, `AuthSplitLayout` adds a charcoal brand panel with a decorative weekly-calendar preview; the illustration has no connection to account data or booking availability. Tablet and phone layouts use the single form.
+
+Visible field labels, email/password icons, password visibility, next/done keyboard actions, inline password recovery and a separate account-switch link support email sign-in. Google remains below the form and divider. Recovery replaces an earlier snackbar so a successful reset request is not hidden behind a stale validation prompt. Light/dark surfaces follow the existing theme, and the same form style covers registration and staff invitations. Existing Cubit/repository authentication, callback routing and access checks remain in place; this layout adds no API, database or hosting configuration.
+
 The Supabase sign-in and registration pages offer **Continue with Google** alongside email/password. The button uses the existing Supabase client to generate a PKCE OAuth authorization URL, requests Google's account selector, and opens the browser in the same web tab or in the native external browser. The installed Supabase Flutter SDK handles the callback and session exchange. Only a completed, verified Supabase session can open authenticated pages. The legacy Firebase connection does not advertise Google sign-in.
 
 Google client IDs/secrets belong in the Supabase Google provider settings, not Flutter source. The user configures these settings. Native Google sign-in here uses browser OAuth; it does not consume `google-services.json` or require a native Google SDK. The native installation/bundle identifier is `bookingservice.tatos.tech`, while the registered browser return scheme is independently `bookingservice.tatos.tech://auth-callback/`.
