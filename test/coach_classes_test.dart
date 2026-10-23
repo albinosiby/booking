@@ -1,3 +1,7 @@
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
+import 'package:eden_booking/modules/workspace/repositories/workspace_session.dart';
+import 'booking_module_test.dart' show BookingSource;
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -114,15 +118,19 @@ void main() {
       ..days['2030-06-04'] = [
         batch([student('1'), student('2')]),
       ];
-    getIt.registerFactory<CoachClassesCubit>(
-      () => CoachClassesCubit(api, today: DateTime(2030, 6, 4)),
+    getIt.registerFactoryParam<CoachClassesCubit, WorkspaceSession, void>(
+      (session, _) =>
+          CoachClassesCubit(api, session: session, today: DateTime(2030, 6, 4)),
     );
     await tester.pumpWidget(
       ScreenUtilInit(
         designSize: const Size(390, 844),
         builder: (_, _) => MaterialApp(
           theme: AppTheme.build(Brightness.light),
-          home: const CoachClassesScreen(),
+          home: BlocProvider(
+            create: (_) => WorkspaceCubit(BookingSource()),
+            child: const CoachClassesScreen(),
+          ),
         ),
       ),
     );

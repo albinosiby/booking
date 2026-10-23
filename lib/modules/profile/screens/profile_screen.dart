@@ -1,3 +1,4 @@
+import '../../workspace/models/workspace_navigation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -66,25 +67,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'Your coaching classes and attendance',
             Routes.myClasses,
           ),
-        if ([
-          'view_bookings',
-          'manage_bookings',
-          'collect_payments',
-        ].any(w.hasPermission))
+        if (WorkspaceNavigation(w).customers)
           const _Destination(
             Icons.people_outline,
             'Customers',
             'Find phone numbers and booking history',
             Routes.customers,
           ),
-        if ([
-          'view_bookings',
-          'manage_bookings',
-          'manage_attendance',
-          'mark_attendance',
-          'manage_subscriptions',
-          'collect_payments',
-        ].any(w.hasPermission))
+        if (WorkspaceNavigation(w).admissions)
           const _Destination(
             Icons.pool_outlined,
             'Plans & Coaching',
@@ -99,8 +89,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'Spending, invoices and monthly/yearly reports',
             Routes.expenses,
           ),
-        if (w.hasPermission('view_finance') ||
-            w.hasPermission('collect_payments'))
+        if (WorkspaceNavigation(w).finance)
           const _Destination(
             Icons.savings_outlined,
             'Income',

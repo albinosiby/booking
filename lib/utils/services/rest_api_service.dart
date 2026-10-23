@@ -80,6 +80,21 @@ class RestApiService {
     );
   }
   final Dio _dio;
+  Future<void> Function()? recoverAccess;
+  Future<void>? _accessRecovery;
+  Future<void> _reconcileAccess() async {
+    final recover = recoverAccess;
+    if (recover == null) return;
+    final pending = _accessRecovery ??= recover();
+    try {
+      await pending;
+    } catch (_) {
+      // Preserve the original typed access failure if the refresh is offline.
+    } finally {
+      if (identical(_accessRecovery, pending)) _accessRecovery = null;
+    }
+  }
+
   final _readsInFlight = <String, Future<dynamic>>{};
   int _requestEpoch = 0;
   final AuthRepository auth;
@@ -251,11 +266,12 @@ class RestApiService {
       }
       if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
         final denied = AppException(
-          'Your access changed. Sign in or refresh your workspace.',
+          'Your access has changed.',
           code: e.response?.statusCode == 401 ? 'UNAUTHENTICATED' : 'FORBIDDEN',
         );
         readCache?.lock(error: denied);
         unawaited(_httpStore.clean());
+        if (!endpoint.startsWith('/workspace')) await _reconcileAccess();
         throw denied;
       }
       if (e.error is AppException) throw e.error!;
@@ -299,11 +315,12 @@ class RestApiService {
       }
       if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
         final denied = AppException(
-          'Your access changed. Refresh your workspace.',
+          'Your access has changed.',
           code: e.response?.statusCode == 401 ? 'UNAUTHENTICATED' : 'FORBIDDEN',
         );
         readCache?.lock(error: denied);
         unawaited(_httpStore.clean());
+        await _reconcileAccess();
         throw denied;
       }
       try {

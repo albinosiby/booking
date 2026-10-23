@@ -254,7 +254,9 @@ void registerFeatureDependencies(GetIt di) {
     () => ConfigurationTeamCoachesRepository(di(), di()),
   );
   di.registerLazySingleton<CoachApi>(() => RestCoachApi(di()));
-  di.registerFactory<CoachClassesCubit>(() => CoachClassesCubit(di()));
+  di.registerFactoryParam<CoachClassesCubit, WorkspaceSession, void>(
+    (session, _) => CoachClassesCubit(di(), session: session),
+  );
   di.registerFactoryParam<TeamCoachesCubit, WorkspaceSession, void>(
     (session, _) => TeamCoachesCubit(di(), session),
   );

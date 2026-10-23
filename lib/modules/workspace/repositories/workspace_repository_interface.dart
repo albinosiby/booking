@@ -35,3 +35,8 @@ abstract interface class WorkspaceLogoRepository {
 abstract interface class WorkspaceLogoEvents {
   Stream<void> get logoChanges;
 }
+
+/// Transport access failures are reconciled before feature errors are delivered.
+abstract interface class WorkspaceAccessRecovery {
+  void setAccessRecovery(Future<void> Function()? recover);
+}

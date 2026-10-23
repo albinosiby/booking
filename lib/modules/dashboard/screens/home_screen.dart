@@ -1,3 +1,4 @@
+import '../../workspace/models/workspace_navigation.dart';
 import '../../bookings/widgets/compact_booking_card.dart';
 import '../../bookings/models/compact_booking_model.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -122,17 +123,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-          if (ready.isNotEmpty) ...[
+          if (ready.isNotEmpty &&
+              (WorkspaceNavigation(workspace).bookings ||
+                  WorkspaceNavigation(workspace).finance)) ...[
             LayoutBuilder(
               builder: (c, constraints) => Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _metric(
-                    'Today’s bookings',
-                    metricsUnavailable ? '—' : '${s.dashboard?.today ?? 0}',
-                    constraints.maxWidth,
-                  ),
+                  if (WorkspaceNavigation(workspace).bookings)
+                    _metric(
+                      'Today’s bookings',
+                      metricsUnavailable ? '—' : '${s.dashboard?.today ?? 0}',
+                      constraints.maxWidth,
+                    ),
                   if (workspace.hasPermission('view_finance'))
                     _metric(
                       'Collected today',
@@ -170,7 +174,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 final showDue =
                     workspace.hasPermission('view_finance') ||
                     workspace.hasPermission('collect_payments');
-                final upcoming = _upcoming(context, s);
+                final upcoming = WorkspaceNavigation(workspace).bookings
+                    ? _upcoming(context, s)
+                    : const SizedBox.shrink();
                 if (!showDue) return upcoming;
                 final due = _due(context, s);
                 if (constraints.maxWidth >= 900 &&

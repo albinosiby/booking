@@ -1,3 +1,5 @@
+import 'dart:async';
+import '../../workspace/repositories/workspace_session.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../utils/exceptions/app_exception.dart';
@@ -39,8 +41,28 @@ String coachDate(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 class CoachClassesCubit extends Cubit<CoachClassesState> {
-  CoachClassesCubit(this.api, {DateTime? today})
-    : super(CoachClassesState(date: coachDate(today ?? DateTime.now())));
+  CoachClassesCubit(this.api, {DateTime? today, WorkspaceSession? session})
+    : super(CoachClassesState(date: coachDate(today ?? DateTime.now()))) {
+    if (session != null) {
+      var previous = session.state.data.withLogo(null);
+      _access = session.snapshots.listen((snapshot) {
+        final next = snapshot.data.withLogo(null);
+        if (previous == next || isClosed) return;
+        previous = next;
+        generation++;
+        emit(CoachClassesState(date: state.date));
+        if (snapshot.data.isCoach) unawaited(load());
+      });
+    }
+  }
+  StreamSubscription? _access;
+  @override
+  Future<void> close() async {
+    generation++;
+    await _access?.cancel();
+    return super.close();
+  }
+
   final CoachApi api;
   int generation = 0;
   Future<void> load() async {
@@ -80,9 +102,11 @@ class CoachClassesCubit extends Cubit<CoachClassesState> {
 
   Future<void> _marking(Iterable<CoachStudent> students, String value) async {
     if (state.busy || state.loading || students.isEmpty) return;
+    final g = generation;
     emit(state.copy(busy: true));
     String? error;
     for (final s in students) {
+      if (isClosed || g != generation) return;
       try {
         await api.mark(s, value);
       } catch (e) {
@@ -92,7 +116,7 @@ class CoachClassesCubit extends Cubit<CoachClassesState> {
         break;
       }
     }
-    if (isClosed) return;
+    if (isClosed || g != generation) return;
     emit(state.copy(busy: false));
     await load();
     if (error != null && !isClosed) emit(state.copy(error: error));

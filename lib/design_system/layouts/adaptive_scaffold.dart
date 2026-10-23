@@ -6,7 +6,13 @@ import 'responsive_builder.dart';
 
 /// Bottom navigation on phones; a persistent sidebar on tablet and web widths.
 class AdaptiveScaffold extends StatelessWidget {
-  const AdaptiveScaffold({super.key, required this.shell, this.onTabSelected});
+  const AdaptiveScaffold({
+    super.key,
+    required this.shell,
+    this.onTabSelected,
+    this.branches = const [0, 1, 2, 3, 4],
+  });
+  final List<int> branches;
   final StatefulNavigationShell shell;
   final VoidCallback? onTabSelected;
 
@@ -23,6 +29,7 @@ class AdaptiveScaffold extends StatelessWidget {
             bottomNavigationBar: AppBottomNavBar(
               index: shell.currentIndex,
               onTap: select,
+              branches: branches,
             ),
           )
         : Scaffold(
@@ -31,6 +38,7 @@ class AdaptiveScaffold extends StatelessWidget {
                 AppSideNav(
                   index: shell.currentIndex,
                   onTap: select,
+                  branches: branches,
                   extended: type == ScreenType.desktop,
                 ),
                 Expanded(child: SafeArea(left: false, child: shell)),
@@ -46,7 +54,9 @@ class AppSideNav extends StatelessWidget {
     required this.index,
     required this.onTap,
     required this.extended,
+    this.branches = const [0, 1, 2, 3, 4],
   });
+  final List<int> branches;
   final int index;
   final ValueChanged<int> onTap;
   final bool extended;
@@ -92,7 +102,7 @@ class AppSideNav extends StatelessWidget {
                     ),
                   ),
                 ),
-              for (var i = 0; i < appDestinations.length; i++) ...[
+              for (final i in branches) ...[
                 _NavItem(
                   destination: appDestinations[i],
                   selected: i == index,

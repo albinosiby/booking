@@ -13,6 +13,9 @@ class WorkspaceCubit extends Cubit<WorkspaceState> implements WorkspaceSession {
   WorkspaceCubit(this.repository, {this.preloader})
     : super(const WorkspaceState()) {
     final source = repository;
+    if (source is WorkspaceAccessRecovery) {
+      (source as WorkspaceAccessRecovery).setAccessRecovery(refreshAccess);
+    }
     if (source is WorkspaceLogoEvents) {
       _logoUpdates = (source as WorkspaceLogoEvents).logoChanges.listen((_) {
         if (!isClosed) _loadLogo(state.data, _generation);
@@ -23,6 +26,10 @@ class WorkspaceCubit extends Cubit<WorkspaceState> implements WorkspaceSession {
   @override
   Future<void> close() async {
     _generation++;
+    final source = repository;
+    if (source is WorkspaceAccessRecovery) {
+      (source as WorkspaceAccessRecovery).setAccessRecovery(null);
+    }
     await _logoUpdates?.cancel();
     return super.close();
   }
@@ -46,6 +53,44 @@ class WorkspaceCubit extends Cubit<WorkspaceState> implements WorkspaceSession {
     final source = repository;
     if (source is RetainedReadEvents) {
       (source as RetainedReadEvents).revalidateReads();
+    }
+  }
+
+  Future<void>? _accessCheck;
+
+  /// Silent foreground check: no loading state, logo fetch or preloading.
+  Future<void> refreshAccess() {
+    if (isClosed ||
+        state.busy ||
+        (state.status == LoadStatus.initial ||
+            state.status == LoadStatus.loading) ||
+        state.data.organization == null) {
+      return Future.value();
+    }
+    return _accessCheck ??= _refreshAccess().whenComplete(
+      () => _accessCheck = null,
+    );
+  }
+
+  Future<void> _refreshAccess() async {
+    final generation = _generation;
+    try {
+      final data = _retainLogo(await repository.load());
+      if (!isClosed && generation == _generation && !state.busy) {
+        emit(WorkspaceState(status: LoadStatus.ready, data: data));
+      }
+    } catch (e) {
+      if (!isClosed && generation == _generation && accessFailure(e)) {
+        preloader?.reset();
+        emit(
+          const WorkspaceState(
+            status: LoadStatus.failure,
+            error: 'Your workspace access has changed.',
+          ),
+        );
+      }
+      // Network failure does not erase the last authorized UI. Writes still
+      // require current server authorization, even while offline.
     }
   }
 

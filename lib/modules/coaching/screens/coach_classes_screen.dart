@@ -1,3 +1,4 @@
+import '../../workspace/cubit/workspace_cubit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:eden_booking/design_system/design_system.dart';
@@ -13,7 +14,9 @@ class CoachClassesScreen extends StatefulWidget {
 }
 
 class _CoachClassesScreenState extends State<CoachClassesScreen> {
-  late final cubit = getIt<CoachClassesCubit>()..load();
+  late final cubit = getIt<CoachClassesCubit>(
+    param1: context.read<WorkspaceCubit>(),
+  )..load();
   @override
   void dispose() {
     cubit.close();

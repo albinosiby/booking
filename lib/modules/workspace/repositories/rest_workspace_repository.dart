@@ -9,12 +9,16 @@ import 'refreshable_reads.dart';
 class RestWorkspaceRepository
     implements
         WorkspaceRepository,
+        WorkspaceAccessRecovery,
         WorkspaceLogoRepository,
         WorkspaceLogoEvents,
         RefreshableReads,
         RetainedReadEvents {
   RestWorkspaceRepository(this.api);
   final RestApiService api;
+  @override
+  void setAccessRecovery(Future<void> Function()? recover) =>
+      api.recoverAccess = recover;
   @override
   Stream<void> get logoChanges =>
       api.readUpdates.where((key) => key == ApiPath.logo).map((_) {});

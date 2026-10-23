@@ -1,3 +1,4 @@
+import 'modules/workspace/models/workspace_navigation.dart';
 import 'modules/notifications/cubit/notification_cubit.dart';
 import 'modules/notifications/models/notification_state.dart';
 import 'modules/team/cubit/invitation_link_cubit.dart';
@@ -107,18 +108,38 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
   StreamSubscription<WorkspaceState>? notificationWorkspaceSubscription;
   String? loadedUser;
   DateTime? lastResume;
+  Timer? accessTimer;
+  bool foreground = true;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    accessTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (foreground &&
+          loadedUser != null &&
+          auth.state.status == AuthStatus.signedIn) {
+        unawaited(workspace.refreshAccess());
+      }
+    });
     subscription = auth.stream.listen(sync);
     sync(auth.state);
     notificationSubscription = notifications.stream.listen(
       (_) => openNotification(),
     );
-    notificationWorkspaceSubscription = workspace.stream.listen(
-      (_) => openNotification(),
-    );
+    var previousAccess = workspace.state.data;
+    notificationWorkspaceSubscription = workspace.stream.listen((snapshot) {
+      final reduced = WorkspaceNavigation(
+        snapshot.data,
+      ).reducedFrom(previousAccess);
+      previousAccess = snapshot.data;
+      if (reduced && snapshot.data.organization != null) {
+        // Leave old detail/forms before their asynchronous results can be shown.
+        // Profile and Home already rebuild directly from the latest snapshot.
+        final path = router.routeInformationProvider.value.uri.path;
+        if (path != '/home' && path != '/profile') router.go('/home');
+      }
+      openNotification();
+    });
     unawaited(notifications.start());
     if (!kIsWeb) {
       invitationLinks = getIt<InvitationLinkCubit>();
@@ -166,7 +187,8 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) notifications.resumed();
+    foreground = state == AppLifecycleState.resumed;
+    if (foreground) notifications.resumed();
     if (state != AppLifecycleState.resumed ||
         loadedUser == null ||
         workspace.state.busy) {
@@ -180,7 +202,9 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
     lastResume = now;
     // Re-check permission changes from another device without replacing pages.
     unawaited(
-      workspace.load().then((_) => workspace.revalidateRetainedPages()),
+      workspace.refreshAccess().then(
+        (_) => workspace.revalidateRetainedPages(),
+      ),
     );
   }
 
@@ -201,6 +225,7 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    accessTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     notificationSubscription?.cancel();
     notificationWorkspaceSubscription?.cancel();

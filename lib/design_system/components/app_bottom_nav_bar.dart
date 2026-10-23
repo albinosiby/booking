@@ -26,11 +26,18 @@ const appDestinations = [
     Icons.account_balance_wallet_rounded,
   ),
   AppDestination('Profile', Icons.person_outline_rounded, Icons.person_rounded),
+  AppDestination('My classes', Icons.sports_outlined, Icons.sports),
 ];
 
 /// Floating primary navigation; Scaffold reserves its complete safe-area height.
 class AppBottomNavBar extends StatelessWidget {
-  const AppBottomNavBar({super.key, required this.index, required this.onTap});
+  const AppBottomNavBar({
+    super.key,
+    required this.index,
+    required this.onTap,
+    this.branches = const [0, 1, 2, 3, 4],
+  });
+  final List<int> branches;
   final int index;
   final ValueChanged<int> onTap;
   @override
@@ -90,8 +97,11 @@ class AppBottomNavBar extends StatelessWidget {
                   ),
                 ),
                 child: NavigationBar(
-                  selectedIndex: index,
-                  onDestinationSelected: onTap,
+                  selectedIndex: branches.contains(index)
+                      ? branches.indexOf(index)
+                      : 0,
+                  onDestinationSelected: (position) =>
+                      onTap(branches[position]),
                   backgroundColor: Colors.transparent,
                   surfaceTintColor: Colors.transparent,
                   elevation: 0,
@@ -99,11 +109,13 @@ class AppBottomNavBar extends StatelessWidget {
                   height: AppSpacing.navHeight,
                   labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                   destinations: [
-                    for (final d in appDestinations)
+                    for (final branch in branches)
                       NavigationDestination(
-                        icon: Icon(d.icon),
-                        selectedIcon: Icon(d.selectedIcon),
-                        label: d.label,
+                        icon: Icon(appDestinations[branch].icon),
+                        selectedIcon: Icon(
+                          appDestinations[branch].selectedIcon,
+                        ),
+                        label: appDestinations[branch].label,
                       ),
                   ],
                 ),

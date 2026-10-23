@@ -1,3 +1,4 @@
+import '../../modules/workspace/models/workspace_navigation.dart';
 import '../../modules/auth/cubit/auth_state.dart';
 import '../../modules/workspace/cubit/workspace_state.dart';
 import 'routes.dart';
@@ -92,5 +93,6 @@ String? routeRedirect(
           path == Routes.onboarding)) {
     return Routes.home;
   }
+  if (!WorkspaceNavigation(workspace.data).allows(path)) return Routes.home;
   return null;
 }

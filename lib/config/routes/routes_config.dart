@@ -1,3 +1,4 @@
+import '../../modules/workspace/models/workspace_navigation.dart';
 import '../../modules/booking_website/screens/website_settings_screen.dart';
 import '../../modules/coaching/screens/coach_classes_screen.dart';
 import '../../modules/booking_blocks/models/slot_block_models.dart';
@@ -206,9 +207,13 @@ GoRouter createRouter(
             InvitationScreen(token: s.uri.queryParameters['token'] ?? ''),
       ),
       StatefulShellRoute.indexedStack(
-        builder: (c, s, shell) => AdaptiveScaffold(
-          shell: shell,
-          onTabSelected: workspace.revalidateRetainedPages,
+        builder: (c, s, shell) => BlocBuilder<WorkspaceCubit, WorkspaceState>(
+          bloc: workspace,
+          builder: (context, snapshot) => AdaptiveScaffold(
+            shell: shell,
+            branches: WorkspaceNavigation(snapshot.data).branches,
+            onTabSelected: workspace.revalidateRetainedPages,
+          ),
         ),
         branches: [
           StatefulShellBranch(
@@ -247,6 +252,14 @@ GoRouter createRouter(
               GoRoute(
                 path: Routes.profile,
                 builder: (c, s) => const ProfileScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.myClasses,
+                builder: (c, s) => const CoachClassesScreen(),
               ),
             ],
           ),
@@ -319,10 +332,7 @@ GoRouter createRouter(
                 children: [],
               ),
       ),
-      GoRoute(
-        path: Routes.myClasses,
-        builder: (c, s) => const CoachClassesScreen(),
-      ),
+
       GoRoute(path: '/admissions', builder: (c, s) => const AdmissionsScreen()),
       GoRoute(
         path: '/admissions/new',
