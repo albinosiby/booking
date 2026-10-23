@@ -21,6 +21,8 @@ npm run typecheck
 
 The build exports static files to `out/`. No environment variables, database credentials or additional Node server are needed to serve the exported landing page.
 
+The browser-tab and Apple touch icons use the original lime BookingOS B/check app logo at `public/_landing/images/bookingos-app-icon.png`, copied without modification from `../web/icons/Icon-192.png`. The distinct asset URL replaces the previous blue calendar favicon. When regenerating the app branding, refresh this copy too.
+
 To preview the production export locally:
 
 ```sh

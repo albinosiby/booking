@@ -7,8 +7,14 @@ export const metadata: Metadata = {
   description:
     "One operating system for managing venue bookings, teams, payments and everyday operations.",
   icons: {
-    icon: "/_landing/images/bookingos-mark.png",
-    apple: "/_landing/images/bookingos-mark.png",
+    icon: [
+      {
+        url: "/_landing/images/bookingos-app-icon.png",
+        type: "image/png",
+        sizes: "192x192",
+      },
+    ],
+    apple: "/_landing/images/bookingos-app-icon.png",
   },
 };
 

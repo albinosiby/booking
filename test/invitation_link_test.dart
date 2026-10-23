@@ -30,6 +30,7 @@ void main() {
       );
       for (final uri in [
         'https://example.com/invite?token=$token',
+        'bookingservice.tatos.tech://auth-callback/?token=$token',
         'com.bookingos.app://auth-callback/?token=$token',
         'com.bookingos.app://invite/invite?token=invalid',
       ]) {

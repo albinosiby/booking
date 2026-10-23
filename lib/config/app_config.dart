@@ -15,7 +15,7 @@ class AppConfig {
     'SUPABASE_PUBLISHABLE_KEY',
     defaultValue: 'sb_publishable_d6iVFApYyh41BlF9GkTsgw_h0d-chZN',
   );
-  static const authRedirectUrl = 'com.bookingos.app://auth-callback/';
+  static const authRedirectUrl = 'bookingservice.tatos.tech://auth-callback/';
   static const useAuthEmulator = bool.fromEnvironment(
     'USE_AUTH_EMULATOR',
     defaultValue: true,

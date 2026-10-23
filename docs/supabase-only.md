@@ -28,15 +28,35 @@ Staff invitation URLs use the hosted function. A validated `/invite?token=...` r
 
 The Supabase sign-in and registration pages offer **Continue with Google** alongside email/password. The button uses the existing Supabase client to generate a PKCE OAuth authorization URL, requests Google's account selector, and opens the browser in the same web tab or in the native external browser. The installed Supabase Flutter SDK handles the callback and session exchange. Only a completed, verified Supabase session can open authenticated pages. The legacy Firebase connection does not advertise Google sign-in.
 
-Google client IDs/secrets belong in the Supabase Google provider settings, not Flutter source. The user configures these settings. Native Google sign-in here uses browser OAuth; it does not consume `google-services.json` or require a native Google SDK. The native installation/bundle identifier is `bookingservice.tatos.tech`, while the registered browser return scheme is independently `com.bookingos.app://auth-callback/`.
+Google client IDs/secrets belong in the Supabase Google provider settings, not Flutter source. The user configures these settings. Native Google sign-in here uses browser OAuth; it does not consume `google-services.json` or require a native Google SDK. The native installation/bundle identifier is `bookingservice.tatos.tech`, while the registered browser return scheme is independently `bookingservice.tatos.tech://auth-callback/`.
 
 Allow the exact mobile callback above and the web app's callback in Supabase Authentication → URL Configuration. The web callback is resolved beside the sign-in page: `/app/sign-in` returns to `/app/auth-callback`, while an app served at the domain root returns to `/auth-callback`. The shared deployment uses `https://bookingos.online/app/auth-callback`. These app return URLs differ from the Supabase `/auth/v1/callback` URL registered in Google Cloud. No provider secrets are bundled with the app.
 
+### Mobile auth callback configuration
+
+The app requests this exact mobile return URL for Google OAuth, email confirmation, verification resend and password recovery:
+
+```text
+bookingservice.tatos.tech://auth-callback/
+```
+
+Android registers the `bookingservice.tatos.tech` scheme with host `auth-callback`; iOS registers that scheme in Runner URL Types. Both platforms retain the old `com.bookingos.app` scheme for previously issued authentication links and the existing invitation flow. The invitation parser/server redirect continue using `com.bookingos.app://invite/invite`.
+
+**Required hosted setting:** in the booking Supabase project, open Authentication → URL Configuration → Redirect URLs and add `bookingservice.tatos.tech://auth-callback/`, including the trailing slash. Keep legitimate web callbacks such as `https://bookingos.online/app/auth-callback` and keep the previous `com.bookingos.app://auth-callback/` entry while old installed builds or previously sent auth emails are still in use. This repository's `supabase/config.toml` manages Edge Function settings; it does not update the hosted Auth redirect allowlist. The hosted setting must be saved separately by the project owner.
+
+Google Cloud's authorized redirect remains `https://scwwkaywewecspsrskft.supabase.co/auth/v1/callback`. Google returns to Supabase first; Supabase returns to the mobile callback afterward. The Google OAuth client ID/secret and database schema do not change for this callback update.
+
+After adding the Supabase redirect entry, rebuild the mobile app (`flutter build apk --debug`, or the normal signed release/iOS build) and install/distribute it through your normal process. A running old build continues requesting its compiled old callback. Verify fresh Google sign-in returns to the updated app and restores the Supabase session; verify email confirmation and password recovery use the new callback, and existing staff invitations still open their acceptance flow. No backend deployment or database migration is required. No device is installed automatically by this change.
+
+Verification: all 22 focused auth, invitation and router tests passed; targeted Flutter analysis is clean. Android debug APK compilation passed, and its packaged manifest registers the new auth scheme plus the compatibility/invitation scheme. iOS plist syntax and URL-scheme registrations were validated. The APK was not installed. The hosted redirect allowlist could not be verified through the public OAuth response or edited with the available connector; saving that Dashboard entry and completing real-device sign-in remain owner steps.
+
+To roll back, distribute the previous app build and retain its old redirect entry. Remove the new hosted redirect only after no installed build uses it. Do not remove the Google HTTPS callback or web redirect entries as part of mobile rollback.
+
 ### Google blocks sign-in with `400: redirect_uri_mismatch`
 
-A read-only live authorization check on 23 October 2026 reproduced this error. Supabase redirects to Google using client ID `340652751420-3tauqp55b468b3jnide6gb0lgvt5v5uu.apps.googleusercontent.com` and callback `https://scwwkaywewecspsrskft.supabase.co/auth/v1/callback`. Google rejects that callback for the currently configured client.
+An earlier read-only authorization check on 23 October 2026 reproduced this error while Supabase used client ID `340652751420-3tauqp55b468b3jnide6gb0lgvt5v5uu.apps.googleusercontent.com`. The user subsequently confirmed successful sign-in after configuring the intended Web client (`340652751420-oosr6jbvhfg077t19s975rjr0r8fakcl.apps.googleusercontent.com`) and its matching secret. If this error recurs, inspect the client ID in the current Supabase Google provider rather than assuming the earlier ID is still configured.
 
-The project owner should open Google Cloud → Google Auth Platform → Clients (or APIs & Services → Credentials), select the OAuth client matching the ID above, and add this exact URL under **Authorized redirect URIs**:
+The project owner should open Google Cloud → Google Auth Platform → Clients (or APIs & Services → Credentials), select the OAuth client matching the current Supabase Google provider, and add this exact URL under **Authorized redirect URIs**:
 
 ```text
 https://scwwkaywewecspsrskft.supabase.co/auth/v1/callback
@@ -44,7 +64,7 @@ https://scwwkaywewecspsrskft.supabase.co/auth/v1/callback
 
 Save while preserving any existing valid redirect URIs, then begin a fresh Google sign-in attempt. This browser-based Supabase flow requires a **Web application** OAuth client, including when launched from Android. If the currently configured client is a native/Android client, configure a Web application client and enter its matching client ID/secret in Supabase → Authentication → Sign In / Providers → Google. Keep the secret server-side.
 
-The app return URL `com.bookingos.app://auth-callback/` and web return URL `https://bookingos.online/app/auth-callback` belong in Supabase → Authentication → URL Configuration → Redirect URLs. Google returns to the Supabase HTTPS callback first, and Supabase subsequently returns to the app. Updating Flutter callback constants or Firebase Messaging settings cannot repair Google's remote redirect allowlist.
+The app return URL `bookingservice.tatos.tech://auth-callback/` and web return URL `https://bookingos.online/app/auth-callback` belong in Supabase → Authentication → URL Configuration → Redirect URLs. Google returns to the Supabase HTTPS callback first, and Supabase subsequently returns to the app. Updating Flutter callback constants or Firebase Messaging settings cannot repair Google's remote redirect allowlist.
 
 No Google Cloud or Supabase provider settings were changed during this diagnostic. After the owner saves the fix, verify a fresh authorization request reaches Google's account selection/consent instead of the mismatch page, then complete sign-in and check the app receives its Supabase session. See [Supabase Google setup](https://supabase.com/docs/guides/auth/social-sign-in/auth-google) and [Google redirect URI requirements](https://developers.google.com/identity/protocols/oauth2/web-server#redirect-uri-validation).
 

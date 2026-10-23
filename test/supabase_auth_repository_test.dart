@@ -41,7 +41,7 @@ void main() {
       expect(launched!.queryParameters['provider'], 'google');
       expect(
         launched!.queryParameters['redirect_to'],
-        'com.bookingos.app://auth-callback/',
+        'bookingservice.tatos.tech://auth-callback/',
       );
       expect(launched!.queryParameters['prompt'], 'select_account');
       expect(launched!.queryParameters['code_challenge_method'], 's256');

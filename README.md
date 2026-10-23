@@ -23,7 +23,7 @@ Bookings, daily Calendar and manual payment collections are implemented, includi
 
 ## Current Supabase setup
 
-The Android application ID/namespace and iOS Runner bundle ID are `bookingservice.tatos.tech`; iOS RunnerTests uses `bookingservice.tatos.tech.RunnerTests`. Register these exact identifiers when configuring native Google sign-in or Apple signing/provisioning. The auth/invitation URL scheme remains `com.bookingos.app`, independently of the installation identifier. Builds with the new ID install as a separate app from the old ID and do not inherit its local session or stored data.
+The Android application ID/namespace and iOS Runner bundle ID are `bookingservice.tatos.tech`; iOS RunnerTests uses `bookingservice.tatos.tech.RunnerTests`. Register these exact identifiers when configuring native Google sign-in or Apple signing/provisioning. The primary mobile auth callback is `bookingservice.tatos.tech://auth-callback/`. Native apps also accept the previous `com.bookingos.app` auth scheme during migration; invitation links continue to use that existing scheme. Add the new auth callback to Supabase Auth allowed redirects before distributing the updated build; see [callback configuration](docs/supabase-only.md#mobile-auth-callback-configuration). Builds with the new ID install as a separate app from the old ID and do not inherit its local session or stored data.
 
 The connected app uses Supabase Auth, Supabase PostgreSQL and the hosted `booking-api` Edge Function in the **booking** project. Existing data stays in the private `booking_app` schema. The app works over the internet without a running Mac, local API or ADB forwarding.
 

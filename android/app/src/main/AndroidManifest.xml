@@ -31,6 +31,8 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bookingservice.tatos.tech" android:host="auth-callback" />
+                <!-- Accept previously issued auth links during the callback transition. -->
                 <data android:scheme="com.bookingos.app" android:host="auth-callback" />
             </intent-filter>
             <intent-filter>
