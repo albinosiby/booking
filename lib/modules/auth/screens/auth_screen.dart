@@ -75,32 +75,6 @@ class _AuthScreenState extends State<AuthScreen> {
           AppErrorWidget(message: s.error!),
           const SizedBox(height: 16),
         ],
-        if (context.read<AuthCubit>().supportsGoogleSignIn) ...[
-          GoogleSignInButton(
-            busy: s.busy && s.googleSignIn,
-            onPressed: s.busy
-                ? null
-                : () => context.read<AuthCubit>().signInWithGoogle(
-                    invitationToken: widget.invitationToken,
-                    returnTo: widget.returnTo,
-                  ),
-          ),
-          const SizedBox(height: 22),
-          Row(
-            children: [
-              const Expanded(child: Divider()),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Text(
-                  'or continue with email',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              const Expanded(child: Divider()),
-            ],
-          ),
-          const SizedBox(height: 22),
-        ],
         Form(
           key: form,
           child: AutofillGroup(
@@ -207,6 +181,29 @@ class _AuthScreenState extends State<AuthScreen> {
                   },
             child: const Text('Forgot password?'),
           ),
+        if (context.read<AuthCubit>().supportsGoogleSignIn) ...[
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              const Expanded(child: Divider()),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Text('or', style: Theme.of(context).textTheme.bodySmall),
+              ),
+              const Expanded(child: Divider()),
+            ],
+          ),
+          const SizedBox(height: 22),
+          GoogleSignInButton(
+            busy: s.busy && s.googleSignIn,
+            onPressed: s.busy
+                ? null
+                : () => context.read<AuthCubit>().signInWithGoogle(
+                    invitationToken: widget.invitationToken,
+                    returnTo: widget.returnTo,
+                  ),
+          ),
+        ],
       ],
     ),
   );

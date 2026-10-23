@@ -156,6 +156,7 @@ void main() {
             image.dispose();
           });
         }
+        await tester.ensureVisible(find.byType(GoogleSignInButton));
         await tester.tap(find.text('Continue with Google'));
         await tester.pump();
         expect(source.launches, 1);

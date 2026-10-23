@@ -32,6 +32,22 @@ Google client IDs/secrets belong in the Supabase Google provider settings, not F
 
 Allow the exact mobile callback above and the web app's callback in Supabase Authentication → URL Configuration. The web callback is resolved beside the sign-in page: `/app/sign-in` returns to `/app/auth-callback`, while an app served at the domain root returns to `/auth-callback`. The shared deployment uses `https://bookingos.online/app/auth-callback`. These app return URLs differ from the Supabase `/auth/v1/callback` URL registered in Google Cloud. No provider secrets are bundled with the app.
 
+### Google blocks sign-in with `400: redirect_uri_mismatch`
+
+A read-only live authorization check on 23 October 2026 reproduced this error. Supabase redirects to Google using client ID `340652751420-3tauqp55b468b3jnide6gb0lgvt5v5uu.apps.googleusercontent.com` and callback `https://scwwkaywewecspsrskft.supabase.co/auth/v1/callback`. Google rejects that callback for the currently configured client.
+
+The project owner should open Google Cloud → Google Auth Platform → Clients (or APIs & Services → Credentials), select the OAuth client matching the ID above, and add this exact URL under **Authorized redirect URIs**:
+
+```text
+https://scwwkaywewecspsrskft.supabase.co/auth/v1/callback
+```
+
+Save while preserving any existing valid redirect URIs, then begin a fresh Google sign-in attempt. This browser-based Supabase flow requires a **Web application** OAuth client, including when launched from Android. If the currently configured client is a native/Android client, configure a Web application client and enter its matching client ID/secret in Supabase → Authentication → Sign In / Providers → Google. Keep the secret server-side.
+
+The app return URL `com.bookingos.app://auth-callback/` and web return URL `https://bookingos.online/app/auth-callback` belong in Supabase → Authentication → URL Configuration → Redirect URLs. Google returns to the Supabase HTTPS callback first, and Supabase subsequently returns to the app. Updating Flutter callback constants or Firebase Messaging settings cannot repair Google's remote redirect allowlist.
+
+No Google Cloud or Supabase provider settings were changed during this diagnostic. After the owner saves the fix, verify a fresh authorization request reaches Google's account selection/consent instead of the mismatch page, then complete sign-in and check the app receives its Supabase session. See [Supabase Google setup](https://supabase.com/docs/guides/auth/social-sign-in/auth-google) and [Google redirect URI requirements](https://developers.google.com/identity/protocols/oauth2/web-server#redirect-uri-validation).
+
 Before leaving for Google, `AuthCubit` saves the invitation token and a validated, application-relative return path through `AuthContinuationRepository`. The secure-storage adapter scopes this private context to the Supabase project and expires it after 30 minutes. Startup restores it before publishing auth state; routing consumes it after restoring the destination. Cancelled OAuth callbacks retain the invitation for retry, while launch failures, password sign-in, explicit sign-out and completed routing clear it. Private invitation tokens are not appended to Google's authorization URL or the app's OAuth callback URL. Existing exact-email invitation acceptance, verification and role/resource checks remain authoritative. Reopen the original invitation if the temporary context has expired.
 
 Release checks: use a test owner and a separately invited staff account to complete Google sign-in on web and Android. Check account selection, cancel/retry, callback routing, wrong invited email rejection, app restart during the browser flow and sign-out. New Google users without an invitation follow organization setup; invited users return to acceptance before setup. No application schema migration or API deployment is required for this UI/auth integration.
