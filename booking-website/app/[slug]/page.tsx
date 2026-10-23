@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { loadWebsite } from "../../lib/server-api";
 import { siteBasePath } from "../../lib/site-links";
 import { SITE_HOST_HEADER } from "../../lib/site-host";
+import { siteIcons } from "../../lib/site-icons";
 export const dynamic = "force-dynamic";
 type Props = {
   params: Promise<{ slug: string }>;
@@ -19,6 +20,7 @@ export async function generateMetadata({
   return site
     ? {
         title: `${site.title} | Book online`,
+        icons: siteIcons(site, preview),
         description:
           site.description || `Book an available space at ${site.title}.`,
         robots: {

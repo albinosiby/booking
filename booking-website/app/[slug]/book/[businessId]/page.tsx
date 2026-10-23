@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { loadWebsite } from "../../../../lib/server-api";
 import { siteBasePath } from "../../../../lib/site-links";
 import { SITE_HOST_HEADER } from "../../../../lib/site-host";
+import { siteIcons } from "../../../../lib/site-icons";
 export const dynamic = "force-dynamic";
 type Props = {
   params: Promise<{ slug: string; businessId: string }>;
@@ -19,6 +20,7 @@ export async function generateMetadata({
   const site = await loadWebsite(slug, preview),
     business = site?.businesses.find((b) => b.id === businessId);
   return {
+    icons: siteIcons(site, preview),
     title:
       business && site
         ? `${business.name} | ${site.title}`

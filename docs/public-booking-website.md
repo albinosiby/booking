@@ -15,6 +15,12 @@ One organisation has one public website at `https://<organisation-slug>.bookingo
 
 The owner approves public contact/location information when publishing. The existing private organisation logo is public only when explicitly enabled. Guest phone numbers are validated but their ownership is not verified. Guest input never overwrites an existing customer profile based on an unverified phone number.
 
+### Browser tab logo
+
+The organisation homepage and each business booking page use the same public logo as the header for their favicon: an uploaded website logo takes priority, followed by the organisation profile logo when its publication switch is enabled. Without a public logo, the tab uses the bundled BookingOS icon (`booking-website/assets/bookingos-icon.png`, copied from `web/icons/Icon-192.png`). The shared `siteIcons` metadata helper uses the existing public logo proxy, including the preview token on preview pages, and does not expose private profile logos. This works on organisation subdomains and path-based URLs. Updating an already-open tab may require a reload because browsers retain favicons.
+
+Verification: the production website build and all 13 existing website tests passed. A temporary, isolated local production fixture verified 16 homepage/booking favicon combinations across two organisations, no-logo fallback, preview tokens, path URLs and tenant Host headers. Each rendered page emitted exactly one icon link; its image returned the expected PNG bytes, and public logo proxy responses retained `no-store`. No hosted deployment or database change was performed.
+
 ## Source boundaries
 
 - `booking-website/`: pinned Next.js/React application. Server-only API proxy forwards only the public site operations, bounds JSON requests to 16 KiB, and never forwards owner bearer tokens. Metadata and initial HTML share a request-scoped public read. Customer/quote/availability responses are `no-store`.
