@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FCM and Flutter local notifications resolve these resources by name. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/new_booking_bell,@drawable/ic_stat_booking" />

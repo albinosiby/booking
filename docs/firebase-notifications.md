@@ -114,7 +114,7 @@ Supabase notes that decrypted request headers are temporarily stored in `net.htt
 
 ## 6. Android configuration and build
 
-The code adds Firebase Messaging, local foreground notification display, the Google Services Gradle plugin, Android 13+ notification permission, a high-importance `booking_orders` channel, a monochrome status icon, background handling and notification taps.
+The code adds Firebase Messaging, local foreground notification display, the Google Services Gradle plugin, Android 13+ notification permission, a high-importance `booking_orders_bell_v2` channel, a monochrome status icon, background handling and notification taps.
 
 `Firebase.initializeApp()` runs for notifications independently of Supabase Auth, using native Firebase configuration. No Firebase authentication login is needed. The supplied `android/app/google-services.json` must belong to the intended Firebase project and package. The Android minimum is now API 24 (Android 7), matching the notification package requirements. Devices need Google Play services.
 
@@ -128,6 +128,42 @@ flutter build apk --debug
 For production, configure the existing private release signing file and use `flutter build apk --release`. Test with the Supabase authentication provider (the default). The alternate Firebase Auth emulator path is retained, but device push registration is intentionally limited to the production Supabase identity/API flow.
 
 Building does not install the APK. Install or distribute it yourself when ready, log in, and grant notification permission. Registration also runs for a restored session and on token refresh. Temporary network/APNs failures retry with bounded delay and on app resume. A denied permission leaves login and bookings usable; re-enable it in OS settings and resume the app.
+
+### Custom Android notification sound
+
+Placed, cancelled and rescheduled push notifications use the existing
+`android/app/src/main/res/raw/new_booking_bell.mp3`. Foreground local alerts and
+the `booking_orders_bell_v2` channel select `new_booking_bell`; the FCM sender
+sets both `android.notification.channel_id` and `android.notification.sound`.
+The manifest default channel matches, so console test messages without an
+explicit channel also use the bell after the app has initialized the channel.
+The sound and status icon are explicitly retained during resource shrinking.
+
+Android channel sounds cannot be changed after channel creation. The new ID
+replaces `booking_orders` for future alerts without deleting the old channel.
+Users can still change or mute the new channel in system settings. See
+[Android channel behavior](https://developer.android.com/develop/ui/views/notifications/channels)
+and [FCM sound/channel fields](https://firebase.google.com/docs/reference/fcm/rest/v1/projects.messages#AndroidNotification).
+
+To roll out this configuration:
+
+1. Rebuild and distribute the Android app, then open it and log in once to
+   create the channel before testing background/terminated delivery. Hot reload
+   does not update native resources or the manifest.
+2. From `backend`, run `npm run edge:build`. From the repository root, deploy
+   `supabase functions deploy booking-notifications --project-ref scwwkaywewecspsrskft`.
+   This sound change needs no database migration or secrets change. An existing
+   Nest server deployment instead needs the rebuilt backend containing the sender.
+3. Test all three booking events with the app open, in the background and after
+   a normal close. Confirm the bell plays and the alert opens the correct booking.
+   For a bare Firebase console test, put the app in the background; foreground
+   alerts require the valid booking/account data used by the booking sender.
+   Check notification permission, channel sound, notification volume and Do Not
+   Disturb if a delivered notification is silent.
+
+The MP3 is an Android resource. iOS continues to use its default notification
+sound. Real-device sound playback and FCM delivery require testing after rollout;
+the earlier test-send attempt was rejected with `403 PERMISSION_DENIED`.
 
 ## 7. iOS provisioning
 

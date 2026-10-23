@@ -5,7 +5,9 @@ android/app/src/main/res/raw/new_booking_bell.mp3. Android plays it through the
 booking_os/feedback method channel with notification-event audio attributes,
 asynchronous preparation and completion/error cleanup. It does not loop, request
 notification permission, post a notification banner or alter system volume.
-It is an in-app booking confirmation sound, not remote push notification delivery.
+This path is an in-app booking confirmation sound. The same resource is also
+configured separately for Android push alerts; see
+[Firebase booking notifications](firebase-notifications.md#custom-android-notification-sound).
 
 BookingFormCubit receives an optional BookingFeedbackRepository through DI.
 After the server returns a verified successful new booking ID (including command

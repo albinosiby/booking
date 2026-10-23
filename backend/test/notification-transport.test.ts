@@ -76,16 +76,29 @@ test("FCM v1 signs OAuth assertion, caches access and targets only the supplied 
       assert.equal(body.data.recipient_user_id, "owner");
       assert.equal(body.data.booking_id, message.bookingId);
       assert.equal(body.data.event_id, message.eventId);
-      assert.equal(body.notification.title, "Order placed");
-      assert.equal(body.android.notification.channel_id, "booking_orders");
+      const titles: Record<string, string> = {
+        created: "Order placed",
+        cancelled: "Order cancelled",
+        rescheduled: "Order rescheduled",
+      };
+      assert.equal(body.notification.title, titles[body.data.event_type]);
+      assert.equal(
+        body.android.notification.channel_id,
+        "booking_orders_bell_v2",
+      );
+      assert.equal(body.android.notification.sound, "new_booking_bell");
+      assert.equal(body.android.notification.default_sound, undefined);
+      assert.equal(body.apns.payload.aps.sound, "default");
       assert.equal(body.topic, undefined);
       assert.equal(body.condition, undefined);
       return Response.json({ name: "projects/fixture/messages/1" });
     }) as typeof fetch);
     await sender.send(message);
     await sender.send(message);
+    await sender.send({ ...message, kind: "cancelled" });
+    await sender.send({ ...message, kind: "rescheduled" });
     assert.equal(oauth, 1);
-    assert.equal(sends, 2);
+    assert.equal(sends, 4);
   }));
 test("FCM only invalidates explicit UNREGISTERED errors and honors provider retry delays", async () =>
   withCredentials(async () => {

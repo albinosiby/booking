@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../constants/asset_path.dart';
 
 class GoogleSignInButton extends StatelessWidget {
   const GoogleSignInButton({super.key, this.onPressed, this.busy = false});
@@ -29,7 +30,7 @@ class GoogleSignInButton extends StatelessWidget {
             )
           else
             Image.asset(
-              'assets/auth/google-g.png',
+              AssetPath.googleLogo,
               width: 20,
               height: 20,
               excludeFromSemantics: true,

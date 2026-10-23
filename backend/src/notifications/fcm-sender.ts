@@ -135,7 +135,8 @@ export class FcmSender implements PushSender {
                 priority: "high",
                 ttl: "86400s",
                 notification: {
-                  channel_id: "booking_orders",
+                  channel_id: "booking_orders_bell_v2",
+                  sound: "new_booking_bell",
                   icon: "ic_stat_booking",
                   tag: m.eventId,
                 },

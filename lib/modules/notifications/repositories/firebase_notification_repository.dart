@@ -37,11 +37,16 @@ class FirebaseNotificationRepository implements NotificationRepository {
   BookingNotification? _localLaunch;
   Map<String, dynamic>? _installation;
   static const _storageKey = 'booking_push_installation_v1';
+  // Android channel sounds are immutable. Use a new ID for existing installs.
+  static const _channelId = 'booking_orders_bell_v2';
+  static const _sound = RawResourceAndroidNotificationSound('new_booking_bell');
   static const _channel = AndroidNotificationChannel(
-    'booking_orders',
+    _channelId,
     'Booking orders',
     description: 'Placed, cancelled and rescheduled bookings',
     importance: Importance.high,
+    playSound: true,
+    sound: _sound,
   );
   bool get _supported =>
       !kIsWeb &&
@@ -272,12 +277,14 @@ class FirebaseNotificationRepository implements NotificationRepository {
       body: notification.body ?? 'Open Booking OS for details.',
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
-          'booking_orders',
+          _channelId,
           'Booking orders',
           channelDescription: 'Placed, cancelled and rescheduled bookings',
           importance: Importance.high,
           priority: Priority.high,
           icon: 'ic_stat_booking',
+          playSound: true,
+          sound: _sound,
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,
