@@ -5,6 +5,7 @@ The repository-root `Dockerfile` builds the landing page, public booking website
 | Public route | Destination |
 | --- | --- |
 | `/` | BookingOS marketing landing page |
+| `https://<organisation-slug>.bookingos.online/` | That organisation's published booking homepage |
 | `/_landing/*` | Landing scripts, styles, images and video |
 | `/app/` and `/app/*` | Flutter app, including direct-route refreshes |
 | `/admin` and `/admin/*` | Admin panel and its separate assets |
@@ -40,7 +41,8 @@ Use `deploy/railway.env.example` as the variable list. Do not copy local `.env.l
 | `ADMIN_PANEL_PASSWORD` | `tatos tech` — set this runtime variable for the password-only login; no username is requested |
 | `ADMIN_SESSION_SECRET` | Random signing secret, at least 32 characters; generate with `openssl rand -hex 32` and set the same value in booking-api backend secrets |
 | `BOOKING_APP_URL` | `/app` (already the image default) |
-| `BOOKING_ROUTING_MODE` | `path` (already the image default) |
+| `BOOKING_ROUTING_MODE` | `auto` (image default); custom-domain subdomains use booking pages and the generated Railway host keeps path routing. `subdomain` also enables this routing; `path` explicitly disables it. |
+| `BOOKING_SITE_DOMAIN` | `bookingos.online` (image default); the base domain without `https://`, `*.` or a path |
 
 The container refuses to start if a required setting is missing. It never prints variable values. The public booking server does not receive admin credentials, and neither Next.js child receives unrelated database secrets.
 
@@ -53,7 +55,7 @@ The panel login is `tatos tech` with no username. Remove `ADMIN_SERVICE_EMAIL` a
 Substitute `https://YOUR-SERVICE.up.railway.app` below. These are manual settings, not schema migrations:
 
 1. **Auth → URL Configuration:** use `https://YOUR-SERVICE.up.railway.app/app/auth-callback` as the web **Site URL**, because the current Flutter web Auth adapter uses the configured Site URL for email verification and password recovery. Add that exact callback to allowed redirects. Retain the existing mobile callback and any other legitimate redirect URLs. Confirm your email templates use the configured redirect destination.
-2. **booking-api Edge Function secrets:** set `BOOKING_WEB_ORIGIN=https://YOUR-SERVICE.up.railway.app`. The API merges this exact origin with `BOOKING_CORS_ORIGINS`, preserving existing clients. There is no `/app` path or trailing slash in a CORS origin. This setting belongs in Supabase, not only in Railway. Changing or removing `BOOKING_WEB_ORIGIN` reverses this addition without rewriting the original allowlist.
+2. **booking-api Edge Function secrets:** set `BOOKING_WEB_ORIGIN=https://YOUR-SERVICE.up.railway.app`. The API merges this exact origin with `BOOKING_CORS_ORIGINS`, preserving existing clients. There is no `/app` path or trailing slash in a CORS origin. This setting belongs in Supabase, not only in Railway. During a custom-domain transition, set `BOOKING_WEB_ORIGIN=https://bookingos.online,https://YOUR-SERVICE.up.railway.app` to keep both exact origins working. The API splits this comma-separated list and preserves the separate existing allowlist. Changing or removing `BOOKING_WEB_ORIGIN` reverses this addition without rewriting the original allowlist.
 3. For temporary path-based organisation URLs, set `BOOKING_WEBSITE_URL=https://YOUR-SERVICE.up.railway.app` and remove `BOOKING_WEBSITE_DOMAIN` from the Edge Function's secrets. Generated links then use `https://YOUR-SERVICE.up.railway.app/<slug>`. This is backend configuration; setting these only in Railway does not update the hosted API.
 4. Set `ADMIN_SESSION_SECRET` in the **booking-api Edge Function secrets** to the same random value as Railway. Deploy the updated `booking-api` with signed admin request support before testing the panel. Keep the existing `verify_jwt = false` function setting: application code verifies admin signatures and owner/staff tokens separately. No Supabase Auth admin account or `ADMIN_SERVICE_EMAIL` / `ADMIN_SERVICE_PASSWORD` is needed.
 
@@ -110,7 +112,7 @@ node deploy/smoke.mjs https://YOUR-SERVICE.up.railway.app
 
 The script reads pages and assets only. It verifies readiness, landing assets, Flutter deep links and missing-file handling, owner-login redirects, and unauthenticated admin redirects/assets. Complete browser verification with a verified owner account and the configured admin password. Test password recovery and verification links, a direct refresh of an existing booking website, and logging out of admin. Use isolated fixture data for booking creation tests; the smoke script never creates live records.
 
-CI's `web-container` job builds the complete image and starts a disposable local container with `deploy/test/mock-api.mjs` instead of Supabase. It checks the fixture's organisation homepage, booking page, API proxy, all four frontend routes and admin login/logout with server-rendered forms. It also checks admin credential isolation and that a stopped frontend causes the whole service to fail. `deploy/test/auth-smoke.mjs` refuses non-local targets. These fixture scripts are not copied into the production runtime image.
+CI's `web-container` job builds the complete image and starts a disposable local container with `deploy/test/mock-api.mjs` instead of Supabase. It checks the fixture's organisation homepage, booking page, API proxy, all four frontend routes and admin login/logout with server-rendered forms. Custom Host headers verify tenant homepages, clean booking links, assets, apex/www marketing pages and forwarded-host isolation. It also checks admin credential isolation and that a stopped frontend causes the whole service to fail. `deploy/test/auth-smoke.mjs` refuses non-local targets. These fixture scripts are not copied into the production runtime image.
 
 ### Verification of this change
 
@@ -118,6 +120,8 @@ CI's `web-container` job builds the complete image and starts a disposable local
 - A Linux runtime image assembled from those locally built outputs passed the fixture routing/asset checks, admin HTML-form login/logout, signed-cookie scoping, booking API proxy and forwarded-host checks. Browser checks verified Flutter sign-in and enhanced admin login/logout through the same gateway.
 - The runtime ran as UID 1000, excluded admin credentials from the booking server, exited with code 1 when its admin process was stopped, and exited with code 0 on graceful container shutdown. The disposable container was removed after verification.
 - The complete multi-stage Linux build was attempted but its Flutter SDK setup stage stalled on the local Docker engine. That full build is not claimed as verified locally. The new CI job runs the complete build after the change is pushed; no remote CI run or Railway deployment is claimed here.
+
+The custom-domain routing update additionally passed 13 public-website tests, three gateway configuration tests, booking/admin production builds, and local Nginx routing checks in both automatic and explicit path modes. The current admin build passed fixture login/logout. A local production booking server also rendered the published RK Groups page from the public API with its saved title and clean booking links. The local Nginx check used the platform's MIME-types file and disabled gzip only in the temporary test configuration; the production template retains both. These checks do not claim a new full Docker build or Railway deployment.
 
 ## Monitoring, shutdown and recovery
 
@@ -131,6 +135,26 @@ Rollback by redeploying the previous verified image/commit and restoring any cha
 
 ## Connecting a domain later
 
-The current service is deliberately configured for path routing. You can attach an apex domain later and keep `/app`, `/admin` and `/<slug>`; update Auth, CORS and `BOOKING_WEBSITE_URL` accordingly. Organisation wildcard subdomains require an additional host-aware gateway change so their `/` requests reach the booking server instead of the marketing homepage. Attaching wildcard DNS alone does not enable that routing.
+The gateway recognizes customer subdomains on `BOOKING_SITE_DOMAIN` and forwards their homepage to the booking server. The apex, `www` and generated Railway hostname retain the BookingOS marketing homepage. On the generated Railway hostname, existing `/<slug>` links continue to work. Tenant booking pages use clean `/book/<business-id>` links, and `/app` and `/admin` remain available.
+
+For `bookingos.online`:
+
+1. Attach `bookingos.online` and `*.bookingos.online` to the same Railway service in **Settings → Networking**. Add the exact DNS records Railway provides and wait for domain/certificate validation. Also attach `www.bookingos.online` if it should serve the marketing homepage.
+2. In the service's **Variables**, set `BOOKING_SITE_DOMAIN=bookingos.online`, `BOOKING_ROUTING_MODE=auto` and `BOOKING_APP_URL=/app`. An old explicit `BOOKING_ROUTING_MODE=path` overrides the new image default and must be changed or removed. `subdomain` is also accepted.
+3. Deploy the commit containing `deploy/routing.mjs` and the host-aware gateway template. Changing DNS or variables without the updated image will still send tenant homepages to the marketing page.
+4. Keep the API's `BOOKING_WEBSITE_DOMAIN=bookingos.online` so saved addresses use `https://<slug>.bookingos.online`. For owner access on both domains, preserve both exact CORS origins as described above. Public booking calls use the same-origin `/api/sites/*` proxy and do not require wildcard CORS.
+5. For owner sign-in on the apex, add `https://bookingos.online/app/auth-callback` to Supabase Auth allowed redirects and use it as the Site URL when moving email verification/recovery to the custom domain. Retain the Railway callback during the transition.
+6. Open `https://rk-sports.bookingos.online/` (the site must be published), follow a booking link and refresh it. Check `https://bookingos.online/`, `/app/sign-in`, `/admin` and the existing Railway path link separately.
+
+Local fixture verification with custom-domain routing enabled:
+
+```sh
+node --test deploy/test/routing.test.mjs
+node deploy/smoke.mjs http://127.0.0.1:8080 railway-smoke bookingos.online
+```
+
+These settings add no database migration. To temporarily restore path-only frontend routing, set `BOOKING_ROUTING_MODE=path` and redeploy. On the API, remove `BOOKING_WEBSITE_DOMAIN` and restore `BOOKING_WEBSITE_URL=https://YOUR-SERVICE.up.railway.app` if generated links must also fall back to `/<slug>`. Restore the previous image and recorded variables if a full rollback is required; no booking or design data is changed by the routing update.
 
 Railway references: [Dockerfiles](https://docs.railway.com/builds/dockerfiles), [config as code](https://docs.railway.com/config-as-code/reference), [public domains](https://docs.railway.com/networking/domains/working-with-domains).
+
+For a CORS configuration rollback, first restore `BOOKING_WEB_ORIGIN` to a single exact origin, then redeploy an older API bundle if necessary. The older handler does not parse a comma-separated `BOOKING_WEB_ORIGIN` value; rolling it back while that value contains multiple origins would block them. Keep `BOOKING_CORS_ORIGINS` unchanged. The transition fix requires an API deployment and secret update only, with no database migration or Railway frontend rebuild.

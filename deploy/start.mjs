@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { routingConfiguration } from "./routing.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url)).replace(/\/$/, "");
 const children = new Map();
@@ -54,6 +55,7 @@ process.on("SIGTERM", () => stop(0));
 process.on("SIGINT", () => stop(0));
 
 try {
+  const routing = routingConfiguration();
   const publicPort = port("PORT", 8080);
   const bookingPort = port("BOOKING_INTERNAL_PORT", 3000);
   const adminPort = port("ADMIN_INTERNAL_PORT", 3100);
@@ -83,7 +85,7 @@ try {
   for (const dir of ["client-body", "proxy", "fastcgi", "uwsgi", "scgi"])
     await mkdir(join(runtime, dir));
   const template = await readFile(join(root, "deploy/nginx.conf.template"), "utf8");
-  const substitutions = { ROOT: root, RUNTIME: runtime, PORT: publicPort, BOOKING_PORT: bookingPort, ADMIN_PORT: adminPort, HEALTH_PORT: healthPort };
+  const substitutions = { ROOT: root, RUNTIME: runtime, PORT: publicPort, BOOKING_PORT: bookingPort, ADMIN_PORT: adminPort, HEALTH_PORT: healthPort, TENANT_HOST_RULE: routing.tenantHostRule };
   const config = template.replace(/__(\w+)__/g, (_, name) => {
     if (!(name in substitutions)) throw new Error(`Unknown gateway placeholder: ${name}`);
     return String(substitutions[name]);
@@ -118,7 +120,7 @@ try {
   // of both child servers, and admin credentials stay out of the booking server.
   const commonEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
     ["NODE_ENV", "NODE_OPTIONS", "NEXT_TELEMETRY_DISABLED", "PATH", "TZ"].includes(name)));
-  const bookingEnv = { ...commonEnv, ...Object.fromEntries(Object.entries(process.env).filter(([name]) => name.startsWith("BOOKING_"))) };
+  const bookingEnv = { ...commonEnv, ...Object.fromEntries(Object.entries(process.env).filter(([name]) => name.startsWith("BOOKING_"))), BOOKING_SITE_DOMAIN: routing.domain, BOOKING_ROUTING_MODE: routing.mode };
   const adminEnv = { ...commonEnv, ...Object.fromEntries(Object.entries(process.env).filter(([name]) =>
     name.startsWith("ADMIN_") || ["BOOKING_API_PUBLISHABLE_KEY", "BOOKING_API_BASE_URL"].includes(name))) };
   launch("booking", process.execPath, [join(root, "booking/server.js")], {

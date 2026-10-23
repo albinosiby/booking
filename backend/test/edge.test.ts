@@ -191,61 +191,81 @@ test("Edge public catalog works while unexpected origins and oversized bodies ar
   );
   assert.equal(large.status, 413);
 });
-test("hosted web CORS preserves existing origins and authentication", async () => {
-  const previousOrigins = process.env.BOOKING_CORS_ORIGINS;
-  const previousWeb = process.env.BOOKING_WEB_ORIGIN;
-  const web = "https://booking-production-8e79.up.railway.app";
-  process.env.BOOKING_CORS_ORIGINS =
-    " https://existing.example , http://localhost:8080 ";
-  process.env.BOOKING_WEB_ORIGIN = web;
-  try {
-    const f = fixture();
-    const send = (origin: string, method = "OPTIONS", token?: string) =>
-      f.handler(
-        new Request("https://example.com/booking-api/v1/workspace", {
-          method,
-          headers: {
-            origin,
-            "access-control-request-method": "GET",
-            "access-control-request-headers": "authorization,content-type",
-            ...(token ? { authorization: `Bearer ${token}` } : {}),
-          },
-        }),
-      );
-    for (const origin of [
-      web,
-      "https://existing.example",
-      "http://localhost:8080",
-    ]) {
-      const response = await send(origin);
-      assert.equal(response.status, 204);
-      assert.equal(response.headers.get("access-control-allow-origin"), origin);
-      assert.match(
-        response.headers.get("access-control-allow-headers") ?? "",
-        /authorization/,
-      );
-      assert.equal(response.headers.get("vary"), "Origin");
+for (const transitioning of [false, true]) {
+  test(`hosted web CORS preserves existing origins and authentication (transition=${transitioning})`, async () => {
+    const previousOrigins = process.env.BOOKING_CORS_ORIGINS;
+    const previousWeb = process.env.BOOKING_WEB_ORIGIN;
+    const web = "https://booking-production-8e79.up.railway.app";
+    const custom = "https://bookingos.online";
+    process.env.BOOKING_CORS_ORIGINS =
+      " https://existing.example , http://localhost:8080 ";
+    process.env.BOOKING_WEB_ORIGIN = transitioning
+      ? ` ${custom}, ${web}, `
+      : web;
+    try {
+      const f = fixture();
+      const send = (origin: string, method = "OPTIONS", token?: string) =>
+        f.handler(
+          new Request("https://example.com/booking-api/v1/workspace", {
+            method,
+            headers: {
+              origin,
+              "access-control-request-method": "GET",
+              "access-control-request-headers":
+                "apikey,authorization,content-type",
+              ...(token ? { authorization: `Bearer ${token}` } : {}),
+            },
+          }),
+        );
+      for (const origin of [
+        web,
+        ...(transitioning ? [custom] : []),
+        "https://existing.example",
+        "http://localhost:8080",
+      ]) {
+        const response = await send(origin);
+        assert.equal(response.status, 204);
+        assert.equal(
+          response.headers.get("access-control-allow-origin"),
+          origin,
+        );
+        assert.match(
+          response.headers.get("access-control-allow-headers") ?? "",
+          /authorization/,
+        );
+        assert.match(
+          response.headers.get("access-control-allow-headers") ?? "",
+          /apikey/,
+        );
+        assert.equal(response.headers.get("vary"), "Origin");
+      }
+      assert.equal(f.calls.length, 0);
+      const unsigned = await send(web, "GET");
+      assert.equal(unsigned.status, 401);
+      assert.equal(unsigned.headers.get("access-control-allow-origin"), web);
+      assert.equal((await send(web, "GET", "valid")).status, 200);
+      if (transitioning) {
+        assert.equal((await send(custom, "GET")).status, 401);
+        assert.equal((await send(custom, "GET", "valid")).status, 200);
+      }
+      for (const origin of [
+        web + ".untrusted.example",
+        custom + ".untrusted.example",
+        "https://untrusted.example",
+      ]) {
+        const rejected = await send(origin);
+        assert.equal(rejected.status, 403);
+        assert.equal(rejected.headers.get("access-control-allow-origin"), null);
+      }
+    } finally {
+      if (previousOrigins === undefined)
+        delete process.env.BOOKING_CORS_ORIGINS;
+      else process.env.BOOKING_CORS_ORIGINS = previousOrigins;
+      if (previousWeb === undefined) delete process.env.BOOKING_WEB_ORIGIN;
+      else process.env.BOOKING_WEB_ORIGIN = previousWeb;
     }
-    assert.equal(f.calls.length, 0);
-    const unsigned = await send(web, "GET");
-    assert.equal(unsigned.status, 401);
-    assert.equal(unsigned.headers.get("access-control-allow-origin"), web);
-    assert.equal((await send(web, "GET", "valid")).status, 200);
-    for (const origin of [
-      web + ".untrusted.example",
-      "https://untrusted.example",
-    ]) {
-      const rejected = await send(origin);
-      assert.equal(rejected.status, 403);
-      assert.equal(rejected.headers.get("access-control-allow-origin"), null);
-    }
-  } finally {
-    if (previousOrigins === undefined) delete process.env.BOOKING_CORS_ORIGINS;
-    else process.env.BOOKING_CORS_ORIGINS = previousOrigins;
-    if (previousWeb === undefined) delete process.env.BOOKING_WEB_ORIGIN;
-    else process.env.BOOKING_WEB_ORIGIN = previousWeb;
-  }
-});
+  });
+}
 
 test("Edge preserves exact invitation-token validation", async () => {
   const f = fixture();

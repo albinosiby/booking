@@ -79,3 +79,21 @@ test("login and register open the owner app", () => {
   );
   assert.equal(appOrigin("localhost", ""), "http://localhost:8080");
 });
+
+test("owner app redirects retain a configured /app mount", () => {
+  for (const base of ["/app", "/app/", "https://bookingos.online/app/"]) {
+    assert.equal(
+      appRedirect("/login", domain, base),
+      "https://bookingos.online/app/sign-in",
+    );
+    assert.equal(
+      appRedirect("/register", domain, base),
+      "https://bookingos.online/app/register",
+    );
+  }
+  assert.equal(appOrigin(domain, "/app"), "https://bookingos.online");
+  assert.equal(
+    appRedirect("/sign-in", "localhost", "/app"),
+    "http://localhost:8080/app/sign-in",
+  );
+});

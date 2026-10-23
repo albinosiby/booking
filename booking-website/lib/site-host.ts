@@ -20,27 +20,36 @@ const appPaths: Record<string, string> = {
   "/signup": "/register",
 };
 
-/** `https://app.<domain>` unless BOOKING_APP_URL says otherwise. */
-export function appOrigin(
-  domain: string,
-  value = process.env.BOOKING_APP_URL,
-) {
-  if (value) return new URL(value).origin;
+/** Origin of the owner app; configured relative URLs resolve on the main domain. */
+export function appOrigin(domain: string, value = process.env.BOOKING_APP_URL) {
+  if (value)
+    return new URL(
+      value,
+      domain === "localhost" ? "http://localhost:8080" : `https://${domain}`,
+    ).origin;
   return domain === "localhost"
     ? "http://localhost:8080"
     : `https://app.${domain}`;
 }
 
 /** `/login` on the main domain or any booking website opens the app's sign-in page. */
-export function appRedirect(pathname: string, domain: string, value?: string) {
+export function appRedirect(
+  pathname: string,
+  domain: string,
+  value = process.env.BOOKING_APP_URL,
+) {
   const path = appPaths[pathname.replace(/\/$/, "") || "/"];
-  return path ? `${appOrigin(domain, value)}${path}` : null;
+  if (!path) return null;
+  const url = new URL(value || appOrigin(domain, ""), appOrigin(domain, "/"));
+  // The shared deployment mounts Flutter at /app; keep that configured prefix.
+  url.pathname = `${url.pathname.replace(/\/$/, "")}${path}`;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 export type SiteHost =
-  | { kind: "site"; slug: string }
-  | { kind: "root" }
-  | { kind: "other" };
+  { kind: "site"; slug: string } | { kind: "root" } | { kind: "other" };
 
 /** `bookingos.online` in production; `localhost` resolves `<slug>.localhost` in development. */
 export function siteDomain(value = process.env.BOOKING_SITE_DOMAIN) {
@@ -60,7 +69,10 @@ export function resolveSiteHost(
   if (name === domain || name === `www.${domain}`) return { kind: "root" };
   if (!name.endsWith(`.${domain}`)) return { kind: "other" };
   const slug = name.slice(0, -domain.length - 1);
-  return label.test(slug) && slug.length >= 3 && slug.length <= 63 && !reserved.has(slug)
+  return label.test(slug) &&
+    slug.length >= 3 &&
+    slug.length <= 63 &&
+    !reserved.has(slug)
     ? { kind: "site", slug }
     : { kind: "other" };
 }

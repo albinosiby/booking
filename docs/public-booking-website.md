@@ -354,6 +354,8 @@ How a request is resolved (`booking-website/proxy.ts`, `lib/site-host.ts`):
 
 `/api/sites/<slug>/...` is never rewritten. The proxy sets an internal `x-booking-site-host` header to render subdomain-relative links and strips any client-supplied copy on path-routed hosts. The host is read from `X-Forwarded-Host` (first value) or `Host`, so the hosting layer must pass the visitor's host through.
 
+For the shared Railway service, deploy the host-aware gateway and set `BOOKING_ROUTING_MODE=auto` (or `subdomain`) with `BOOKING_SITE_DOMAIN=bookingos.online`. The gateway sends tenant `/` requests to this booking server and keeps the marketing homepage on the apex, `www` and Railway host. An old explicit `BOOKING_ROUTING_MODE=path` disables tenant homepages even when DNS is connected. See [Railway custom-domain setup and verification](railway-deployment.md#connecting-a-domain-later); this routing change requires no migration.
+
 ### What the owner configures
 
 - **Address:** a fixed `https://` prefix, editable website name and fixed `.bookingos.online` suffix (the configured domain is used). The fixed domain wraps below the input on narrow screens with enlarged text. **Save** updates only the address while preserving other unsaved design changes, and the saved URL appears in the summary above **Website address**. Validation and address conflicts appear beside the name; failed saves keep the existing saved link. The address remains editable after publication.

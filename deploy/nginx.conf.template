@@ -24,6 +24,12 @@ http {
         https https;
     }
 
+    # $host comes from the request host, never a client-supplied forwarded header.
+    map $host $tenant_homepage {
+        default 0;
+        __TENANT_HOST_RULE__
+    }
+
     server {
         listen __PORT__;
         server_name _;
@@ -39,10 +45,17 @@ http {
         location ~ \.map$ { return 404; }
 
         location = / {
+            # Only tenant hosts pass their homepage to the booking server.
+            error_page 418 = @booking_homepage;
+            if ($tenant_homepage) { return 418; }
             root "__ROOT__/static/landing";
             try_files /index.html =404;
             include "__ROOT__/deploy/security-headers.conf";
             add_header Cache-Control "no-cache" always;
+        }
+        location @booking_homepage {
+            proxy_pass http://127.0.0.1:__BOOKING_PORT__;
+            include "__ROOT__/deploy/proxy.conf";
         }
         location ^~ /_landing/_next/static/ {
             root "__ROOT__/static/landing";

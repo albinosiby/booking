@@ -513,10 +513,10 @@ export function createHandler(
       "X-Request-Id": requestId,
     });
     const origin = req.headers.get("origin");
-    // A hosted Flutter origin can be added without replacing existing clients.
+    // Keep exact origins for both hosts during a public-domain transition.
     const allowed = [
       ...(process.env.BOOKING_CORS_ORIGINS ?? "").split(","),
-      process.env.BOOKING_WEB_ORIGIN ?? "",
+      ...(process.env.BOOKING_WEB_ORIGIN ?? "").split(","),
     ]
       .map((value) => value.trim())
       .filter(Boolean);

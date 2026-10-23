@@ -64,7 +64,8 @@ FROM node-base AS runtime
 ENV NODE_ENV=production \
     PORT=8080 \
     BOOKING_APP_URL=/app \
-    BOOKING_ROUTING_MODE=path
+    BOOKING_ROUTING_MODE=auto \
+    BOOKING_SITE_DOMAIN=bookingos.online
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates nginx tini \
     && rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled/default
@@ -75,7 +76,7 @@ COPY --from=booking-build --chown=node:node /build/booking-website/.next/standal
 COPY --from=booking-build --chown=node:node /build/booking-website/.next/static/ ./booking/.next/static/
 COPY --from=admin-build --chown=node:node /build/admin-panel/.next/standalone/ ./admin/
 COPY --from=admin-build --chown=node:node /build/admin-panel/.next/static/ ./admin/.next/static/
-COPY --chown=node:node deploy/start.mjs deploy/check-health.mjs deploy/nginx.conf.template deploy/proxy.conf deploy/security-headers.conf ./deploy/
+COPY --chown=node:node deploy/start.mjs deploy/routing.mjs deploy/check-health.mjs deploy/nginx.conf.template deploy/proxy.conf deploy/security-headers.conf ./deploy/
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=8s --start-period=45s --retries=3 \

@@ -43,6 +43,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Verify domain routing configuration
+        run: node --test deploy/test/routing.test.mjs
       - name: Build all four frontends
         run: docker build -t bookingos:ci .
       - name: Start isolated frontend container
@@ -66,7 +68,7 @@ jobs:
         env:
           SMOKE_ADMIN_PANEL_PASSWORD: fixture-panel-password
         run: |
-          node deploy/smoke.mjs http://127.0.0.1:8080 railway-smoke
+          node deploy/smoke.mjs http://127.0.0.1:8080 railway-smoke bookingos.online
           node deploy/test/auth-smoke.mjs http://127.0.0.1:8080
       - name: Verify process failure shuts down the service
         run: |

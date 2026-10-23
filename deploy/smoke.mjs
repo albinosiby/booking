@@ -1,12 +1,30 @@
 import assert from "node:assert/strict";
+import { get as httpGet } from "node:http";
+import { get as httpsGet } from "node:https";
 
 // Read-only deployment verification. Never submits logins, bookings or payments.
 const origin = new URL(process.argv[2] || "http://127.0.0.1:8080").origin;
+const domain = process.argv[4];
 async function get(path, options = {}) {
-  const response = await fetch(`${origin}${path}`, {
-    redirect: "manual", signal: AbortSignal.timeout(15_000), ...options,
+  // Node's fetch ignores Host overrides; the HTTP client lets local tests send
+  // real tenant Host headers through the same gateway as production traffic.
+  return new Promise((resolve, reject) => {
+    const url = new URL(path, origin);
+    const request = (url.protocol === "https:" ? httpsGet : httpGet)(url, {
+      signal: AbortSignal.timeout(15_000), ...options,
+    }, async (response) => {
+      try {
+        const chunks = [];
+        for await (const chunk of response) chunks.push(chunk);
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(response.headers))
+          for (const item of Array.isArray(value) ? value : [value])
+            if (item !== undefined) headers.append(name, item);
+        resolve({ response: { status: response.statusCode, headers }, text: Buffer.concat(chunks).toString() });
+      } catch (error) { reject(error); }
+    });
+    request.on("error", reject);
   });
-  return { response, text: await response.text() };
 }
 
 const health = await get("/_health");
@@ -42,7 +60,7 @@ for (const [path, destination] of [["/app", "/app/"], ["/sign-in?from=home", "/a
 
 const login = await get("/admin/login");
 assert.equal(login.response.status, 200);
-assert.match(login.text, /Booking Admin/);
+assert.match(login.text, /name="password"/, "admin login must render its password form");
 const adminAssets = new Set([...login.text.matchAll(/(?:src|href)="(\/admin\/_next\/[^"?#]+)/g)].map((match) => match[1]));
 assert.ok(adminAssets.size > 0, "admin assets must stay under /admin/_next");
 for (const asset of adminAssets)
@@ -75,5 +93,47 @@ if (process.argv[3]) {
     assert.equal(spoofed.response.status, 200);
     assert.match(spoofed.text, /Railway fixture venue/);
   }
+  if (domain) {
+    const tenantHost = `${process.argv[3]}.${domain}`;
+    const tenantHeaders = { Host: tenantHost, "X-Forwarded-Host": "attacker.invalid", "X-Booking-Site-Host": "other" };
+    const home = await get("/", { headers: tenantHeaders });
+    assert.equal(home.response.status, 200, "tenant root must open the booking homepage");
+    assert.match(home.text, /site-brand/);
+    assert.doesNotMatch(home.text, /Run your/);
+    assert.doesNotMatch(home.text, new RegExp(`href="/${slug}/book/`), "tenant links must not repeat the slug");
+    const assets = new Set([...home.text.matchAll(/(?:src|href)="(\/_next\/[^"?#]+)/g)].map((match) => match[1]));
+    assert.ok(assets.size > 0, "tenant must include booking frontend assets");
+    for (const asset of assets)
+      assert.equal((await get(asset, { headers: tenantHeaders })).response.status, 200, asset);
+    if (process.argv[3] === "railway-smoke") {
+      assert.match(home.text, /Railway fixture venue/);
+      assert.match(home.text, /href="\/book\/fixture-court"/);
+      const booking = await get("/book/fixture-court", { headers: tenantHeaders });
+      assert.equal(booking.response.status, 200);
+      assert.match(booking.text, /Fixture badminton court/);
+      const catalog = await get(`/api/sites/${slug}`, { headers: tenantHeaders });
+      assert.equal(catalog.response.status, 200);
+      assert.equal(JSON.parse(catalog.text).slug, "railway-smoke");
+    }
+    const legacy = await get(`/${slug}?from=legacy`, { headers: tenantHeaders });
+    assert.equal(legacy.response.status, 308);
+    const clean = new URL(legacy.response.headers.get("location"), `http://${tenantHost}`);
+    assert.equal(clean.hostname, tenantHost);
+    assert.equal(clean.pathname + clean.search, "/?from=legacy");
+    const apexLegacy = await get(`/${slug}/book/example?from=legacy`, { headers: { Host: domain } });
+    assert.equal(apexLegacy.response.status, 308);
+    assert.equal(apexLegacy.response.headers.get("location"), `https://${tenantHost}/book/example?from=legacy`);
+    for (const host of [domain, `www.${domain}`, `not.${domain}.evil.test`]) {
+      const main = await get("/", { headers: { Host: host, "X-Forwarded-Host": tenantHost } });
+      assert.equal(main.response.status, 200);
+      assert.match(main.text, /Run your/, host);
+    }
+    const owner = await get("/app/profile/booking-website", { headers: tenantHeaders });
+    assert.equal(owner.response.status, 200);
+    assert.match(owner.text, /<base href="\/app\/">/);
+    const admin = await get("/admin", { headers: tenantHeaders });
+    assert.ok([307, 308].includes(admin.response.status));
+    assert.equal(new URL(admin.response.headers.get("location"), origin).pathname, "/admin/login");
+  }
 }
-console.info("Passed: readiness, landing assets, Flutter deep links/404s, login redirects, admin protection and admin assets.");
+console.info("Passed: readiness, landing assets, Flutter deep links/404s, login redirects, admin protection and admin assets" + (domain ? ", custom-domain homepages, clean booking links and host isolation." : "."));
