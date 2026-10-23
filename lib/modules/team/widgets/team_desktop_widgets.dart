@@ -92,6 +92,7 @@ class TeamPersonTile extends StatelessWidget {
     required this.chips,
     this.onTap,
     this.trailing,
+    this.actions = const [],
     this.muted = false,
     this.note,
   });
@@ -100,6 +101,7 @@ class TeamPersonTile extends StatelessWidget {
   final List<Widget> chips;
   final VoidCallback? onTap;
   final Widget? trailing;
+  final List<Widget> actions;
   final bool muted;
 
   @override
@@ -108,46 +110,55 @@ class TeamPersonTile extends StatelessWidget {
     return AppCard(
       onTap: onTap,
       padding: const EdgeInsets.all(16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TeamAvatar(name, muted: muted),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+          Row(
+            children: [
+              TeamAvatar(name, muted: muted),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(spacing: 6, runSpacing: 6, children: chips),
+                    if (note != null) ...[
+                      const SizedBox(height: 8),
+                      Text(note!, style: theme.textTheme.bodySmall),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  email,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Wrap(spacing: 6, runSpacing: 6, children: chips),
-                if (note != null) ...[
-                  const SizedBox(height: 8),
-                  Text(note!, style: theme.textTheme.bodySmall),
-                ],
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 4),
+                trailing!,
+              ] else if (onTap != null) ...[
+                const SizedBox(width: 8),
+                Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
               ],
-            ),
+            ],
           ),
-          if (trailing != null) ...[
-            const SizedBox(width: 4),
-            trailing!,
-          ] else if (onTap != null) ...[
-            const SizedBox(width: 8),
-            Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, runSpacing: 8, children: actions),
           ],
         ],
       ),

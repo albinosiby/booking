@@ -34,7 +34,7 @@ class _TeamScreenState extends State<TeamScreen> {
     if (await confirmAction(
           context,
           'Remove staff access?',
-          'This person will lose organization access immediately. Coaching plans they teach become Unassigned.',
+          '${m['display_name']} (${m['email']}) will lose organization access immediately. Coaching plans they teach become Unassigned.',
         ) &&
         mounted) {
       await cubit.revoke(m['id']);
@@ -93,25 +93,21 @@ class _TeamScreenState extends State<TeamScreen> {
         ),
       ],
       trailing: !owner && active
-          ? PopupMenuButton<String>(
-              tooltip: 'Staff actions for ${member['display_name']}',
-              enabled: !s.busy,
-              onSelected: (action) {
-                if (action == 'edit') edit(member);
-                if (action == 'remove') remove(member);
-              },
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: 'edit', child: Text('Edit staff')),
-                PopupMenuItem(
-                  value: 'remove',
-                  child: Text(
-                    'Remove access',
-                    style: TextStyle(color: colors.error),
-                  ),
-                ),
-              ],
+          ? IconButton(
+              tooltip: 'Edit staff for ${member['display_name']}',
+              onPressed: s.busy ? null : () => edit(member),
+              icon: const Icon(Icons.edit_outlined),
             )
           : null,
+      actions: [
+        if (!owner && active)
+          TextButton.icon(
+            onPressed: s.busy ? null : () => remove(member),
+            style: TextButton.styleFrom(foregroundColor: colors.error),
+            icon: const Icon(Icons.person_remove_outlined, size: 18),
+            label: const Text('Remove access'),
+          ),
+      ],
     );
   }
 
@@ -171,7 +167,6 @@ class _TeamScreenState extends State<TeamScreen> {
                   edit({...invitation, 'pending_access': true});
                 }
                 if (action == 'resend') cubit.resendEmail(invitation['id']);
-                if (action == 'cancel') cancelInvitation(invitation);
               },
               itemBuilder: (_) => [
                 const PopupMenuItem(value: 'edit', child: Text('Edit access')),
@@ -179,22 +174,18 @@ class _TeamScreenState extends State<TeamScreen> {
                   value: 'resend',
                   child: Text('Resend access email'),
                 ),
-                PopupMenuItem(
-                  value: 'cancel',
-                  child: Text(
-                    'Cancel access',
-                    style: TextStyle(color: colors.error),
-                  ),
-                ),
               ],
             )
-          : pending
-          ? IconButton(
-              tooltip: 'Cancel invitation',
-              onPressed: s.busy ? null : () => cancelInvitation(invitation),
-              icon: const Icon(Icons.close),
-            )
           : null,
+      actions: [
+        if (pending)
+          TextButton.icon(
+            onPressed: s.busy ? null : () => cancelInvitation(invitation),
+            style: TextButton.styleFrom(foregroundColor: colors.error),
+            icon: const Icon(Icons.cancel_outlined, size: 18),
+            label: Text(emailAccess ? 'Cancel access' : 'Cancel invitation'),
+          ),
+      ],
     );
   }
 

@@ -16,6 +16,8 @@ import 'package:eden_booking/modules/workspace/models/workspace.dart';
 import 'staff_assignment_test.dart' show StaffRepository;
 
 class EmailTeam extends Fake implements TeamRepository {
+  final members = <Map<String, dynamic>>[];
+  final removed = <(String, bool)>[];
   final entry = <String, dynamic>{
     'id': 'pending',
     'display_name': 'Pending Staff',
@@ -34,7 +36,7 @@ class EmailTeam extends Fake implements TeamRepository {
   Future<Map<String, dynamic>> load() async {
     await loadWait?.future;
     return {
-      'members': <Map<String, dynamic>>[],
+      'members': members,
       'invitations': [entry],
     };
   }
@@ -42,7 +44,12 @@ class EmailTeam extends Fake implements TeamRepository {
   @override
   Future<void> revoke(String id, {bool invitation = false}) async {
     revocations++;
-    entry['revoked_at'] = DateTime.now().toIso8601String();
+    removed.add((id, invitation));
+    if (invitation) {
+      entry['revoked_at'] = DateTime.now().toIso8601String();
+    } else {
+      members.firstWhere((member) => member['id'] == id)['active'] = false;
+    }
   }
 
   @override
@@ -112,9 +119,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(repo.resends, 1);
       expect(find.text('Email sent'), findsOneWidget);
-      await tester.ensureVisible(actions);
-      await tester.tap(actions);
-      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Cancel access'));
       await tester.tap(find.text('Cancel access'));
       await tester.pumpAndSettle();
       expect(repo.revocations, 0);
@@ -127,6 +132,71 @@ void main() {
       await tester.tap(find.text('Edit access'));
       await tester.pumpAndSettle();
       expect(find.text('Editing true'), findsOneWidget);
+      router.pop();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Cancel access'));
+      await tester.tap(find.text('Cancel access'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      expect(repo.removed, [('pending', true)]);
+      expect(find.text('Cancelled'), findsOneWidget);
+      expect(find.text('Cancel access'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+    testWidgets('staff removal is visible and confirmed at ${size.width}', (
+      tester,
+    ) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = EmailTeam();
+      for (final (id, role, active) in [
+        ('owner', 'owner', true),
+        ('staff', 'staff', true),
+        ('former', 'staff', false),
+      ]) {
+        repo.members.add({
+          'id': id,
+          'display_name': id,
+          'email': '$id@example.com',
+          'role': role,
+          'active': active,
+        });
+      }
+      getIt.registerFactory<TeamCubit>(() => TeamCubit(repo));
+      await tester.pumpWidget(
+        ScreenUtilInit(
+          designSize: const Size(390, 844),
+          builder: (_, _) =>
+              MaterialApp(theme: darkTheme(), home: const TeamScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // Only active non-owners receive a removal control.
+      expect(find.text('Remove access'), findsOneWidget);
+      await tester.ensureVisible(find.text('Remove access'));
+      await tester.tap(find.text('Remove access'));
+      await tester.pumpAndSettle();
+      expect(repo.removed, isEmpty);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(repo.removed, isEmpty);
+      await tester.tap(find.text('Remove access'));
+      await tester.pumpAndSettle();
+      repo.loadWait = Completer<void>();
+      await tester.tap(find.text('Confirm'));
+      await tester.pump();
+      expect(repo.removed, [('staff', false)]);
+      final button = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Remove access'),
+      );
+      expect(button.onPressed, isNull);
+      repo.loadWait!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Remove access'), findsNothing);
+      expect(find.text('Staff access removed.'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
