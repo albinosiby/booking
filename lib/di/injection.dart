@@ -1,5 +1,9 @@
+import '../modules/notifications/cubit/notification_cubit.dart';
+import '../modules/notifications/repositories/notification_repository.dart';
+import '../modules/notifications/repositories/firebase_notification_repository.dart';
 import '../modules/workspace/repositories/workspace_preloader.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/app_config.dart';
 import '../modules/auth/repositories/supabase_auth_repository.dart';
@@ -28,7 +32,9 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton<AuthRepository>(
     () => AppConfig.useSupabase
         ? SupabaseAuthRepository(Supabase.instance.client.auth)
-        : FirebaseAuthRepository(FirebaseAuth.instance),
+        : FirebaseAuthRepository(
+            FirebaseAuth.instanceFor(app: Firebase.app('booking-auth')),
+          ),
   );
   getIt.registerLazySingleton<RestApiService>(
     () => RestApiService(
@@ -47,9 +53,16 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton<AuthContinuationRepository>(
     () => SecureAuthContinuationRepository(AppConfig.supabaseUrl),
   );
+  getIt.registerLazySingleton<NotificationRepository>(
+    () => FirebaseNotificationRepository(getIt(), getIt()),
+  );
+  getIt.registerLazySingleton<NotificationCubit>(
+    () => NotificationCubit(getIt(), getIt()),
+  );
   getIt.registerFactory<AuthCubit>(
     () => AuthCubit(
       getIt(),
+      beforeSignOut: () => getIt<NotificationCubit>().signOut(),
       continuations: AppConfig.useSupabase
           ? getIt<AuthContinuationRepository>()
           : null,

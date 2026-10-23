@@ -1,3 +1,5 @@
+import 'modules/notifications/cubit/notification_cubit.dart';
+import 'modules/notifications/models/notification_state.dart';
 import 'modules/team/cubit/invitation_link_cubit.dart';
 import 'modules/team/models/invitation_link.dart';
 import 'dart:async';
@@ -34,7 +36,8 @@ Future<void> main() async {
         ),
       );
     } else {
-      await Firebase.initializeApp(
+      final authApp = await Firebase.initializeApp(
+        name: 'booking-auth',
         options: const FirebaseOptions(
           apiKey: AppConfig.firebaseApiKey,
           appId: AppConfig.firebaseAppId,
@@ -43,7 +46,7 @@ Future<void> main() async {
         ),
       );
       if (AppConfig.useAuthEmulator) {
-        await FirebaseAuth.instance.useAuthEmulator(
+        await FirebaseAuth.instanceFor(app: authApp).useAuthEmulator(
           AppConfig.emulatorHost,
           9099,
           automaticHostMapping: false,
@@ -99,6 +102,9 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
   StreamSubscription<AuthState>? subscription;
   InvitationLinkCubit? invitationLinks;
   StreamSubscription<InvitationLink?>? invitationSubscription;
+  late final NotificationCubit notifications = getIt<NotificationCubit>();
+  StreamSubscription<NotificationState>? notificationSubscription;
+  StreamSubscription<WorkspaceState>? notificationWorkspaceSubscription;
   String? loadedUser;
   DateTime? lastResume;
   @override
@@ -107,6 +113,13 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     subscription = auth.stream.listen(sync);
     sync(auth.state);
+    notificationSubscription = notifications.stream.listen(
+      (_) => openNotification(),
+    );
+    notificationWorkspaceSubscription = workspace.stream.listen(
+      (_) => openNotification(),
+    );
+    unawaited(notifications.start());
     if (!kIsWeb) {
       invitationLinks = getIt<InvitationLinkCubit>();
       invitationSubscription = invitationLinks!.stream.listen((link) {
@@ -123,8 +136,34 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
     }
   }
 
+  void openNotification() {
+    final pending = notifications.state.pending;
+    if (pending == null ||
+        !mounted ||
+        auth.state.busy ||
+        workspace.state.busy ||
+        workspace.state.status != LoadStatus.ready ||
+        workspace.state.data.organization == null ||
+        auth.state.status != AuthStatus.signedIn) {
+      return;
+    }
+    notifications.consume();
+    if (auth.state.user?.id != pending.userId ||
+        auth.state.user?.passwordRecovery == true ||
+        !workspace.state.data.hasPermission('manage_bookings')) {
+      return;
+    }
+    // BookingDetail's repository fetch enforces current organization/resource access.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && auth.state.user?.id == pending.userId) {
+        router.go('/booking/${pending.bookingId}');
+      }
+    });
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) notifications.resumed();
     if (state != AppLifecycleState.resumed ||
         loadedUser == null ||
         workspace.state.busy) {
@@ -160,6 +199,9 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    notificationSubscription?.cancel();
+    notificationWorkspaceSubscription?.cancel();
+    unawaited(notifications.close());
     invitationSubscription?.cancel();
     invitationLinks?.close();
     subscription?.cancel();

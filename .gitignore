@@ -60,3 +60,6 @@ dart-defines*.json
 android/key.properties
 *.jks
 *.keystore
+
+# Kotlin compiler session cache
+/android/.kotlin/

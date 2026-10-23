@@ -68,3 +68,28 @@ writeFileSync(
 console.log(
   `Built Edge API (${readFileSync(resolve(output, "index.ts")).length} bytes); no secrets embedded.`,
 );
+
+const notificationOutput = resolve(
+  root,
+  "../supabase/functions/booking-notifications",
+);
+mkdirSync(notificationOutput, { recursive: true });
+await build({
+  entryPoints: [resolve(root, "edge/notifications-entry.ts")],
+  outfile: resolve(notificationOutput, "index.ts"),
+  bundle: true,
+  format: "esm",
+  platform: "node",
+  target: "es2022",
+  minify: true,
+  external: ["node:*", "npm:*"],
+});
+writeFileSync(
+  resolve(notificationOutput, "deno.json"),
+  JSON.stringify(
+    { nodeModulesDir: "auto", compilerOptions: { lib: ["deno.window"] } },
+    null,
+    2,
+  ) + "\n",
+);
+console.log("Built booking-notifications sender; no secrets embedded.");

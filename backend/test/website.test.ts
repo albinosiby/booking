@@ -113,6 +113,13 @@ test("guest booking uses existing inventory and creates no payment entries", asy
     ])
   ).rows[0];
   assert.equal(row.booking_source, "website");
+  const notifications = (
+    await db.query(
+      "SELECT kind FROM booking_notification_events WHERE booking_id=$1",
+      [row.id],
+    )
+  ).rows;
+  assert.deepEqual(notifications, [{ kind: "created" }]);
   const detail = await new BookingService(db, f.workspace).detail(
     f.owner,
     row.id,

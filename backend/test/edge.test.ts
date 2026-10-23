@@ -19,6 +19,7 @@ function fixture() {
     },
   );
   const services = {
+    notifications: service,
     workspace: service,
     admissions: service,
     messages: service,
@@ -551,4 +552,32 @@ test("Edge routes Sarvam voice tools by tool key and speaks refusals", async () 
     ok: false,
     message: "That slot is taken.",
   });
+});
+
+test("Edge device registration verifies user auth; cleanup uses only installation proof", async () => {
+  const f = fixture();
+  assert.equal(
+    (await f.request("/v1/notifications/devices", "POST", {}, null)).status,
+    401,
+  );
+  assert.equal(f.calls.length, 0);
+  assert.equal(
+    (await f.request("/v1/notifications/devices", "POST", { token: "device" }))
+      .status,
+    201,
+  );
+  assert.equal(f.calls.at(-1).method, "register");
+  assert.equal(f.calls.at(-1).args[0].uid, "actor");
+  assert.equal(
+    (
+      await f.request(
+        "/v1/notifications/installations/revoke",
+        "POST",
+        { installation_id: id, installation_secret: "a".repeat(64) },
+        null,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(f.calls.at(-1).method, "revokeInstallation");
 });

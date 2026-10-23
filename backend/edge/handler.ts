@@ -1,3 +1,4 @@
+import type { NotificationService } from "../src/notifications/notification.service";
 import type { SupportService } from "../src/support/support.service";
 import type { AgentCallService } from "../src/agent-calls/agent-calls.service";
 import type { AdminService } from "../src/admin/admin.service";
@@ -32,6 +33,7 @@ import { renderExpenseReport } from "../src/expenses/expenses.report";
 import type { IncomeService } from "../src/income/income.service";
 import { renderIncomeReport } from "../src/income/income.report";
 type Services = {
+  notifications: NotificationService;
   admin: AdminService;
   support: SupportService;
   agentCalls: AgentCallService;
@@ -59,10 +61,10 @@ type Input = {
 };
 type Route = { method: string; path: string; run: (i: Input) => unknown };
 const MAX_BODY = 3 * 1024 * 1024;
-async function body(req: Request) {
+async function body(req: Request, limit = MAX_BODY) {
   if (!["POST", "PATCH", "PUT"].includes(req.method)) return undefined;
   if (!req.body) return undefined;
-  if (Number(req.headers.get("content-length")) > MAX_BODY)
+  if (Number(req.headers.get("content-length")) > limit)
     throw new HttpException("Request body is too large.", 413);
   const reader = req.body?.getReader();
   if (!reader) throw new BadRequestException("JSON body is required.");
@@ -73,7 +75,7 @@ async function body(req: Request) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > MAX_BODY) {
+      if (size > limit) {
         await reader.cancel();
         throw new HttpException("Request body is too large.", 413);
       }
@@ -111,6 +113,12 @@ export function createHandler(
   const routes: Route[] = [];
   const add = (method: string, path: string, run: Route["run"]) =>
     routes.push({ method, path, run });
+  add("POST", "/v1/notifications/devices", (i) =>
+    services.notifications.register(i.actor, i.body),
+  );
+  add("POST", "/v1/notifications/devices/:id/unregister", (i) =>
+    services.notifications.unregister(i.actor, i.params.id, i.body),
+  );
   const ad = services.admin;
   add("GET", "/v1/admin/me", (i) => ad.me(i.actor));
   add("GET", "/v1/admin/overview", (i) => ad.overview(i.actor));
@@ -645,6 +653,26 @@ export function createHandler(
           return respond(result, operation === "bookings" ? 201 : 200);
         }
         throw new HttpException("Route not found.", 404);
+      }
+      if (
+        req.method === "POST" &&
+        path === "/v1/notifications/installations/revoke"
+      ) {
+        const key = "installation-cleanup";
+        const now = Date.now();
+        const burst = bursts.get(key) ?? { until: now + 60000, count: 0 };
+        if (burst.until <= now)
+          Object.assign(burst, { until: now + 60000, count: 0 });
+        if (++burst.count > 120)
+          throw new HttpException("Try again shortly.", 429);
+        bursts.set(key, burst);
+        if (Number(req.headers.get("content-length")) > 1024)
+          throw new HttpException("Request body is too large.", 413);
+        return respond(
+          await services.notifications.revokeInstallation(
+            await body(req, 1024),
+          ),
+        );
       }
       const voice = voiceRoutes[path];
       if (voice && req.method === "POST") {

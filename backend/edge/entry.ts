@@ -1,3 +1,4 @@
+import { NotificationService } from "../src/notifications/notification.service";
 import { SupportService } from "../src/support/support.service";
 import { AgentCallService } from "../src/agent-calls/agent-calls.service";
 import { AdminService } from "../src/admin/admin.service";
@@ -34,6 +35,7 @@ const accounts = new AccountsService(db as never, workspace);
 const bookings = new BookingService(db as never, workspace);
 const sarvam = new SarvamService(db as never, workspace);
 export const services = {
+  notifications: new NotificationService(db as never),
   website: new WebsiteService(db as never, workspace),
   blocks: new SlotBlocksService(db as never),
   admissions: new AdmissionService(db as never),

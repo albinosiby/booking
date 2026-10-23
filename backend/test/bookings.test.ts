@@ -1483,3 +1483,45 @@ test("check-in is idempotent arrival metadata and keeps balances and inventory u
     /final status/,
   );
 });
+
+test("booking notification enqueue follows successful command history exactly once", async () => {
+  const f = await fixture(),
+    command = await request(f);
+  const { id } = await service.create(f.owner, command);
+  await service.create(f.owner, command);
+  let b = await service.detail(f.owner, id);
+  const selection = { ...f.selection, time: "11:00" };
+  const quote = await service.quote(f.owner, {
+    selection,
+    exclude_booking_id: id,
+  });
+  const move = {
+    command_key: randomUUID(),
+    version: b.version,
+    selection,
+    quote_token: quote.quote_token,
+    reason: "New time",
+  };
+  await service.reschedule(f.owner, id, move);
+  await service.reschedule(f.owner, id, move);
+  b = await service.detail(f.owner, id);
+  const cancel = {
+    command_key: randomUUID(),
+    version: b.version,
+    status: "cancelled",
+    reason: "Changed plans",
+  };
+  await service.status(f.owner, id, cancel);
+  await service.status(f.owner, id, cancel);
+  const events = (
+    await db.query<{ kind: string }>(
+      "SELECT kind FROM booking_notification_events WHERE booking_id=$1 ORDER BY created_at,id",
+      [id],
+    )
+  ).rows;
+  assert.deepEqual(events.map((e) => e.kind).sort(), [
+    "cancelled",
+    "created",
+    "rescheduled",
+  ]);
+});

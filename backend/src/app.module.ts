@@ -1,3 +1,8 @@
+import { NotificationService } from "./notifications/notification.service";
+import {
+  NotificationController,
+  NotificationInstallationController,
+} from "./notifications/notification.controller";
 import { SupportService } from "./support/support.service";
 import { SupportController } from "./support/support.controller";
 import { AgentCallService } from "./agent-calls/agent-calls.service";
@@ -53,6 +58,8 @@ import {
 @Module({
   imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }])],
   controllers: [
+    NotificationController,
+    NotificationInstallationController,
     AdminController,
     WebsiteSettingsController,
     PublicWebsiteController,
@@ -76,6 +83,7 @@ import {
     PoolController,
   ],
   providers: [
+    NotificationService,
     AdminGuard,
     AdminService,
     SupportService,

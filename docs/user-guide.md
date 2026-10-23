@@ -67,3 +67,7 @@ Use Add entry → Expense or Extra income. Choose shared organization, business 
 Use Transfer money for cash deposits, withdrawals, bank-to-bank movements or historical unassigned bank receipts. Choose source, destination and amount. A transfer changes balances without adding income or expenses. Reversing a mistaken manual entry preserves its original history and requires an owner reason.
 
 Open Reports from the Accounts app bar. Select a month, year or custom dates and download PDF or Excel through the device Save dialog. Reports include summary totals and per-booking received amounts with payment-method breakdowns. Receipt dates determine collections; booking tariffs and amounts received through the cutoff are separate. Transfers and opening balances are not income. Use a shorter period if an export exceeds 20,000 records. See [Accounts module](accounts-module.md).
+
+## Booking notifications
+
+On the configured Android or iOS app, log in and allow notifications when prompted. Owners receive placed, cancelled and rescheduled booking alerts; staff receive them for assigned businesses/spaces when they have booking-management permission. Tap an alert to open the booking. You can use the app with notifications denied; re-enable them in system settings and return to the app to register again. Logging out unlinks this installation and clears its displayed local alerts. Delivery requires the server setup in [Firebase notifications](firebase-notifications.md).

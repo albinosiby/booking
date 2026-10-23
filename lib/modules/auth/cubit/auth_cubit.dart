@@ -9,7 +9,8 @@ import 'auth_state.dart';
 export 'auth_state.dart';
 
 class AuthCubit extends Cubit<AuthState> {
-  AuthCubit(this.repository, {this.continuations}) : super(const AuthState()) {
+  AuthCubit(this.repository, {this.continuations, this.beforeSignOut})
+    : super(const AuthState()) {
     _restored = _restoreContinuation();
     _subscription = repository.changes.listen(
       (u) async {
@@ -44,6 +45,7 @@ class AuthCubit extends Cubit<AuthState> {
     );
   }
   final AuthRepository repository;
+  final Future<void> Function()? beforeSignOut;
   final AuthContinuationRepository? continuations;
   late final Future<void> _restored;
   Future<void> _clearing = Future.value();
@@ -164,6 +166,11 @@ class AuthCubit extends Cubit<AuthState> {
   Future<void> signOut() => _perform(() async {
     consumeContinuation();
     await _clearing;
+    try {
+      await beforeSignOut?.call();
+    } catch (_) {
+      // Device cleanup retries independently; notification availability must not trap the user in a session.
+    }
     await repository.signOut();
   });
   Future<void> resetPassword(String e) =>

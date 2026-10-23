@@ -5,3 +5,8 @@ project_id = "booking"
 # organization/staff permissions. Legacy HS256-only verification is incompatible.
 verify_jwt = false
 entrypoint = "./functions/booking-api/index.ts"
+
+[functions.booking-notifications]
+# Internal x-booking-push-secret authentication is enforced inside the function.
+verify_jwt = false
+entrypoint = "./functions/booking-notifications/index.ts"

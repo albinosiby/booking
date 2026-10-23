@@ -1,6 +1,6 @@
 # Firebase booking notifications — proposed design
 
-Status: awaiting design approval. No application code, database migration, or hosted configuration has been changed for this feature.
+Status: design approved on 23 October 2026; implementation and local validation completed. Hosted migration, secrets and deployment remain user-operated. See [the deployment guide](firebase-notifications.md) for the implementation handoff.
 
 ## Product analysis
 
@@ -130,4 +130,4 @@ Implementation documentation will include setup/secrets, migration application a
 - [FCM HTTP v1 authorization](https://firebase.google.com/docs/cloud-messaging/send/v1-api)
 - [Supabase push notification example](https://supabase.com/docs/guides/functions/examples/push-notifications)
 
-Supabase's markdown changelog could not be retrieved in this session; relevant current API and changelog checks must be completed before implementation.
+Supabase's markdown changelog endpoint could not be retrieved during planning. Implementation checked the HTML changelog and current official function scheduling/push documentation instead.
