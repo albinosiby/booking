@@ -19,9 +19,10 @@ export function proxy(request: NextRequest) {
       request.headers.get("x-forwarded-host")?.split(",")[0].trim() ||
       request.headers.get("host") ||
       "",
-    host = process.env.BOOKING_ROUTING_MODE === "path"
-      ? { kind: "other" as const }
-      : resolveSiteHost(hostHeader, domain),
+    host =
+      process.env.BOOKING_ROUTING_MODE === "path"
+        ? { kind: "other" as const }
+        : resolveSiteHost(hostHeader, domain),
     { pathname, search } = request.nextUrl;
   if (host.kind !== "other") {
     const app = appRedirect(pathname, domain);
@@ -34,13 +35,18 @@ export function proxy(request: NextRequest) {
     if (prefixed && request.headers.get(SITE_HOST_HEADER) === host.slug)
       return NextResponse.next();
     if (prefixed) {
-      const url = request.nextUrl.clone();
+      const url = new URL(request.url);
+      // Canonical redirects belong to the visitor's validated tenant host.
+      url.port = "";
+      url.host = hostHeader;
       url.pathname = pathname.slice(prefix.length) || "/";
       return NextResponse.redirect(url, 308);
     }
     const headers = new Headers(request.headers);
     headers.set(SITE_HOST_HEADER, host.slug);
-    const url = request.nextUrl.clone();
+    // Preserve the raw loopback origin so Next resolves this internally even
+    // when the gateway forwards X-Forwarded-Proto: https. See next.config.ts.
+    const url = new URL(request.url);
     url.pathname = pathname === "/" ? prefix : `${prefix}${pathname}`;
     return NextResponse.rewrite(url, { request: { headers } });
   }

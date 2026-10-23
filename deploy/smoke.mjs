@@ -95,9 +95,10 @@ if (process.argv[3]) {
   }
   if (domain) {
     const tenantHost = `${process.argv[3]}.${domain}`;
-    const tenantHeaders = { Host: tenantHost, "X-Forwarded-Host": "attacker.invalid", "X-Booking-Site-Host": "other" };
+    const tenantHeaders = { Host: tenantHost, "X-Forwarded-Proto": "https", "X-Forwarded-Host": "attacker.invalid", "X-Booking-Site-Host": "other" };
     const home = await get("/", { headers: tenantHeaders });
     assert.equal(home.response.status, 200, "tenant root must open the booking homepage");
+    assert.ok(!/localhost|127\.0\.0\.1/.test(home.response.headers.get("x-middleware-rewrite") || ""), "internal host must not leak into the rewrite response");
     assert.match(home.text, /site-brand/);
     assert.doesNotMatch(home.text, /Run your/);
     assert.doesNotMatch(home.text, new RegExp(`href="/${slug}/book/`), "tenant links must not repeat the slug");
@@ -111,6 +112,10 @@ if (process.argv[3]) {
       const booking = await get("/book/fixture-court", { headers: tenantHeaders });
       assert.equal(booking.response.status, 200);
       assert.match(booking.text, /Fixture badminton court/);
+      const navigation = await get("/book/fixture-court?_rsc", { headers: { ...tenantHeaders, RSC: "1" } });
+      assert.equal(navigation.response.status, 200, "client navigation must survive the HTTPS rewrite");
+      assert.match(navigation.response.headers.get("content-type") || "", /text\/x-component/);
+      assert.match(navigation.text, /Fixture badminton court/);
       const catalog = await get(`/api/sites/${slug}`, { headers: tenantHeaders });
       assert.equal(catalog.response.status, 200);
       assert.equal(JSON.parse(catalog.text).slug, "railway-smoke");
@@ -118,8 +123,11 @@ if (process.argv[3]) {
     const legacy = await get(`/${slug}?from=legacy`, { headers: tenantHeaders });
     assert.equal(legacy.response.status, 308);
     const clean = new URL(legacy.response.headers.get("location"), `http://${tenantHost}`);
-    assert.equal(clean.hostname, tenantHost);
+    assert.equal(clean.host, tenantHost);
+    assert.equal(clean.protocol, "https:");
     assert.equal(clean.pathname + clean.search, "/?from=legacy");
+    const httpHome = await get("/", { headers: { ...tenantHeaders, "X-Forwarded-Proto": "http" } });
+    assert.equal(httpHome.response.status, 200, "HTTP and forwarded HTTPS must both support tenant homepages");
     const apexLegacy = await get(`/${slug}/book/example?from=legacy`, { headers: { Host: domain } });
     assert.equal(apexLegacy.response.status, 308);
     assert.equal(apexLegacy.response.headers.get("location"), `https://${tenantHost}/book/example?from=legacy`);

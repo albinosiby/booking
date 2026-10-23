@@ -153,6 +153,10 @@ node --test deploy/test/routing.test.mjs
 node deploy/smoke.mjs http://127.0.0.1:8080 railway-smoke bookingos.online
 ```
 
+The custom-domain smoke check forwards `X-Forwarded-Proto: https`, matching TLS termination at Railway, and also checks HTTP. The booking proxy preserves the original internal request origin with `skipProxyUrlNormalize` and `new URL(request.url)`. Cloning `request.nextUrl` instead changes `127.0.0.1` to `localhost`; Next treats that as an external rewrite and attempts HTTPS against the internal HTTP listener, producing a 500. Canonical redirects use the validated public tenant host. The smoke check covers homepage, booking HTML, client navigation, assets and canonical redirects through the HTTPS forwarding path.
+
+The HTTPS failure was reproduced against the local production server before this correction. Afterward, HTTP and forwarded HTTPS passed homepage, booking HTML, client navigation, asset, API and redirect checks. The published RK Groups page also returned 200 with its saved design when rendered locally with the same forwarded HTTPS headers. The production build and existing website/routing tests passed; Railway still requires deploying the corrected image.
+
 These settings add no database migration. To temporarily restore path-only frontend routing, set `BOOKING_ROUTING_MODE=path` and redeploy. On the API, remove `BOOKING_WEBSITE_DOMAIN` and restore `BOOKING_WEBSITE_URL=https://YOUR-SERVICE.up.railway.app` if generated links must also fall back to `/<slug>`. Restore the previous image and recorded variables if a full rollback is required; no booking or design data is changed by the routing update.
 
 Railway references: [Dockerfiles](https://docs.railway.com/builds/dockerfiles), [config as code](https://docs.railway.com/config-as-code/reference), [public domains](https://docs.railway.com/networking/domains/working-with-domains).

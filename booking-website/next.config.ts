@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  // Keep the internal request origin intact behind Railway's HTTPS gateway.
+  // NextURL normalizes 127.0.0.1 to localhost, making a local rewrite external.
+  skipProxyUrlNormalize: true,
   // Local subdomain testing: http://<slug>.localhost:3000 with BOOKING_SITE_DOMAIN=localhost.
   allowedDevOrigins: ["localhost", "*.localhost"],
   logging: { incomingRequests: false },
