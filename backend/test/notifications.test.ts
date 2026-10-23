@@ -9,6 +9,7 @@ import { NotificationDispatcher } from "../src/notifications/notification-dispat
 import { enqueueBookingNotification } from "../src/notifications/notification-events";
 import { PushFailure, type PushMessage } from "../src/notifications/fcm-sender";
 import { notificationHandler } from "../edge/notifications-handler";
+import { recordBookingHistory } from "../src/bookings/booking-history";
 delete process.env.DATABASE_URL;
 process.env.NODE_ENV = "test";
 process.env.PGLITE_PATH = "memory://";
@@ -201,6 +202,96 @@ test("all three events target only owner and currently authorized resource staff
   await dispatcher.dispatch(40);
   assert.equal(sent.length, 9);
 });
+test("delayed notifications keep the customer, space and time recorded for each event", async () => {
+  const f = await fixture();
+  const sent: PushMessage[] = [];
+  await devices.register(f.owner, device());
+  async function updateBooking(space: string, start: string, end: string) {
+    await db.query(
+      "UPDATE bookings SET customer_snapshot=$2,price_snapshot=$3,starts_at=$4,ends_at=$5 WHERE id=$1",
+      [
+        f.booking,
+        JSON.stringify({ name: "Arun", phone: "9876543210" }),
+        JSON.stringify({ space_name: space, timezone: "Asia/Kolkata" }),
+        start,
+        end,
+      ],
+    );
+  }
+  const record = (kind: string) =>
+    db.transaction((tx) =>
+      recordBookingHistory(tx, f.booking, f.owner.uid, kind, {
+        reason: "Test",
+      }),
+    );
+  await updateBooking("Turf 1", "2026-10-24T12:30:00Z", "2026-10-24T13:30:00Z");
+  const created = await record("created");
+  await updateBooking("Turf 2", "2026-10-25T13:30:00Z", "2026-10-25T14:30:00Z");
+  const moved = await record("rescheduled");
+  const cancelled = await record("cancelled");
+  const attempt = await new NotificationDispatcher(db, {
+    send: async () => {
+      throw new PushFailure("FCM_NETWORK", true);
+    },
+  }).dispatch(40);
+  assert.equal(attempt.retry, 3);
+  // Neither subsequent edits nor a retried delivery can rewrite an earlier event.
+  await updateBooking(
+    "Renamed space",
+    "2026-10-26T13:30:00Z",
+    "2026-10-26T14:30:00Z",
+  );
+  await db.query("UPDATE bookings SET customer_snapshot='{}' WHERE id=$1", [
+    f.booking,
+  ]);
+  await db.query(
+    "UPDATE notification_deliveries SET next_attempt_at=now() WHERE event_id=ANY($1::uuid[])",
+    [[created, moved, cancelled]],
+  );
+  await new NotificationDispatcher(db, {
+    send: async (m) => {
+      sent.push(m);
+    },
+  }).dispatch(40);
+  assert.equal(sent.length, 3);
+  for (const [id, space, start] of [
+    [created, "Turf 1", "2026-10-24T12:30:00.000Z"],
+    [moved, "Turf 2", "2026-10-25T13:30:00.000Z"],
+    [cancelled, "Turf 2", "2026-10-25T13:30:00.000Z"],
+  ]) {
+    const details = sent.find((m) => m.eventId === id)!.details!;
+    assert.equal(details.customer_name, "Arun");
+    assert.equal(details.space_name, space);
+    assert.equal(new Date(details.starts_at!).toISOString(), start);
+    assert.equal(details.timezone, "Asia/Kolkata");
+    assert.equal("phone" in details, false);
+  }
+});
+
+test("a legacy event cannot expose details of a newly assigned resource", async () => {
+  const f = await fixture();
+  await devices.register(f.owner, device());
+  const id = await event(f);
+  await db.query(
+    "UPDATE bookings SET resource_id=$2,customer_snapshot=$3,price_snapshot=$4 WHERE id=$1",
+    [
+      f.booking,
+      f.otherResource,
+      JSON.stringify({ name: "New customer" }),
+      JSON.stringify({ space_name: "Other space", timezone: "Asia/Kolkata" }),
+    ],
+  );
+  const sent: PushMessage[] = [];
+  await new NotificationDispatcher(db, {
+    send: async (m) => {
+      sent.push(m);
+    },
+  }).dispatch(40);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].eventId, id);
+  assert.equal(sent[0].details, null);
+});
+
 test("rollback enqueues nothing and pending deliveries recheck permission, logout and expiry", async () => {
   const f = await fixture(),
     sent: PushMessage[] = [];

@@ -3,6 +3,7 @@ import '../../../core/state/workspace_screen_cubit.dart';
 import '../../workspace/repositories/workspace_session.dart';
 import '../repositories/team_repository.dart';
 import '../models/staff_access_draft.dart';
+import '../models/team_email_result.dart';
 import '../models/staff_assignment_screen_model.dart';
 import '../../workspace/cubit/workspace_state.dart';
 
@@ -86,6 +87,21 @@ class StaffAssignmentCubit
       link = await repository.invite(draft);
     });
     return ok ? link : null;
+  }
+
+  Future<TeamEmailResult?> add(
+    StaffAccessDraft draft, {
+    String? pendingId,
+  }) async {
+    TeamEmailResult? result;
+    await save(() async {
+      result = pendingId == null
+          ? await repository.add(draft)
+          : await repository.updatePending(pendingId, draft);
+    });
+    // A successful grant must remain visible even if the subsequent workspace
+    // refresh fails. Retrying add would otherwise create a confusing conflict.
+    return result;
   }
 
   Future<bool> update(String id, StaffAccessDraft draft) async {

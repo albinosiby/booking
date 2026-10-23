@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Database } from "../common/database";
 import { PushFailure, PushSender } from "./fcm-sender";
+import type { BookingNotificationDetails } from "./notification-content";
+import { notificationDetailsSql } from "./notification-events";
 
 // Mirrors BookingService access checks; this is evaluated again on every retry.
 const eligible = `m.active AND m.user_id=d.user_id AND m.organization_id=e.organization_id
@@ -19,6 +21,7 @@ type Target = {
   kind: string;
   reference: string;
   booking_id: string;
+  details: BookingNotificationDetails | null;
 };
 
 export class NotificationDispatcher {
@@ -94,8 +97,12 @@ export class NotificationDispatcher {
   ): Promise<"sent" | "skipped" | "retry" | "dead"> {
     const target = (
       await this.db.query<Target>(
-        `SELECT d.token,d.version,e.kind,e.reference,e.booking_id
+        `SELECT d.token,d.version,e.kind,e.reference,e.booking_id,
+        COALESCE(h.details->'notification',CASE WHEN b.resource_id=e.resource_id
+          THEN ${notificationDetailsSql} END) AS details
       FROM notification_deliveries n JOIN booking_notification_events e ON e.id=n.event_id
+      JOIN booking_history h ON h.id=e.history_id
+      JOIN bookings b ON b.id=e.booking_id AND b.organization_id=e.organization_id
       JOIN notification_devices d ON d.id=n.device_id
       JOIN memberships m ON m.user_id=d.user_id
       WHERE n.event_id=$1 AND n.device_id=$2 AND n.lease_id=$3 AND n.state='processing'
@@ -116,6 +123,7 @@ export class NotificationDispatcher {
         userId: item.recipient_user_id,
         kind: target.kind,
         reference: target.reference,
+        details: target.details,
       });
       await this.finish(item, lease, "sent", "");
       return "sent";

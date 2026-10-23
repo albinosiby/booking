@@ -330,6 +330,14 @@ export function createHandler(
   );
   add("GET", "/v1/team", (i) => w.team(i.actor));
   add("POST", "/v1/invitations", (i) => w.invite(i.actor, i.body));
+  add("POST", "/v1/workspace/session", (i) => w.session(i.actor));
+  add("POST", "/v1/team", (i) => w.emailTeamAccess.add(i.actor, i.body));
+  add("POST", "/v1/invitations/:id/email", (i) =>
+    w.emailTeamAccess.deliver(i.actor, i.params.id),
+  );
+  add("PATCH", "/v1/invitations/:id/access", (i) =>
+    w.emailTeamAccess.update(i.actor, i.params.id, i.body),
+  );
   add("POST", "/v1/invitations/accept", (i) =>
     w.accept(i.actor, acceptanceSchema.parse(i.body).token),
   );
@@ -584,7 +592,7 @@ export function createHandler(
         return respond({
           status: "ok",
           runtime: "supabase-edge",
-          revision: "2026-10-22-sarvam-automatic-setup",
+          revision: "2026-10-23-team-email-access",
         });
       }
       if (req.method === "GET" && path === "/v1/catalog")

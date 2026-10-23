@@ -32,16 +32,34 @@ class _TeamScreenState extends State<TeamScreen> {
 
   Future<void> remove(Map<String, dynamic> m) async {
     if (await confirmAction(
-      context,
-      'Remove staff access?',
-      'This person will lose organization access immediately. Coaching plans they teach become Unassigned.',
-    )) {
+          context,
+          'Remove staff access?',
+          'This person will lose organization access immediately. Coaching plans they teach become Unassigned.',
+        ) &&
+        mounted) {
       await cubit.revoke(m['id']);
     }
   }
 
+  Future<void> cancelInvitation(Map<String, dynamic> invitation) async {
+    if (await confirmAction(
+          context,
+          'Cancel pending access?',
+          '${invitation['display_name']} will no longer be able to join using this team entry. You can add them again later.',
+        ) &&
+        mounted) {
+      await cubit.revoke(invitation['id'], invitation: true);
+    }
+  }
+
   static String invitationStatus(Map<String, dynamic> i) {
-    final expired = DateTime.parse(i['expires_at']).isBefore(DateTime.now());
+    if (i['revoked_at'] != null) return 'Cancelled';
+    if (i['join_mode'] == 'email_login') return 'Awaiting sign-in';
+    final expired =
+        DateTime.tryParse(
+          i['expires_at']?.toString() ?? '',
+        )?.isBefore(DateTime.now()) ??
+        true;
     return i['revoked_at'] != null
         ? 'Cancelled'
         : expired
@@ -104,11 +122,21 @@ class _TeamScreenState extends State<TeamScreen> {
   ) {
     final colors = Theme.of(context).colorScheme;
     final status = invitationStatus(invitation);
+    final emailAccess = invitation['join_mode'] == 'email_login';
+    final pending = status == 'Pending' || status == 'Awaiting sign-in';
+    final emailStatus = invitation['email_status'];
     return TeamPersonTile(
       name: invitation['display_name'],
       email: invitation['email'],
-      muted: status != 'Pending',
-      note: status == 'Pending' ? null : 'Send a new invitation to give access',
+      muted: !pending,
+      onTap: emailAccess && pending && !s.busy
+          ? () => edit({...invitation, 'pending_access': true})
+          : null,
+      note: pending
+          ? emailAccess
+                ? 'Sign in with this email to open the dashboard'
+                : 'Existing invitation link'
+          : 'Add this person again to give access',
       chips: [
         if (invitation['role'] is String)
           TeamChip(roleLabel(invitation['role'])),
@@ -117,15 +145,53 @@ class _TeamScreenState extends State<TeamScreen> {
         TeamChip(
           status,
           icon: Icons.mail_outline,
-          color: status == 'Pending' ? colors.primary : colors.onSurfaceVariant,
+          color: pending ? colors.primary : colors.onSurfaceVariant,
         ),
+        if (emailAccess && pending)
+          TeamChip(
+            emailStatus == 'sent'
+                ? 'Email sent'
+                : emailStatus == 'sending'
+                ? 'Sending email'
+                : emailStatus == 'failed'
+                ? 'Email not sent'
+                : 'Email pending',
+            color: emailStatus == 'failed'
+                ? colors.error
+                : colors.onSurfaceVariant,
+          ),
       ],
-      trailing: status == 'Pending'
+      trailing: pending && emailAccess
+          ? PopupMenuButton<String>(
+              tooltip:
+                  'Pending access actions for ${invitation['display_name']}',
+              enabled: !s.busy,
+              onSelected: (action) {
+                if (action == 'edit') {
+                  edit({...invitation, 'pending_access': true});
+                }
+                if (action == 'resend') cubit.resendEmail(invitation['id']);
+                if (action == 'cancel') cancelInvitation(invitation);
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'edit', child: Text('Edit access')),
+                const PopupMenuItem(
+                  value: 'resend',
+                  child: Text('Resend access email'),
+                ),
+                PopupMenuItem(
+                  value: 'cancel',
+                  child: Text(
+                    'Cancel access',
+                    style: TextStyle(color: colors.error),
+                  ),
+                ),
+              ],
+            )
+          : pending
           ? IconButton(
               tooltip: 'Cancel invitation',
-              onPressed: s.busy
-                  ? null
-                  : () => cubit.revoke(invitation['id'], invitation: true),
+              onPressed: s.busy ? null : () => cancelInvitation(invitation),
               icon: const Icon(Icons.close),
             )
           : null,
@@ -138,7 +204,9 @@ class _TeamScreenState extends State<TeamScreen> {
     final invitations = s.invitations
         .where((i) => i['accepted_at'] == null)
         .toList();
-    final pending = invitations.where((i) => invitationStatus(i) == 'Pending');
+    final pending = invitations.where(
+      (i) => {'Pending', 'Awaiting sign-in'}.contains(invitationStatus(i)),
+    );
     final empty = s.members.isEmpty && s.invitations.isEmpty;
     return AppPage(
       back: true,
@@ -147,19 +215,23 @@ class _TeamScreenState extends State<TeamScreen> {
       subtitle:
           'Assign businesses and resources. Keep each person’s access clear.',
       maxWidth: 1200,
-      actions: wide
-          ? [
-              FilledButton.icon(
-                icon: const Icon(Icons.person_add_alt, size: 18),
-                label: const Text('Invite staff'),
-                onPressed: s.busy ? null : invite,
-              ),
-            ]
-          : const [],
+      actions: [
+        IconButton(
+          tooltip: 'Refresh team',
+          onPressed: s.busy || s.loading ? null : cubit.load,
+          icon: const Icon(Icons.refresh),
+        ),
+        if (wide)
+          FilledButton.icon(
+            icon: const Icon(Icons.person_add_alt, size: 18),
+            label: const Text('Add team member'),
+            onPressed: s.busy ? null : invite,
+          ),
+      ],
       children: [
         if (!wide) ...[
           AppButton(
-            label: 'Invite staff',
+            label: 'Add team member',
             icon: Icons.person_add_alt,
             onPressed: s.busy ? null : invite,
           ),
@@ -172,6 +244,11 @@ class _TeamScreenState extends State<TeamScreen> {
           ),
         if (s.error != null)
           AppErrorWidget(message: s.error!, onRetry: cubit.load),
+        if (s.notice != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: Semantics(liveRegion: true, child: Text(s.notice!)),
+          ),
         if (wide && !empty) ...[
           AppStatRow(
             children: [
@@ -193,7 +270,7 @@ class _TeamScreenState extends State<TeamScreen> {
               ),
               AppStatTile(
                 icon: Icons.mark_email_unread_outlined,
-                label: 'Pending invitations',
+                label: 'Awaiting sign-in',
                 value: '${pending.length}',
               ),
             ],
@@ -216,8 +293,9 @@ class _TeamScreenState extends State<TeamScreen> {
           ),
         if (invitations.isNotEmpty)
           AppPanel(
-            title: 'Invitations',
-            subtitle: 'Invitations that have not been accepted yet',
+            title: 'Pending access',
+            subtitle:
+                'People who have not signed in yet, and invitation history',
             child: AppGrid(
               minTileWidth: 340,
               maxColumns: wide ? 3 : 1,

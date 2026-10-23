@@ -26,16 +26,24 @@ class TeamCubit extends Cubit<TeamState> {
   }
 
   final TeamRepository repository;
-  Future<void> load() async {
-    if (isClosed) return;
+  Future<void> load({bool afterMutation = false, String? notice}) async {
+    if (isClosed || state.busy && !afterMutation) return;
     final g = ++generation;
-    emit(TeamState(members: state.members, invitations: state.invitations));
+    emit(
+      TeamState(
+        members: state.members,
+        invitations: state.invitations,
+        busy: afterMutation,
+        notice: notice,
+      ),
+    );
     try {
       final data = await repository.load();
       if (!isClosed && g == generation) {
         emit(
           TeamState(
             loading: false,
+            notice: notice,
             members: List.unmodifiable(
               (data['members'] as List).map(
                 (m) => Map<String, dynamic>.unmodifiable(m),
@@ -57,14 +65,30 @@ class TeamCubit extends Cubit<TeamState> {
             members: accessFailure(e) ? const [] : state.members,
             invitations: accessFailure(e) ? const [] : state.invitations,
             error: e is AppException ? e.message : 'Could not load your team.',
+            notice: notice,
           ),
         );
       }
     }
   }
 
-  Future<void> revoke(String id, {bool invitation = false}) async {
-    if (state.busy) return;
+  Future<void> revoke(String id, {bool invitation = false}) => _mutate(
+    () async {
+      await repository.revoke(id, invitation: invitation);
+      return invitation ? 'Pending access cancelled.' : 'Staff access removed.';
+    },
+  );
+
+  Future<void> resendEmail(String id) => _mutate(() async {
+    final result = await repository.resendEmail(id);
+    return result.sent
+        ? 'Access email sent.'
+        : 'Email could not be sent. Check the server SMTP settings before retrying. Their saved access is still available.';
+  });
+
+  Future<void> _mutate(Future<String> Function() action) async {
+    if (isClosed || state.busy) return;
+    generation++;
     emit(
       TeamState(
         loading: false,
@@ -74,8 +98,8 @@ class TeamCubit extends Cubit<TeamState> {
       ),
     );
     try {
-      await repository.revoke(id, invitation: invitation);
-      await load();
+      final notice = await action();
+      await load(afterMutation: true, notice: notice);
     } catch (e) {
       if (!isClosed) {
         emit(
@@ -83,7 +107,9 @@ class TeamCubit extends Cubit<TeamState> {
             loading: false,
             members: state.members,
             invitations: state.invitations,
-            error: e is AppException ? e.message : 'Could not remove access.',
+            error: e is AppException
+                ? e.message
+                : 'Could not update your team. Refresh and try again.',
           ),
         );
       }

@@ -40,6 +40,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.bookingos.app" android:host="invite" />
+                <data android:scheme="bookingservice.tatos.tech" android:host="invite" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bookingservice.tatos.tech" android:host="login" android:path="/sign-in" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>

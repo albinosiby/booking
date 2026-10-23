@@ -49,6 +49,25 @@ export class WorkspaceController {
   @Get("workspace") workspace(@Req() r: AuthRequest) {
     return this.service.workspace(r.actor);
   }
+  @Post("workspace/session") session(@Req() r: AuthRequest) {
+    return this.service.session(r.actor);
+  }
+  @Post("team") addTeamMember(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.service.emailTeamAccess.add(r.actor, b);
+  }
+  @Post("invitations/:id/email") resendTeamEmail(
+    @Req() r: AuthRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    return this.service.emailTeamAccess.deliver(r.actor, id);
+  }
+  @Patch("invitations/:id/access") updatePendingAccess(
+    @Req() r: AuthRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() b: unknown,
+  ) {
+    return this.service.emailTeamAccess.update(r.actor, id, b);
+  }
   @Get("organization/details") organizationDetails(@Req() r: AuthRequest) {
     return this.service.organizationDetails(r.actor);
   }

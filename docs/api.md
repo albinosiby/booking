@@ -19,7 +19,11 @@ Authenticated requests carry `Authorization: Bearer <Firebase ID token>`. Produc
 | PATCH | `/v1/businesses/:id/pool-configuration` | Owner; versioned pools, tariffs, offers and plans |
 | POST | `/v1/businesses/:id/activate` | Owner; validates saved rules and resources |
 | GET | `/v1/team` | Owner; memberships and invitations (no token hashes) |
-| POST | `/v1/invitations` | Owner; private share URL, no automatic delivery |
+| POST | `/v1/team` | Owner; save email-based access and send access email |
+| POST | `/v1/workspace/session` | Verified identity; activate matching email grant and return workspace |
+| PATCH | `/v1/invitations/:id/access` | Owner; edit pending email grant and send updated summary |
+| POST | `/v1/invitations/:id/email` | Owner; resend pending access email |
+| POST | `/v1/invitations` | Legacy owner endpoint; private share URL |
 | POST | `/v1/invitations/accept` | Invited signed-in email; `{token}` |
 | DELETE | `/v1/invitations/:id` | Owner; cancel invitation |
 | PATCH | `/v1/team/:id` | Owner; staff role/permissions/assignments |
@@ -64,7 +68,7 @@ New pool clients use the dedicated graph endpoint below; the legacy configuratio
 }
 ```
 
-An empty resource array grants access to all resources within that assigned business. A nonempty array restricts access to those IDs. At least one business is required. Role is `staff` or `manager`; neither grants owner administration. Additional permissions: `mark_attendance`, `manage_subscriptions`, `record_expenses`, `view_finance`, plus the `coach` responsibility flag. The legacy `manage_attendance` marker remains accepted for compatibility. The response includes an `invitation_url`, expiry is seven days, and `delivery` is `share_link`. Keep links private; do not log them.
+An empty resource array grants access to all resources within that assigned business. A nonempty array restricts access to those IDs. At least one business is required. Role is `staff` or `manager`; neither grants owner administration. Additional permissions: `mark_attendance`, `manage_subscriptions`, `record_expenses`, `view_finance`, plus the `coach` responsibility flag. The legacy `manage_attendance` marker remains accepted for compatibility. This legacy link endpoint returns an `invitation_url`, expires after seven days, and uses `delivery: share_link`. The current Team UI uses `POST /v1/team` for email-based access instead; see [Team email endpoints and session bootstrap](team-email-access.md#architecture-and-api). Keep links private; do not log them.
 
 ## Turf configuration
 

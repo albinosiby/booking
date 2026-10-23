@@ -38,6 +38,37 @@ const owner = WorkspaceState(
   ),
 );
 void main() {
+  test(
+    'email-based staff access opens the dashboard without an invitation route',
+    () {
+      final staff = WorkspaceState(
+        status: LoadStatus.ready,
+        data: Workspace(
+          organization: owner.data.organization,
+          membership: const {'role': 'staff'},
+          businesses: owner.data.businesses,
+        ),
+      );
+      expect(
+        routeRedirect(
+          signedIn,
+          staff,
+          Uri.parse('/sign-in'),
+          requireVerification: true,
+        ),
+        '/home',
+      );
+      expect(
+        routeRedirect(
+          signedIn,
+          staff,
+          Uri.parse('/auth-callback'),
+          requireVerification: true,
+        ),
+        '/home',
+      );
+    },
+  );
   test('turf setup deep link is restored after startup', () {
     const target = '/businesses/b/setup';
     final loading = routeRedirect(

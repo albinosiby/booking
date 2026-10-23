@@ -1,4 +1,4 @@
-import { enqueueBookingNotification } from "../notifications/notification-events";
+import { recordBookingHistory } from "./booking-history";
 import { bookingAvailability } from "./booking.availability";
 import { inventoryAllocations } from "../slot-blocks/inventory-blocks";
 import { postBookingPayment, systemAccounts } from "../accounts/ledger";
@@ -330,15 +330,9 @@ export class BookingService {
     id: string,
     actor: Actor,
     action: string,
-    details: unknown,
+    details: Record<string, unknown>,
   ) {
-    const historyId = randomUUID();
-    await db.query(
-      "INSERT INTO booking_history(id,booking_id,actor_id,action,details) VALUES($1,$2,$3,$4,$5)",
-      [historyId, id, actor.uid, action, JSON.stringify(details)],
-    );
-    if (["created", "cancelled", "rescheduled"].includes(action))
-      await enqueueBookingNotification(db, historyId);
+    await recordBookingHistory(db, id, actor.uid, action, details);
   }
   private async allocate(
     db: Queryable,

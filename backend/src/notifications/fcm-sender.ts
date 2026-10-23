@@ -1,4 +1,8 @@
 import { createSign } from "node:crypto";
+import {
+  bookingNotificationBody,
+  type BookingNotificationDetails,
+} from "./notification-content";
 
 export type PushMessage = {
   token: string;
@@ -7,6 +11,7 @@ export type PushMessage = {
   userId: string;
   kind: string;
   reference: string;
+  details?: BookingNotificationDetails | null;
 };
 export class PushFailure extends Error {
   constructor(
@@ -123,7 +128,7 @@ export class FcmSender implements PushSender {
               token: m.token,
               notification: {
                 title,
-                body: `Booking ${m.reference}. Open Booking OS for details.`,
+                body: bookingNotificationBody(m.reference, m.details),
               },
               data: {
                 event_id: m.eventId,

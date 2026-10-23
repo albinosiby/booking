@@ -4,7 +4,6 @@ import '../cubit/staff_assignment_cubit.dart';
 import '../models/staff_assignment_screen_model.dart';
 import '../../../di/injection.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../../../utils/helpers/validation.dart';
@@ -31,6 +30,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
   Set<String> get restricted => cubit.state.restricted;
   Map<String, Set<String>> get resources => cubit.state.resources;
   Set<String> get permissions => cubit.state.permissions;
+  bool get pendingAccess => widget.member?['pending_access'] == true;
   static const labels = {
     'view_bookings': 'View bookings',
     'manage_bookings': 'Create and edit bookings',
@@ -49,6 +49,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
   }
 
   Future<void> save() async {
+    if (cubit.state.busy) return;
     if (!form.currentState!.validate()) return;
     if (businesses.isEmpty) {
       showMessage(context, 'Select at least one business.');
@@ -75,7 +76,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
         ),
       ),
     );
-    if (widget.member != null) {
+    if (widget.member != null && !pendingAccess) {
       final released = releasedPlans(
         cubit.state.data.businesses,
         widget.member!['id'],
@@ -94,47 +95,36 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
       }
       if (!mounted) return;
     }
-    String? link;
     final bool ok;
-    if (widget.member == null) {
-      link = await cubit.invite(data);
-      ok = link != null;
+    if (widget.member == null || pendingAccess) {
+      final result = await cubit.add(
+        data,
+        pendingId: pendingAccess ? widget.member!['id'] : null,
+      );
+      ok = result != null;
+      if (mounted && result != null) {
+        await showDialog<void>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: Text(
+              result.sent
+                  ? 'Access email sent'
+                  : 'Access saved · email not sent',
+            ),
+            content: Text(result.message),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(c),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+        );
+      }
     } else {
       ok = await cubit.update(widget.member!['id'], data);
     }
     if (!mounted || !ok) return;
-    if (link != null) {
-      await showDialog<void>(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('Invitation ready'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Share this private link with the invited staff member. It expires in seven days. No email has been sent.',
-              ),
-              const SizedBox(height: 16),
-              SelectableText(link!),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: link!));
-                if (c.mounted) showMessage(c, 'Invitation link copied.');
-              },
-              child: const Text('Copy link'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(c),
-              child: const Text('Done'),
-            ),
-          ],
-        ),
-      );
-    }
     if (mounted) {
       if (widget.member == null) {
         Navigator.pop(context);
@@ -242,10 +232,11 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
     ),
   );
 
-  Widget coaching(StaffAssignmentScreenModel s) => widget.member == null
+  Widget coaching(StaffAssignmentScreenModel s) =>
+      widget.member == null || pendingAccess
       ? const AppCard(
           child: Text(
-            'After this staff member accepts their invitation, open their staff details to assign coaching plans.',
+            'After this team member signs in, open their staff details to assign coaching plans.',
           ),
         )
       : StaffCoachingSection(
@@ -260,7 +251,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
       const SizedBox(height: 16),
     ],
     AppButton(
-      label: widget.member == null ? 'Create invitation' : 'Save staff access',
+      label: widget.member == null ? 'Add team member' : 'Save staff access',
       icon: Icons.check,
       busy: s.busy,
       onPressed: s.data.isOwner ? save : null,
@@ -287,7 +278,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
             AppPanel(
               title: 'Person',
               subtitle: widget.member == null
-                  ? 'They receive a private invitation link.'
+                  ? 'They receive an access email with app and web login links.'
                   : 'The email address cannot be changed.',
               child: AppCard(
                 padding: const EdgeInsets.all(22),

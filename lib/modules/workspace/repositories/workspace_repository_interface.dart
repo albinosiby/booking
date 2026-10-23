@@ -16,6 +16,12 @@ abstract interface class WorkspaceRepository {
   Future<void> activate(String id);
   Future<Map<String, dynamic>> team();
   Future<String> invite(Map<String, dynamic> data);
+  Future<Map<String, dynamic>> addTeamMember(Map<String, dynamic> data);
+  Future<Map<String, dynamic>> updatePendingTeamAccess(
+    String id,
+    Map<String, dynamic> data,
+  );
+  Future<Map<String, dynamic>> resendTeamEmail(String id);
   Future<void> accept(String token);
   Future<void> revoke(String id, {bool invitation = false});
   Future<void> updateMember(String id, Map<String, dynamic> data);

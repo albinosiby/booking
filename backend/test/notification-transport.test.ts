@@ -16,6 +16,13 @@ const message: PushMessage = {
   userId: "owner",
   kind: "created",
   reference: "BK-TEST",
+  details: {
+    customer_name: "Arun",
+    space_name: "Turf 1",
+    starts_at: "2026-10-24T12:30:00Z",
+    ends_at: "2026-10-24T13:30:00Z",
+    timezone: "Asia/Kolkata",
+  },
 };
 const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
 async function withCredentials(work: () => Promise<void>) {
@@ -82,6 +89,16 @@ test("FCM v1 signs OAuth assertion, caches access and targets only the supplied 
         rescheduled: "Order rescheduled",
       };
       assert.equal(body.notification.title, titles[body.data.event_type]);
+      assert.equal(
+        body.notification.body,
+        "Name: Arun\nSpace: Turf 1\nTime: 24 Oct 2026, 6:00 PM IST – 7:00 PM IST\nBK-TEST",
+      );
+      assert.deepEqual(Object.keys(body.data).sort(), [
+        "booking_id",
+        "event_id",
+        "event_type",
+        "recipient_user_id",
+      ]);
       assert.equal(
         body.android.notification.channel_id,
         "booking_orders_bell_v2",

@@ -13,7 +13,7 @@ The public marketing homepage lives in [`landing-page/`](landing-page/README.md)
 - Resource creation/removal, capacity, operating days/hours, prices in integer minor units, duration and buffers.
 - Multiple pools with capacities/depths, per-person time tariffs, configurable group offers, coaching plans and 25/custom attendance-day plans with separate expiry.
 - Configuration saved independently per business; activation requires a resource and valid rules. Configure disappears after activation; editing remains in Profile.
-- Staff invitations via private expiring links; acceptance checks the exact invited email. Owner can change business/resource assignments, permissions and revoke access. Coaches use the same staff flow, with coaching plans inside staff details and separate attendance/subscription permissions; see [Unified staff management](docs/team-coaches.md).
+- Email-based team access: adding a staff email sends their access summary and app/web login links. Matching verified sign-in activates their saved access and opens the dashboard. Owners can edit assignments/permissions, resend email and cancel/remove access; see [Team email setup and migration](docs/team-email-access.md). Legacy expiring links remain compatible. Coaches use the same staff flow, with coaching plans inside staff details and separate attendance/subscription permissions; see [Unified staff management](docs/team-coaches.md).
 - Elevated Home / Calendar / Bookings / Payments / Profile navigation with preserved tab state.
 - Server-enforced owner operations and staff visibility. No passwords or service keys are stored in the application database.
 

@@ -224,6 +224,14 @@ class RestApiService {
         options: Options(
           method: method,
           contentType: emptyJson ? Headers.jsonContentType : null,
+          receiveTimeout:
+              write &&
+                  (endpoint == '/team' ||
+                      RegExp(
+                        r'^/invitations/[^/]+/(email|access)$',
+                      ).hasMatch(endpoint))
+              ? const Duration(seconds: 45)
+              : null,
         ),
       );
       if (requestUser != auth.currentUser?.id) {

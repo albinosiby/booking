@@ -1,4 +1,5 @@
 import { ensureWebsiteDraft } from "../website/website.validation";
+import { EmailTeamAccess } from "./email-team-access";
 import { z } from "zod";
 import {
   organizationEditSchema,
@@ -40,7 +41,21 @@ const hash = (token: string) =>
 @Injectable()
 export class WorkspaceService {
   publicAppUrl?: string;
-  constructor(private readonly db: Database) {}
+  readonly emailTeamAccess: EmailTeamAccess;
+  constructor(private readonly db: Database) {
+    this.emailTeamAccess = new EmailTeamAccess(db, {
+      owner: (actor, db) => this.member(actor, true, db),
+      validate: (db, org, assignments) =>
+        this.validateAssignments(db, org, assignments),
+      audit: (db, actor, org, action, id) =>
+        this.audit(db, actor, org, action, id),
+    });
+  }
+  /** Explicit authenticated bootstrap; ordinary GET reads never grant access. */
+  async session(actor: Actor) {
+    await this.emailTeamAccess.join(actor);
+    return this.workspace(actor);
+  }
   async member(actor: Actor, owner = false, db: Queryable = this.db) {
     const m = (
       await db.query<Row>(
@@ -916,7 +931,7 @@ export class WorkspaceService {
       ).rows;
     const invites = (
       await this.db.query<Row>(
-        "SELECT id,email,display_name,role,permissions,assignments,expires_at,accepted_at,revoked_at FROM invitations WHERE organization_id=$1 ORDER BY created_at DESC",
+        "SELECT id,email,display_name,role,permissions,assignments,expires_at,accepted_at,revoked_at,join_mode,email_status,email_attempted_at,email_sent_at FROM invitations WHERE organization_id=$1 ORDER BY created_at DESC",
         [m.organization_id],
       )
     ).rows;

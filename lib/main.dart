@@ -124,12 +124,15 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
       invitationLinks = getIt<InvitationLinkCubit>();
       invitationSubscription = invitationLinks!.stream.listen((link) {
         if (link != null && mounted) {
-          router.go(
-            Uri(
-              path: '/invite',
-              queryParameters: {'token': link.token},
-            ).toString(),
-          );
+          if (link.isSignIn && auth.state.status == AuthStatus.signedIn) {
+            unawaited(
+              workspace.load().then((_) {
+                if (mounted) router.go('/home');
+              }),
+            );
+          } else {
+            router.go(link.route);
+          }
         }
       });
       unawaited(invitationLinks!.start());

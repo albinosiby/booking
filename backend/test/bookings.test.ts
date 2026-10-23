@@ -1490,6 +1490,7 @@ test("booking notification enqueue follows successful command history exactly on
   const { id } = await service.create(f.owner, command);
   await service.create(f.owner, command);
   let b = await service.detail(f.owner, id);
+  const originalStart = b.starts_at;
   const selection = { ...f.selection, time: "11:00" };
   const quote = await service.quote(f.owner, {
     selection,
@@ -1514,8 +1515,8 @@ test("booking notification enqueue follows successful command history exactly on
   await service.status(f.owner, id, cancel);
   await service.status(f.owner, id, cancel);
   const events = (
-    await db.query<{ kind: string }>(
-      "SELECT kind FROM booking_notification_events WHERE booking_id=$1 ORDER BY created_at,id",
+    await db.query<{ kind: string; details: any }>(
+      "SELECT e.kind,h.details->'notification' AS details FROM booking_notification_events e JOIN booking_history h ON h.id=e.history_id WHERE e.booking_id=$1 ORDER BY e.created_at,e.id",
       [id],
     )
   ).rows;
@@ -1524,4 +1525,15 @@ test("booking notification enqueue follows successful command history exactly on
     "created",
     "rescheduled",
   ]);
+  for (const event of events) {
+    assert.equal(event.details.customer_name, command.customer.name);
+    assert.equal(event.details.space_name, b.price_snapshot.space_name);
+    assert.equal(event.details.timezone, b.price_snapshot.timezone);
+    assert.equal(
+      new Date(event.details.starts_at).getTime(),
+      new Date(
+        event.kind === "created" ? originalStart : b.starts_at,
+      ).getTime(),
+    );
+  }
 });

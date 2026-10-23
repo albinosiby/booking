@@ -2,7 +2,7 @@
 
 The implementation registers signed-in Android/iOS installations with the authenticated booking API. Placed, cancelled and rescheduled ordinary bookings create durable events in their existing transaction. The dedicated Supabase `booking-notifications` function sends them through FCM HTTP v1 to owners and active staff with `manage_bookings` and matching business/resource assignments. Website and voice bookings use the same queue. Admission/coaching sessions, payments and check-ins are excluded.
 
-Notifications include only the booking reference, event type and navigation identifiers. An eligible actor receives the notification too. Multiple devices per account are supported. Web/desktop push and customer push are outside this feature.
+Notification titles identify order placed, cancelled or rescheduled. The body includes the customer name, space name, booking date and time range in the venue timezone, and booking reference. These details are saved in the existing booking-history JSON when each event is recorded, so delayed alerts retain that event's details after a reschedule or customer edit. For older events without a history snapshot, the sender uses the current booking details if the resource still matches the event; otherwise it sends only the reference to avoid exposing details of a newly assigned space. Phone numbers, email, notes and payment information are excluded. The notification data payload contains only the existing navigation/account identifiers. An eligible actor receives the notification too. Multiple devices per account are supported. Web/desktop push and customer push are outside this feature.
 
 This document is a deployment handoff: no hosted migration, function deployment, secrets update, scheduler installation, or device installation has been performed by this work.
 
@@ -70,6 +70,8 @@ supabase secrets set --env-file /absolute/private/path/booking-push.env --projec
 Set the JSON value as a single environment variable; preserve the private key's JSON `\n` escapes. Dashboard secret entry avoids shell quoting issues. Supabase function secrets are project-wide: application code accesses the sender credential only in `booking-notifications`.
 
 ## 4. Build and deploy the two functions
+
+For the notification name/space/time update, deploy both functions using the steps below: `booking-api` records the event details and `booking-notifications` formats and sends them. No database migration, new secret, scheduler change or app rebuild is needed. Keep the existing scheduler and credentials. After deployment, create a new website booking and verify the customer, space and local time; reschedule and cancel it to verify the other titles and times. Already-sent alerts are not resent. For rollback, restore the previous two function versions; the additive history JSON remains compatible with older code.
 
 From `backend`:
 

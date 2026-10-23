@@ -28,11 +28,25 @@ void main() {
         )!.token,
         token,
       );
+      expect(
+        InvitationLink.fromUri(
+          Uri.parse('bookingservice.tatos.tech://login/sign-in'),
+        )!.route,
+        '/sign-in',
+      );
+      expect(
+        InvitationLink.fromUri(
+          Uri.parse('bookingservice.tatos.tech://invite/invite?token=$token'),
+        )!.token,
+        token,
+      );
       for (final uri in [
         'https://example.com/invite?token=$token',
         'bookingservice.tatos.tech://auth-callback/?token=$token',
         'com.bookingos.app://auth-callback/?token=$token',
         'com.bookingos.app://invite/invite?token=invalid',
+        'bookingservice.tatos.tech://login/sign-in?from=https://evil.example',
+        'bookingservice.tatos.tech://login/other',
       ]) {
         expect(InvitationLink.fromUri(Uri.parse(uri)), isNull);
       }

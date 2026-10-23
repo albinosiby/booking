@@ -46,9 +46,9 @@ class StaffRepository extends Fake implements WorkspaceRepository {
     ],
   );
   @override
-  Future<String> invite(Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> addTeamMember(Map<String, dynamic> data) async {
     invitation = data;
-    return 'http://localhost/invite?token=test';
+    return {'id': 'pending', 'delivery': 'sent'};
   }
 }
 
@@ -120,10 +120,10 @@ void main() {
         await tester.pump();
       }
       expect(
-        find.textContaining('After this staff member accepts'),
+        find.textContaining('After this team member signs in'),
         findsOneWidget,
       );
-      final submit = find.text('Create invitation');
+      final submit = find.text('Add team member');
       await tester.ensureVisible(submit);
       await tester.tap(submit);
       await tester.pumpAndSettle();
@@ -151,7 +151,7 @@ void main() {
         repository.invitation!['permissions'],
         isNot(contains('manage_subscriptions')),
       );
-      expect(find.text('Invitation ready'), findsOneWidget);
+      expect(find.text('Access email sent'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await workspace.close();
     },

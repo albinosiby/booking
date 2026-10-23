@@ -29,7 +29,11 @@ class RestWorkspaceRepository
   @override
   Future<Workspace> load() async {
     final json = Map<String, dynamic>.from(
-      await api.request(ApiPath.workspace),
+      await api.request(
+        '${ApiPath.workspace}/session',
+        method: 'POST',
+        readOnly: true,
+      ),
     );
     await api.authorizeReads(json);
     return Workspace.fromJson(json);
@@ -126,15 +130,35 @@ class RestWorkspaceRepository
   }
 
   @override
-  Future<Map<String, dynamic>> team() async => Map<String, dynamic>.from(
-    await api.retainedRead(ApiPath.team, retainFor: const Duration(minutes: 5)),
-  );
+  Future<Map<String, dynamic>> team() async =>
+      Map<String, dynamic>.from(await api.request(ApiPath.team));
   @override
   Future<String> invite(Map<String, dynamic> data) async => (await api.request(
     ApiPath.invitations,
     method: 'POST',
     data: data,
   ))['invitation_url'];
+  @override
+  Future<Map<String, dynamic>> addTeamMember(Map<String, dynamic> data) async =>
+      Map<String, dynamic>.from(
+        await api.request(ApiPath.team, method: 'POST', data: data),
+      );
+  @override
+  Future<Map<String, dynamic>> updatePendingTeamAccess(
+    String id,
+    Map<String, dynamic> data,
+  ) async => Map<String, dynamic>.from(
+    await api.request(
+      '${ApiPath.invitations}/$id/access',
+      method: 'PATCH',
+      data: data,
+    ),
+  );
+  @override
+  Future<Map<String, dynamic>> resendTeamEmail(String id) async =>
+      Map<String, dynamic>.from(
+        await api.request('${ApiPath.invitations}/$id/email', method: 'POST'),
+      );
   @override
   Future<void> accept(String token) async {
     await api.request(

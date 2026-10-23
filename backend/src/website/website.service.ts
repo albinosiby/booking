@@ -1,4 +1,4 @@
-import { enqueueBookingNotification } from "../notifications/notification-events";
+import { recordBookingHistory } from "../bookings/booking-history";
 import {
   Injectable,
   BadRequestException,
@@ -993,21 +993,11 @@ export class WebsiteService {
           "INSERT INTO booking_allocations(booking_id,inventory_key,starts_at,ends_at,quantity) VALUES($1,$2,$3,$4,$5)",
           [id, key, q.occupied_from, q.occupied_until, q.quantity],
         );
-      const historyId = randomUUID();
-      await db.query(
-        "INSERT INTO booking_history(id,booking_id,actor_id,action,details) VALUES($1,$2,$3,'created',$4)",
-        [
-          historyId,
-          id,
-          actor,
-          JSON.stringify({
-            source: "website",
-            selection: v.selection,
-            total_minor: q.total_minor,
-          }),
-        ],
-      );
-      await enqueueBookingNotification(db, historyId);
+      await recordBookingHistory(db, id, actor, "created", {
+        source: "website",
+        selection: v.selection,
+        total_minor: q.total_minor,
+      });
       const response = {
         reference,
         status: "confirmed",

@@ -125,6 +125,18 @@ test("guest booking uses existing inventory and creates no payment entries", asy
     row.id,
   );
   assert.equal(detail.history[0].actor_name, "Booking website");
+  const notification = detail.history[0].details.notification;
+  assert.equal(notification.customer_name, "Guest customer");
+  assert.equal(notification.space_name, row.price_snapshot.space_name);
+  assert.equal(notification.timezone, row.price_snapshot.timezone);
+  assert.equal(
+    new Date(notification.starts_at).toISOString(),
+    new Date(row.starts_at).toISOString(),
+  );
+  assert.equal(
+    new Date(notification.ends_at).toISOString(),
+    new Date(row.ends_at).toISOString(),
+  );
   assert.equal(
     (
       await db.query("SELECT * FROM booking_payments WHERE booking_id=$1", [

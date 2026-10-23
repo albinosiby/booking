@@ -310,7 +310,7 @@ void main() {
     await pumpDesktop(tester, [page(const TeamScreen())], session: session);
     expect(tester.takeException(), isNull);
     expect(find.byType(AppStatTile), findsWidgets);
-    expect(find.text('Invite staff'), findsOneWidget);
+    expect(find.text('Add team member'), findsOneWidget);
     expect(find.text('Coaches'), findsNothing);
     expect(find.byType(TeamPersonTile), findsNWidgets(5));
     expect(find.text('Manager'), findsWidgets);
@@ -326,6 +326,9 @@ void main() {
     await tester.ensureVisible(find.byTooltip('Cancel invitation'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Cancel invitation'));
+    await tester.pumpAndSettle();
+    expect(team.revoked, isEmpty);
+    await tester.tap(find.text('Confirm'));
     await tester.pumpAndSettle();
     expect(team.revoked, ['invite']);
     tester.view.physicalSize = const Size(320, 1000);
@@ -353,7 +356,7 @@ void main() {
       tester.getCenter(find.text('Permissions')).dx,
       greaterThan(tester.getCenter(find.text('Assign businesses')).dx),
     );
-    expect(find.text('Create invitation'), findsOneWidget);
+    expect(find.text('Add team member'), findsOneWidget);
   });
 
   testWidgets('staff details contain coaching assignments on desktop', (

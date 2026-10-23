@@ -33,6 +33,10 @@ const built = await build({
           path: "npm:exceljs@4.4.0",
           external: true,
         }));
+        b.onResolve({ filter: /^nodemailer$/ }, () => ({
+          path: "npm:nodemailer@10.2.0",
+          external: true,
+        }));
         b.onResolve({ filter: /\/report-font$/ }, () => ({
           path: "report-font",
           namespace: "embedded",

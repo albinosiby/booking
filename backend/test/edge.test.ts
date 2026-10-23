@@ -9,13 +9,14 @@ function fixture() {
   const service = new Proxy(
     {},
     {
-      get:
-        (_, method) =>
-        async (...args: any[]) => {
-          calls.push({ method, args });
-          if (fail) throw fail;
-          return { ok: true };
-        },
+      get: (_, method) =>
+        method === "emailTeamAccess"
+          ? service
+          : async (...args: any[]) => {
+              calls.push({ method, args });
+              if (fail) throw fail;
+              return { ok: true };
+            },
     },
   );
   const services = {
@@ -75,6 +76,24 @@ test("Edge protects booking, accounts, configuration and organization routes bef
     403,
   );
   assert.equal(f.calls.length, 0);
+});
+test("Edge team email and session routes require authentication and preserve owner-scoped IDs", async () => {
+  const f = fixture();
+  for (const [path, method] of [
+    ["/v1/workspace/session", "POST"],
+    ["/v1/team", "POST"],
+    [`/v1/invitations/${id}/email`, "POST"],
+    [`/v1/invitations/${id}/access`, "PATCH"],
+  ]) {
+    assert.equal((await f.request(path, method, {}, null)).status, 401);
+    assert.ok((await f.request(path, method, {})).ok);
+  }
+  assert.deepEqual(
+    f.calls.map((c) => c.method),
+    ["session", "add", "deliver", "update"],
+  );
+  assert.equal(f.calls[2].args[1], id);
+  assert.equal(f.calls[3].args[1], id);
 });
 test("Edge preserves route parameters, actor and configuration payloads for all business types", async () => {
   const f = fixture();
@@ -353,7 +372,7 @@ test("public health exposes a revision for deployment verification without accou
   assert.deepEqual(await response.json(), {
     status: "ok",
     runtime: "supabase-edge",
-    revision: "2026-10-22-sarvam-automatic-setup",
+    revision: "2026-10-23-team-email-access",
   });
 });
 

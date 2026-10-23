@@ -1,5 +1,12 @@
 import type { Queryable } from "../common/database";
 
+// Uses the authoritative booking row aliased as b, including its pricing snapshot.
+export const notificationDetailsSql = `jsonb_build_object(
+  'customer_name',b.customer_snapshot->>'name',
+  'space_name',b.price_snapshot->>'space_name',
+  'starts_at',b.starts_at,'ends_at',b.ends_at,
+  'timezone',b.price_snapshot->>'timezone')`;
+
 /** Called inside the booking transaction, after its authoritative history row. */
 export async function enqueueBookingNotification(
   db: Queryable,
