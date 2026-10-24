@@ -532,6 +532,10 @@ export class BookingService {
       "manage_bookings",
       async (db, m, b) => {
         const old = await this.find(m, id, db, true);
+        if (actor.uid.startsWith("sarvam:") && old.created_by !== actor.uid)
+          throw new ForbiddenException(
+            "Only bookings originally made by call can be changed by phone.",
+          );
         if (old.admission_id)
           throw new BadRequestException(
             "Manage this visit from Admissions & Coaching.",
@@ -653,6 +657,10 @@ export class BookingService {
       "manage_bookings",
       async (db, m) => {
         const b = await this.find(m, id, db, true);
+        if (actor.uid.startsWith("sarvam:") && b.created_by !== actor.uid)
+          throw new ForbiddenException(
+            "Only bookings originally made by call can be changed by phone.",
+          );
         if (b.admission_id)
           throw new BadRequestException(
             "Manage this visit from Admissions & Coaching.",

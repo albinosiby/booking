@@ -413,7 +413,7 @@ export class VoiceService {
     ).rows[0];
     return (row?.customer_id as string | undefined) ?? null;
   }
-  /** Upcoming confirmed bookings made with the caller's phone number. */
+  /** Upcoming call-created bookings for this caller and organization. */
   private async callerBookings(
     actor: Actor,
     callerPhone: string,
@@ -434,7 +434,7 @@ export class VoiceService {
       await this.db.query<Row>(
         `SELECT b.id FROM bookings b JOIN memberships m ON m.user_id=$1 AND m.organization_id=b.organization_id
          JOIN staff_assignments a ON a.membership_id=m.id AND a.business_id=b.business_id
-         WHERE b.status='confirmed' AND b.starts_at>now() AND b.admission_id IS NULL AND a.resource_ids ? b.resource_id::text
+         WHERE b.status='confirmed' AND b.starts_at>now() AND b.admission_id IS NULL AND b.created_by=$1 AND a.resource_ids ? b.resource_id::text
          AND right(regexp_replace(b.customer_snapshot->>'phone','\\D','','g'),10)=$2${where}
          ORDER BY b.starts_at LIMIT 10`,
         values,
@@ -473,7 +473,7 @@ export class VoiceService {
             .map((b) => `${b.reference.split("").join(" ")} on ${b.span}`)
             .join("; ") +
           "."
-        : "I could not find any upcoming bookings for this phone number.",
+        : "I could not find any upcoming call bookings for this phone number. Bookings made through other channels must be managed by venue staff.",
       bookings: items,
     };
   }
@@ -481,7 +481,7 @@ export class VoiceService {
     const [id] = await this.callerBookings(actor, callerPhone, reference);
     if (!id)
       throw new NotFoundException(
-        "I could not find an upcoming booking with that reference for this phone number.",
+        "I could not find an upcoming call booking with that reference for this phone number. Only bookings originally made by call can be changed by phone.",
       );
     return this.detail(actor, id);
   }

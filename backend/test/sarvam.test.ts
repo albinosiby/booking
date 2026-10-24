@@ -329,6 +329,83 @@ test("books, lists, reschedules and cancels a caller's booking", async () => {
   assert.match(after.history.at(-1).details.reason, /call service: Rain/);
 });
 
+test("phone tools cannot list, reschedule or cancel bookings created by staff", async () => {
+  const o = await connect();
+  const created = await voice.book(o.agent, {
+    ...call,
+    space: "Court 1",
+    date: DATE,
+    time: "19:00",
+    customer_name: "Phone Customer",
+    expected_total: 500,
+  });
+  const original = (await bookings.list(o.owner, { q: created.reference }))
+    .items[0];
+  // Model the same customer and booking data entered by staff instead of by call.
+  await db.query("UPDATE bookings SET created_by=$2 WHERE id=$1", [
+    original.id,
+    o.owner.uid,
+  ]);
+  const before = await bookings.detail(o.owner, original.id);
+  assert.equal(
+    (await voice.mine(o.agent, { caller_phone: call.caller_phone })).bookings
+      .length,
+    0,
+  );
+  await assert.rejects(
+    voice.reschedule(o.agent, {
+      ...call,
+      reference: created.reference,
+      date: DATE,
+      time: "20:00",
+    }),
+    /Only bookings originally made by call/,
+  );
+  await assert.rejects(
+    voice.cancel(o.agent, {
+      ...call,
+      reference: created.reference,
+    }),
+    /Only bookings originally made by call/,
+  );
+  // The underlying write transaction also enforces provenance for direct calls.
+  const selection = { ...before.selection, date: DATE, time: "20:00" };
+  const quote = await bookings.quote(o.owner, {
+    selection,
+    exclude_booking_id: before.id,
+  });
+  await assert.rejects(
+    bookings.reschedule(o.agent, before.id, {
+      command_key: randomUUID(),
+      version: before.version,
+      selection,
+      quote_token: quote.quote_token,
+      reason: "Move by phone",
+    }),
+    /Only bookings originally made by call/,
+  );
+  await assert.rejects(
+    bookings.status(o.agent, before.id, {
+      command_key: randomUUID(),
+      version: before.version,
+      status: "cancelled",
+      reason: "Cancel by phone",
+    }),
+    /Only bookings originally made by call/,
+  );
+  const after = await bookings.detail(o.owner, before.id);
+  assert.equal(after.version, before.version);
+  assert.equal(after.status, "confirmed");
+  assert.deepEqual(after.starts_at, before.starts_at);
+  // Staff retain their existing ability to manage these bookings.
+  await bookings.status(o.owner, before.id, {
+    command_key: randomUUID(),
+    version: before.version,
+    status: "cancelled",
+    reason: "Customer requested cancellation",
+  });
+});
+
 test("voice agent cannot reach unassigned businesses", async () => {
   const o = await connect();
   const result = await voiceResult(() =>
