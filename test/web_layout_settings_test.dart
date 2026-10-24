@@ -240,7 +240,7 @@ void main() {
     addTearDown(w.close);
     await pumpDesktop(tester, w, const CallLogsScreen());
     expect(tester.takeException(), isNull);
-    expect(find.text('Talk time'), findsOneWidget);
+    expect(find.text('Talk time shown'), findsOneWidget);
     expect(find.text('2m 18s'), findsOneWidget);
     expect(find.text('Select a call'), findsOneWidget);
     expect(find.byTooltip('Refresh calls'), findsOneWidget);
@@ -250,9 +250,13 @@ void main() {
     expect(find.text('Transcript'), findsOneWidget);
     expect(find.text('Hi, this is Eden Sports.'), findsOneWidget);
     expect(find.text('Book a court for 8 PM.'), findsOneWidget);
+    await tester.ensureVisible(find.text('Save recording'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save recording'));
     await tester.pumpAndSettle();
     expect(saver.names.single, 'call-20260920-a71c352f-11-03-08-e6013eb8.wav');
+    await tester.ensureVisible(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
     expect(find.text('Select a call'), findsOneWidget);

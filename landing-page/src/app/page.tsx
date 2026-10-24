@@ -1,19 +1,15 @@
 import {
   ArrowRight,
-  BedDouble,
   CalendarDays,
   ChevronDown,
   CirclePlay,
   CreditCard,
   Dumbbell,
-  GraduationCap,
-  Heart,
   LayoutDashboard,
   Menu,
   MessageSquare,
   PartyPopper,
   Search,
-  Scissors,
   ShieldCheck,
   Smartphone,
   Users,
@@ -31,13 +27,11 @@ export const metadata = {
 
 const verticals = [
   { label: "Turf", icon: Dumbbell },
-  { label: "Court", icon: Dumbbell },
+  { label: "Badminton", icon: Dumbbell },
+  { label: "Tennis", icon: Dumbbell },
+  { label: "Basketball", icon: Dumbbell },
   { label: "Pool", icon: Waves },
-  { label: "Rooms", icon: BedDouble },
   { label: "Hall", icon: PartyPopper },
-  { label: "Salon", icon: Scissors },
-  { label: "Clinic", icon: Heart },
-  { label: "Coaching", icon: GraduationCap },
 ];
 
 const journey = [
@@ -49,17 +43,17 @@ const journey = [
   {
     step: "02",
     title: "Assign roles",
-    detail: "Give staff clear rights: management, cleaning, or task-only access.",
+    detail: "Assign staff and coaches to the spaces and booking tasks they manage.",
   },
   {
     step: "03",
     title: "Collect bookings",
-    detail: "Customers pick their slot and pay using your configured flow.",
+    detail: "Customers reserve an available slot and pay at the venue.",
   },
   {
     step: "04",
-    title: "Confirm + remind",
-    detail: "Automations reduce no-shows and remove repetitive manual WhatsApp work.",
+    title: "Share confirmations",
+    detail: "Prepare a booking message, then share it with your customer on WhatsApp.",
   },
   {
     step: "05",
@@ -72,22 +66,22 @@ const features = [
   {
     icon: LayoutDashboard,
     title: "Adaptive dashboard",
-    body: "Monitor every asset from one command screen built for bookings, payments, and operational tasks.",
+    body: "Monitor your spaces, bookings and recorded collections from one dashboard.",
   },
   {
     icon: MessageSquare,
-    title: "WhatsApp-first automation",
-    body: "Send confirmations and updates that keep your customers informed without delay.",
+    title: "WhatsApp sharing",
+    body: "Preview your booking message and open WhatsApp to share it with your customer.",
   },
   {
     icon: Smartphone,
     title: "Staff app",
-    body: "Team tasks and role-based management move from web to phone with minimal handoff loss.",
+    body: "Manage assigned spaces, bookings and attendance from web or phone with role-based access.",
   },
   {
     icon: ShieldCheck,
     title: "Audit-safe operations",
-    body: "Track payment proofs, booking changes, and task completion history in one place.",
+    body: "Review recorded collections, booking changes and attendance history in one place.",
   },
 ];
 
@@ -165,7 +159,7 @@ export default function LandingPage() {
                 Start free <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
               </a>
               <a href="#journey" className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-white/25 bg-black/15 px-4 py-3.5 text-[14px] font-semibold text-white backdrop-blur-sm transition hover:border-white/50 hover:bg-white/10 sm:flex-none sm:px-6 sm:py-4 sm:text-[15px]">
-                <CirclePlay size={19} /> Watch demo
+                <CirclePlay size={19} /> See how it works
               </a>
             </div>
           </div>
@@ -178,7 +172,7 @@ export default function LandingPage() {
             {[
               [CalendarDays, "Manage bookings", "in minutes"],
               [Users, "Organize your team", "with ease"],
-              [CreditCard, "Accept payments", "online & on-site"],
+              [CreditCard, "Record collections", "cash, UPI & card"],
               [LayoutDashboard, "Grow your business", "with real-time insights"],
             ].map(([Icon, title, body], index) => {
               const FeatureIcon = Icon as typeof CalendarDays;
@@ -281,9 +275,9 @@ export default function LandingPage() {
               <div className="relative mt-7 grid grid-cols-[82px_1fr] gap-x-4 gap-y-5 text-[12px]">
                 <span className="text-white/42">06:00 PM</span><div className="relative pt-1"><span className="absolute -left-2 top-0 size-3 rounded-full border-[3px] border-[#0a1c2a] bg-cyan-300" /><div className="h-2.5 w-[76%] rounded-full bg-cyan-400/85" /><p className="mt-2 text-white/75">Turf booking · confirmed</p></div>
                 <span className="text-white/42">07:30 PM</span><div className="relative pt-1"><span className="absolute -left-2 top-0 size-3 rounded-full border-[3px] border-[#0a1c2a] bg-sky-300" /><div className="h-2.5 w-[52%] rounded-full bg-sky-300/80" /><p className="mt-2 text-white/75">Team check-in · completed</p></div>
-                <span className="text-white/42">08:30 PM</span><div className="relative pt-1"><span className="absolute -left-2 top-0 size-3 rounded-full border-[3px] border-[#0a1c2a] bg-amber-300" /><div className="h-2.5 w-[88%] rounded-full bg-amber-300/80" /><p className="mt-2 text-white/75">Payment proof · awaiting review</p></div>
+                <span className="text-white/42">08:30 PM</span><div className="relative pt-1"><span className="absolute -left-2 top-0 size-3 rounded-full border-[3px] border-[#0a1c2a] bg-amber-300" /><div className="h-2.5 w-[88%] rounded-full bg-amber-300/80" /><p className="mt-2 text-white/75">Booking balance · collection pending</p></div>
               </div>
-              <div className="relative mt-8 grid grid-cols-3 gap-3 border-t border-white/10 pt-5"><div><p className="text-[11px] text-white/45">Open slots</p><p className="mt-1 text-[22px] font-bold text-white">18</p></div><div><p className="text-[11px] text-white/45">Check-ins</p><p className="mt-1 text-[22px] font-bold text-white">94%</p></div><div><p className="text-[11px] text-white/45">Team tasks</p><p className="mt-1 text-[22px] font-bold text-white">06</p></div></div>
+              <div className="relative mt-8 grid grid-cols-3 gap-3 border-t border-white/10 pt-5"><div><p className="text-[11px] text-white/45">Open slots</p><p className="mt-1 text-[22px] font-bold text-white">18</p></div><div><p className="text-[11px] text-white/45">Check-ins</p><p className="mt-1 text-[22px] font-bold text-white">94%</p></div><div><p className="text-[11px] text-white/45">Staff members</p><p className="mt-1 text-[22px] font-bold text-white">06</p></div></div>
             </div>
           </div>
         </div>
@@ -369,7 +363,7 @@ export default function LandingPage() {
 function ProductShowcase() {
   return (
     <div className="hero-enter relative mx-auto mt-2 h-[420px] w-full max-w-[390px] sm:h-[500px] sm:max-w-[500px] md:mt-0 md:h-[465px] md:max-w-[480px] lg:mt-2 lg:h-[540px]" style={{ animationDelay: "250ms" }}>
-      <p className="absolute left-1/2 top-1 z-30 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/15 bg-[#07121e]/70 px-3 py-1 text-[9px] font-semibold tracking-[.13em] text-white/70 backdrop-blur">BOOKINGOS ON MOBILE</p>
+      <p className="absolute left-1/2 top-1 z-30 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/15 bg-[#07121e]/70 px-3 py-1 text-[9px] font-semibold tracking-[.13em] text-white/70 backdrop-blur">ILLUSTRATIVE PRODUCT PREVIEW</p>
       <div className="absolute bottom-6 left-[10%] right-[6%] h-12 rounded-[50%] bg-black/70 blur-2xl" />
       <div className="hero-phone-float-delayed absolute right-[3%] top-[19%] z-10 w-[45%] -rotate-[12deg] sm:right-[7%] sm:w-[40%] md:right-[4%]">
         <PhoneShell className="p-[7px]" label="Venue discovery">
@@ -402,7 +396,7 @@ function OperatorPhoneScreen() {
     ["18", "Active slots", "#0ea5e9"],
     ["₹19.2k", "Today’s revenue", "#2563eb"],
     ["94%", "Check-ins complete", "#10b981"],
-    ["6", "Pending tasks", "#f59e0b"],
+    ["6", "Unpaid bookings", "#f59e0b"],
   ];
   return (
     <div className="flex h-full flex-col bg-[#f8fafc] px-[7%] pt-[12%] text-[#0f172a]">

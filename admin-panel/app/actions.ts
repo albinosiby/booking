@@ -1,15 +1,22 @@
 "use server";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { admin } from "../lib/api";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { loginAttempts } from "../lib/login-attempts";
 import { SESSION_COOKIE } from "../lib/session-name";
 import { createSession } from "../lib/session-token";
 import { ADMIN_BASE_PATH, adminPath } from "../lib/paths";
 import { adminRedirectUrl } from "../lib/redirect-url";
 
 export async function signIn(_: string | null, form: FormData) {
+  const requestHeaders = await headers();
+  const source = requestHeaders.get("x-forwarded-for") ?? "unknown";
+  const attemptKey = createHash("sha256").update(source).digest("hex");
+  if (!loginAttempts.reserve(attemptKey)) {
+    return "Too many sign-in attempts. Please try again in 10 minutes.";
+  }
   const expected = process.env.ADMIN_PANEL_PASSWORD ?? "";
   const given = String(form.get("password") ?? "");
   const givenBytes = Buffer.from(given);
@@ -29,6 +36,7 @@ export async function signIn(_: string | null, form: FormData) {
     path: ADMIN_BASE_PATH,
     maxAge: 12 * 3600,
   });
+  loginAttempts.clear(attemptKey);
   redirect(await adminRedirectUrl("/"));
 }
 

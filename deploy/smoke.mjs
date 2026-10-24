@@ -48,7 +48,12 @@ for (const path of ["/app/", "/app/sign-in", "/app/register", "/app/profile/book
   assert.match(text, /<base href="\/app\/">/, path);
   assert.match(response.headers.get("cache-control") || "", /no-cache/, path);
 }
-assert.equal((await get("/app/flutter_bootstrap.js")).response.status, 200);
+for (const path of ["/app/flutter_bootstrap.js", "/app/flutter.js", "/app/main.dart.js"]) {
+  const { response } = await get(path);
+  assert.equal(response.status, 200, path);
+  assert.match(response.headers.get("cache-control") || "", /no-store/, path);
+  assert.equal(response.headers.get("cdn-cache-control"), "no-store", path);
+}
 for (const path of ["/app/missing-file.js", "/app/assets/missing-file", "/_landing/missing-file.png", "/.env", "/app/main.dart.js.map"])
   assert.equal((await get(path)).response.status, 404, path);
 

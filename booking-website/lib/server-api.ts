@@ -28,6 +28,7 @@ export function bookingHeaders() {
 
 import { cache } from "react";
 import type { Website } from "./types";
+import { readWebsiteResponse } from "./website-response";
 /** Share the request-scoped public read between page rendering and metadata. */
 export const loadWebsite = cache(
   async (slug: string, preview?: string): Promise<Website | null> => {
@@ -37,9 +38,9 @@ export const loadWebsite = cache(
         cache: "no-store",
         signal: AbortSignal.timeout(10000),
       });
-      return response.ok ? ((await response.json()) as Website) : null;
+      return await readWebsiteResponse(response);
     } catch {
-      return null;
+      throw new Error("The booking website could not be loaded. Please retry.");
     }
   },
 );

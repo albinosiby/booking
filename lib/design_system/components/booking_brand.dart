@@ -23,13 +23,19 @@ class BookingBrand extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            'BookingOS',
-            style: TextStyle(
-              color: color ?? Theme.of(context).colorScheme.onSurface,
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -.6,
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'BookingOS',
+                style: TextStyle(
+                  color: color ?? Theme.of(context).colorScheme.onSurface,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -.6,
+                ),
+              ),
             ),
           ),
         ],

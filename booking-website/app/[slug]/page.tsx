@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { OrganisationHome } from "../../components/organisation-home";
 import { headers } from "next/headers";
 import { loadWebsite } from "../../lib/server-api";
@@ -38,11 +39,13 @@ export async function generateMetadata({
 export default async function SitePage({ params, searchParams }: Props) {
   const { slug } = await params,
     { preview } = await searchParams;
+  const site = await loadWebsite(slug, preview);
+  if (!site) notFound();
   return (
     <OrganisationHome
       base={siteBasePath(slug, (await headers()).get(SITE_HOST_HEADER))}
       preview={preview}
-      site={await loadWebsite(slug, preview)}
+      site={site}
     />
   );
 }

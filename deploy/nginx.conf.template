@@ -76,13 +76,19 @@ http {
             root "__ROOT__/static";
             try_files $uri =404;
             include "__ROOT__/deploy/security-headers.conf";
-            add_header Cache-Control "no-cache" always;
+            add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+            add_header CDN-Cache-Control "no-store" always;
+            add_header Cloudflare-CDN-Cache-Control "no-store" always;
+            add_header Surrogate-Control "no-store" always;
         }
         location /app/ {
             root "__ROOT__/static";
             try_files $uri $uri/ /app/index.html;
             include "__ROOT__/deploy/security-headers.conf";
-            add_header Cache-Control "no-cache" always;
+            add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+            add_header CDN-Cache-Control "no-store" always;
+            add_header Cloudflare-CDN-Cache-Control "no-store" always;
+            add_header Surrogate-Control "no-store" always;
         }
 
         # Preserve the /admin prefix; Next.js is compiled with this basePath.

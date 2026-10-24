@@ -3,10 +3,10 @@ import Link from "next/link";
 import { Icon } from "../components/icon";
 export default function Error({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
   return (
     <main>
@@ -20,7 +20,7 @@ export default function Error({
           new session.
         </p>
         <div className="row">
-          <button onClick={reset}>Try again</button>
+          <button onClick={retry}>Try again</button>
           <Link className="btn ghost" href="/login">
             Back to sign in
           </Link>

@@ -53,7 +53,7 @@ export class SupportService {
     );
     if (open.rows[0].n >= 20)
       throw new BadRequestException(
-        "You have too many open requests. Wait for a reply or close one first.",
+        "You have too many open requests. Wait for support to resolve an existing request before opening another.",
       );
     const id = randomUUID();
     await this.db.transaction(async (db) => {

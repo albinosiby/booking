@@ -138,13 +138,18 @@ class SupportListState extends Equatable {
 class SupportListCubit extends Cubit<SupportListState> {
   SupportListCubit(this.repository) : super(const SupportListState());
   final SupportRepository repository;
+  int generation = 0;
   Future<void> load() async {
+    if (isClosed) return;
+    final request = ++generation;
     emit(SupportListState(tickets: state.tickets, loading: true));
     try {
       final t = await repository.tickets();
-      if (!isClosed) emit(SupportListState(tickets: t, loading: false));
+      if (!isClosed && request == generation) {
+        emit(SupportListState(tickets: t, loading: false));
+      }
     } catch (e) {
-      if (!isClosed) {
+      if (!isClosed && request == generation) {
         emit(
           SupportListState(
             tickets: state.tickets,
@@ -176,12 +181,18 @@ class SupportThreadCubit extends Cubit<SupportThreadState> {
     : super(const SupportThreadState());
   final SupportRepository repository;
   final String id;
+  int generation = 0;
   Future<void> load() async {
+    if (isClosed || state.busy) return;
+    final request = ++generation;
+    emit(SupportThreadState(thread: state.thread));
     try {
       final t = await repository.thread(id);
-      if (!isClosed) emit(SupportThreadState(thread: t, loading: false));
+      if (!isClosed && request == generation) {
+        emit(SupportThreadState(thread: t, loading: false));
+      }
     } catch (e) {
-      if (!isClosed) {
+      if (!isClosed && request == generation) {
         emit(
           SupportThreadState(
             thread: state.thread,
@@ -195,6 +206,8 @@ class SupportThreadCubit extends Cubit<SupportThreadState> {
 
   /// Returns true when the reply was sent.
   Future<bool> reply(String message) async {
+    if (isClosed || state.busy || message.trim().isEmpty) return false;
+    ++generation;
     emit(SupportThreadState(thread: state.thread, loading: false, busy: true));
     try {
       final t = await repository.reply(id, message);

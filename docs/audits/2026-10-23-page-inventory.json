@@ -1,0 +1,558 @@
+{
+  "date": "2026-10-23",
+  "meaning": "Source-file inventory. Direct imports are coverage pointers, not proof that every interaction or state was tested. Flutter step files can be exercised through parent setup tests. See audit report for actual test outcomes.",
+  "pages": [
+    {
+      "source": "lib/modules/accounts/screens/account_settings_screen.dart",
+      "direct_test_files": [
+        "test/accounts_module_test.dart",
+        "test/web_layout_settings_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/accounts/screens/accounts_reports_screen.dart",
+      "direct_test_files": [
+        "test/accounts_module_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/accounts/screens/accounts_screen.dart",
+      "direct_test_files": [
+        "test/accounts_module_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/accounts/screens/accounts_transactions_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/accounts/screens/finance_entry_screen.dart",
+      "direct_test_files": [
+        "test/accounts_module_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/admissions/screens/admission_detail_screen.dart",
+      "direct_test_files": [
+        "test/admissions_test.dart",
+        "test/automatic_attendance_test.dart",
+        "test/web_layout_admissions_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/admissions/screens/admission_form_screen.dart",
+      "direct_test_files": [
+        "test/admission_overview_test.dart",
+        "test/admissions_test.dart",
+        "test/web_layout_admissions_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/admissions/screens/admissions_screen.dart",
+      "direct_test_files": [
+        "test/admission_overview_test.dart",
+        "test/admissions_test.dart",
+        "test/web_layout_admissions_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/agent_calls/screens/agent_service_screen.dart",
+      "direct_test_files": [
+        "test/agent_calls_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/agent_calls/screens/call_logs_screen.dart",
+      "direct_test_files": [
+        "test/agent_calls_test.dart",
+        "test/web_layout_settings_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/auth/screens/auth_screen.dart",
+      "direct_test_files": [
+        "test/auth_google_ui_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/auth/screens/password_update_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/auth/screens/verification_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/booking_blocks/screens/slot_block_screens.dart",
+      "direct_test_files": [
+        "test/slot_blocks_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/booking_website/screens/website_settings_screen.dart",
+      "direct_test_files": [
+        "test/booking_website_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/bookings/screens/booking_detail_screen.dart",
+      "direct_test_files": [
+        "test/booking_module_test.dart",
+        "test/home_dashboard_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/bookings/screens/booking_form_screen.dart",
+      "direct_test_files": [
+        "test/booking_module_test.dart",
+        "test/booking_success_animation_test.dart",
+        "test/business_order_sync_test.dart",
+        "test/pool_booking_options_test.dart",
+        "test/web_layout_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/bookings/screens/booking_list_screen.dart",
+      "direct_test_files": [
+        "test/booking_agenda_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/businesses/screens/business_detail_screen.dart",
+      "direct_test_files": [
+        "test/business_details_test.dart",
+        "test/business_management_test.dart",
+        "test/web_layout_workspace_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/businesses/screens/business_management_screen.dart",
+      "direct_test_files": [
+        "test/business_management_test.dart",
+        "test/web_layout_workspace_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/businesses/screens/businesses_screen.dart",
+      "direct_test_files": [
+        "test/business_selection_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/businesses/screens/resource_setup_screen.dart",
+      "direct_test_files": [
+        "test/web_layout_configure_turf_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/coaching/screens/coach_classes_screen.dart",
+      "direct_test_files": [
+        "test/coach_classes_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/court/screens/court_coaching_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/court/screens/court_overview_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/court/screens/court_pricing_screen.dart",
+      "direct_test_files": [
+        "test/pricing_opening_days_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/court/screens/court_resources_screen.dart",
+      "direct_test_files": [
+        "test/court_setup_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/court/screens/court_review_screen.dart",
+      "direct_test_files": [
+        "test/configuration_review_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/court/screens/court_setup_screen.dart",
+      "direct_test_files": [
+        "test/court_coaching_test.dart",
+        "test/court_setup_test.dart",
+        "test/pricing_opening_days_test.dart",
+        "test/web_layout_configure_court_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/customers/screens/customer_detail_screen.dart",
+      "direct_test_files": [
+        "test/customers_test.dart",
+        "test/web_layout_bookings_customers_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/customers/screens/customers_screen.dart",
+      "direct_test_files": [
+        "test/customers_test.dart",
+        "test/web_layout_bookings_customers_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/dashboard/screens/future_module_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/dashboard/screens/home_screen.dart",
+      "direct_test_files": [
+        "test/booking_agenda_test.dart",
+        "test/home_dashboard_test.dart",
+        "test/module_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/dashboard/screens/startup_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/expenses/screens/expense_detail_screen.dart",
+      "direct_test_files": [
+        "test/expense_detail_screen_test.dart",
+        "test/web_layout_income_expenses_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/expenses/screens/expense_form_screen.dart",
+      "direct_test_files": [
+        "test/expenses_module_test.dart",
+        "test/web_layout_income_expenses_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/expenses/screens/expenses_screen.dart",
+      "direct_test_files": [
+        "test/expenses_module_test.dart",
+        "test/finance_day_selection_test.dart",
+        "test/web_layout_income_expenses_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/hall/screens/hall_overview_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/hall/screens/hall_pricing_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/hall/screens/hall_resources_screen.dart",
+      "direct_test_files": [
+        "test/hall_setup_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/hall/screens/hall_review_screen.dart",
+      "direct_test_files": [
+        "test/configuration_review_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/hall/screens/hall_setup_screen.dart",
+      "direct_test_files": [
+        "test/hall_setup_test.dart",
+        "test/web_layout_configure_pool_hall_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/income/screens/income_screen.dart",
+      "direct_test_files": [
+        "test/finance_day_selection_test.dart",
+        "test/income_module_test.dart",
+        "test/web_layout_income_expenses_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/messages/screens/message_preview_screen.dart",
+      "direct_test_files": [
+        "test/message_templates_test.dart",
+        "test/web_layout_settings_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/messages/screens/template_editor_screen.dart",
+      "direct_test_files": [
+        "test/message_templates_test.dart",
+        "test/web_layout_settings_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/messages/screens/templates_screen.dart",
+      "direct_test_files": [
+        "test/message_templates_test.dart",
+        "test/web_layout_settings_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/organization/screens/organization_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/pool/screens/pool_groups_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/pool/screens/pool_overview_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/pool/screens/pool_plans_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/pool/screens/pool_pricing_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/pool/screens/pool_resources_screen.dart",
+      "direct_test_files": [
+        "test/pool_setup_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/pool/screens/pool_review_screen.dart",
+      "direct_test_files": [
+        "test/configuration_review_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/pool/screens/pool_setup_screen.dart",
+      "direct_test_files": [
+        "test/pool_setup_test.dart",
+        "test/web_layout_configure_pool_hall_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/profile/screens/organization_details_screen.dart",
+      "direct_test_files": [
+        "test/organization_details_test.dart",
+        "test/web_layout_workspace_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/profile/screens/organization_edit_screen.dart",
+      "direct_test_files": [
+        "test/organization_edit_test.dart",
+        "test/web_layout_workspace_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/profile/screens/profile_screen.dart",
+      "direct_test_files": [
+        "test/business_management_test.dart",
+        "test/web_layout_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/support/screens/support_screens.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/team/screens/invitation_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/team/screens/staff_assignment_screen.dart",
+      "direct_test_files": [
+        "test/staff_assignment_test.dart",
+        "test/team_coaches_test.dart",
+        "test/web_layout_workspace_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/team/screens/team_screen.dart",
+      "direct_test_files": [
+        "test/team_email_workflow_test.dart",
+        "test/web_layout_workspace_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/turf/screens/turf_grounds_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/turf/screens/turf_offerings_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/turf/screens/turf_review_screen.dart",
+      "direct_test_files": [
+        "test/configuration_review_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/turf/screens/turf_rules_screen.dart",
+      "direct_test_files": [
+        "test/turf_setup_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/turf/screens/turf_settings_overview_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/turf/screens/turf_setup_screen.dart",
+      "direct_test_files": [
+        "test/turf_setup_test.dart",
+        "test/web_layout_configure_turf_test.dart"
+      ],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/turf/screens/turf_spaces_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "lib/modules/turf/screens/turf_sports_screen.dart",
+      "direct_test_files": [],
+      "production_browser": "blocked: no accessible signed-in session"
+    },
+    {
+      "source": "admin-panel/app/(panel)/agent-requests/[org]/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "admin-panel/app/(panel)/agent-requests/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "admin-panel/app/(panel)/audit/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "admin-panel/app/(panel)/organizations/[id]/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "admin-panel/app/(panel)/organizations/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "admin-panel/app/(panel)/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "admin-panel/app/(panel)/support/[id]/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "admin-panel/app/(panel)/support/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "admin-panel/app/(panel)/users/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "admin-panel/app/login/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "booking-website/app/[slug]/book/[businessId]/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "booking-website/app/[slug]/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "booking-website/app/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    },
+    {
+      "source": "landing-page/src/app/page.tsx",
+      "direct_test_files": [],
+      "production_browser": "not visually exercised"
+    }
+  ]
+}

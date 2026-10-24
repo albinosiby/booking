@@ -31,6 +31,7 @@ class _SupportScreenState extends State<SupportScreen> {
   }
 
   Future<void> send() async {
+    if (sending) return;
     if (subject.text.trim().length < 3 || message.text.trim().length < 5) {
       showMessage(context, 'Add a short title and describe the issue.');
       return;
@@ -73,7 +74,11 @@ class _SupportScreenState extends State<SupportScreen> {
             onChanged: (v) => setState(() => category = v ?? 'other'),
           ),
           const SizedBox(height: 14),
-          AppTextField(label: 'Title', controller: subject),
+          TextField(
+            controller: subject,
+            maxLength: 160,
+            decoration: const InputDecoration(labelText: 'Title'),
+          ),
           const SizedBox(height: 14),
           TextField(
             controller: message,
@@ -169,7 +174,7 @@ class _SupportThreadScreenState extends State<SupportThreadScreen> {
   Future<void> send() async {
     final text = reply.text.trim();
     if (text.isEmpty) return;
-    if (await cubit.reply(text)) reply.clear();
+    if (await cubit.reply(text) && mounted) reply.clear();
   }
 
   @override

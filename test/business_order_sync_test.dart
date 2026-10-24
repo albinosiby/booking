@@ -74,7 +74,7 @@ class OrderAdapter implements HttpClientAdapter {
     } else {
       reads.add(options.path);
       body = switch (options.path) {
-        '/workspace' => {
+        '/workspace' || '/workspace/session' => {
           'organization': {
             'id': 'org',
             'name': 'Eden',
@@ -137,6 +137,7 @@ void main() {
         readCache: RetainedReadCache(
           store: MemorySnapshotStore(),
           identity: () => auth.currentUser?.id,
+          now: () => DateTime.utc(2030, 6, 4),
         ),
       );
       final source = RestWorkspaceRepository(api),
@@ -144,6 +145,7 @@ void main() {
           finance = RestAccountsRepository(api);
       final session = WorkspaceCubit(source);
       await session.load();
+      expect(session.state.error, isNull);
       expect((await booking.catalog()).businesses.map((b) => b.id), [
         'turf',
         'pool',
