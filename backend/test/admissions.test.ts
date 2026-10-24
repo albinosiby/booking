@@ -925,3 +925,48 @@ test("automatic coaching without a running class fails without creating a visit"
   assert.equal(after.sessions.length, 0);
   assert.equal(after.used, 0);
 });
+
+test("a flexible-only pool class starts atomically and later students share its interval", async (t) => {
+  const f = await fixture("flexible", "coaching");
+  const at = Date.parse(f.today + "T12:00:30Z");
+  t.mock.method(Date, "now", () => at);
+  const a = await service.detail(f.owner, f.id);
+  const request = {
+    command_key: randomUUID(),
+    version: a.version,
+    start_class: true,
+  };
+  const started = await service.checkIn(f.owner, f.id, request);
+  assert.equal(started.class_started, true);
+  assert.equal(started.local_start, f.today + "T12:00");
+  assert.equal(started.marked_at, new Date(at).toISOString());
+  assert.deepEqual(await service.checkIn(f.owner, f.id, request), started);
+  const input = {
+    ...f.input,
+    customer: {
+      id: null,
+      name: "Second flexible",
+      phone: "9000000061",
+      email: null,
+    },
+  };
+  const quote = await service.preview(f.owner, input);
+  const other = await service.create(f.owner, {
+    ...input,
+    preview_token: quote.preview_token,
+    command_key: randomUUID(),
+  });
+  const detail = await service.detail(f.owner, other.id);
+  const joined = await service.checkIn(f.owner, other.id, {
+    command_key: randomUUID(),
+    version: detail.version,
+    start_class: true,
+  });
+  assert.equal(joined.class_started, false);
+  assert.equal(joined.local_start, started.local_start);
+  assert.equal(joined.local_end, started.local_end);
+  const after = await service.detail(f.owner, f.id);
+  assert.equal(after.used, 1);
+  assert.equal(after.sessions.length, 1);
+  t.mock.restoreAll();
+});

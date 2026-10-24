@@ -34,7 +34,7 @@ class HomeClasses extends FakeClasses implements RetainedReadEvents {
   @override
   void revalidateReads() => events.add(null);
   @override
-  Future<List<CoachClass>> classes(String date) async {
+  Future<CoachRoster> classes(String date) async {
     requests.add(date);
     if (failLoad) throw const AppException('Could not reach the server.');
     return super.classes(date);
@@ -130,20 +130,22 @@ Future<(WorkspaceCubit, GoRouter)> pumpHome(
   return (workspace, router);
 }
 
+Future<void> loadHomeStudentPreviewFonts() async {
+  if (!const bool.fromEnvironment('HOME_STUDENT_PREVIEWS')) return;
+  final fontDir = Platform.environment['REVIEW_FONT_DIR']!;
+  for (final font in {
+    'Roboto': 'Roboto-Regular.ttf',
+    'MaterialIcons': 'MaterialIcons-Regular.otf',
+  }.entries) {
+    final bytes = await File('$fontDir/${font.value}').readAsBytes();
+    await (FontLoader(
+      font.key,
+    )..addFont(Future.value(ByteData.sublistView(bytes)))).load();
+  }
+}
+
 void main() {
-  setUpAll(() async {
-    if (!const bool.fromEnvironment('HOME_STUDENT_PREVIEWS')) return;
-    final fontDir = Platform.environment['REVIEW_FONT_DIR']!;
-    for (final font in {
-      'Roboto': 'Roboto-Regular.ttf',
-      'MaterialIcons': 'MaterialIcons-Regular.otf',
-    }.entries) {
-      final bytes = await File('$fontDir/${font.value}').readAsBytes();
-      await (FontLoader(
-        font.key,
-      )..addFont(Future.value(ByteData.sublistView(bytes)))).load();
-    }
-  });
+  setUpAll(loadHomeStudentPreviewFonts);
   tearDown(() => getIt.reset());
 
   for (final (size, scale, brightness) in [

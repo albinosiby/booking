@@ -8,6 +8,7 @@ import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
 import '../cubit/coach_classes_cubit.dart';
 import '../models/coach_class.dart';
+import 'flexible_students_panel.dart';
 
 /// A retained Home roster using the same attendance rules as My classes.
 class TodayStudentsSection extends StatefulWidget {
@@ -59,10 +60,10 @@ class _TodayStudentsSectionState extends State<TodayStudentsSection>
     bloc: cubit,
     builder: (context, state) {
       final theme = Theme.of(context);
-      final classes = [...state.classes]
+      final classes = [...state.displayClasses]
         ..sort((a, b) => a.localStart.compareTo(b.localStart));
       final students = [for (final c in classes) ...c.students];
-      final disabled = state.busy || state.loading;
+      final disabled = state.busy || state.loading || state.pendingCheckIn;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -100,7 +101,7 @@ class _TodayStudentsSectionState extends State<TodayStudentsSection>
             ],
           ),
           Text(
-            'Mark attendance for today’s scheduled classes. Times are local to each business.',
+            'Today’s scheduled and flexible coaching. Times are local to each business.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -113,7 +114,25 @@ class _TodayStudentsSectionState extends State<TodayStudentsSection>
               message: state.error!,
               onRetry: () => cubit.refreshToday(force: true),
             ),
-          if (!state.loading && state.error == null && students.isEmpty)
+          if (state.pendingCheckIn)
+            TextButton.icon(
+              onPressed: state.busy || state.loading
+                  ? null
+                  : cubit.retryCheckIn,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry attendance save'),
+            ),
+          if (state.notice != null)
+            Semantics(liveRegion: true, child: Text(state.notice!)),
+          if (state.busy && students.isEmpty)
+            Semantics(
+              liveRegion: true,
+              child: const Text('Saving attendance…'),
+            ),
+          if (!state.loading &&
+              state.error == null &&
+              students.isEmpty &&
+              state.flexibleStudents.isEmpty)
             const AppEmptyState(
               showCard: false,
               title: 'No students scheduled today',
@@ -149,6 +168,7 @@ class _TodayStudentsSectionState extends State<TodayStudentsSection>
               ],
             ),
           ],
+          FlexibleStudentsPanel(state: state, onPresent: cubit.checkIn),
         ],
       );
     },

@@ -28,30 +28,32 @@ class FakeClasses extends Fake implements CoachApi {
   final marks = <String, String>{};
   String? failOn;
   @override
-  Future<List<CoachClass>> classes(String date) async => [
-    for (final c in days[date] ?? const <CoachClass>[])
-      CoachClass(
-        key: c.key,
-        businessName: c.businessName,
-        planName: c.planName,
-        spaceName: c.spaceName,
-        localStart: c.localStart,
-        localEnd: c.localEnd,
-        students: [
-          for (final s in c.students)
-            marks.containsKey(s.visitId)
-                ? CoachStudent(
-                    admissionId: s.admissionId,
-                    visitId: s.visitId,
-                    version: s.version + 1,
-                    name: s.name,
-                    attendance: marks[s.visitId]!,
-                    markable: false,
-                  )
-                : s,
-        ],
-      ),
-  ];
+  Future<CoachRoster> classes(String date) async => CoachRoster(
+    classes: [
+      for (final c in days[date] ?? const <CoachClass>[])
+        CoachClass(
+          key: c.key,
+          businessName: c.businessName,
+          planName: c.planName,
+          spaceName: c.spaceName,
+          localStart: c.localStart,
+          localEnd: c.localEnd,
+          students: [
+            for (final s in c.students)
+              marks.containsKey(s.visitId)
+                  ? CoachStudent(
+                      admissionId: s.admissionId,
+                      visitId: s.visitId,
+                      version: s.version + 1,
+                      name: s.name,
+                      attendance: marks[s.visitId]!,
+                      markable: false,
+                    )
+                  : s,
+          ],
+        ),
+    ],
+  );
   @override
   Future<void> mark(CoachStudent student, String attendance) async {
     if (student.visitId == failOn) {

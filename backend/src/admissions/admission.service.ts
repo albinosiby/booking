@@ -413,6 +413,7 @@ export class AdmissionService {
           ).rows;
     const now = Date.now();
     const classes: Row[] = [];
+    const flexible_students: Row[] = [];
     for (const b of businesses) {
       if (!coachingConfiguration(b.configuration)) continue;
       const assignment = assignments.find((a) => a.business_id === b.id);
@@ -479,13 +480,141 @@ export class AdmissionService {
             ends >= now - 86400000,
         });
       }
+      if (v.date === localStamp(now, b.timezone).slice(0, 10)) {
+        flexible_students.push(
+          ...(await this.flexibleRoster(
+            m,
+            b,
+            plans,
+            assignment,
+            v.date,
+            from,
+            until,
+            now,
+          )),
+        );
+      }
     }
     classes.sort(
       (x, y) =>
         Date.parse(x.starts_at) - Date.parse(y.starts_at) ||
         x.key.localeCompare(y.key),
     );
-    return { date: v.date, classes };
+    return { date: v.date, classes, flexible_students };
+  }
+
+  /** Enrolments do not reserve visits: expose them before the first check-in. */
+  private async flexibleRoster(
+    m: Row,
+    b: Row,
+    plans: Row[],
+    assignment: Row | undefined,
+    date: string,
+    from: Date,
+    until: Date,
+    now: number,
+  ) {
+    const admissions = (
+      await this.db.query<Row>(
+        "SELECT * FROM admission_balances WHERE organization_id=$1 AND business_id=$2 AND mode='flexible' AND plan_snapshot->>'kind'='coaching' AND NOT cancelled AND plan_id::text=ANY($3::text[]) AND starts_on<=$4 AND expires_on>=$4 ORDER BY customer_snapshot->>'name',id",
+        [m.organization_id, b.id, plans.map((p) => p.id), date],
+      )
+    ).rows.filter(
+      (a) =>
+        m.role === "owner" ||
+        !assignment!.resource_ids.length ||
+        assignment!.resource_ids.includes(a.resource_id),
+    );
+    if (!admissions.length) return [];
+    const present = (
+      await this.db.query<Row>(
+        "SELECT s.admission_id,s.starts_at,s.ends_at,COALESCE((SELECT COALESCE(h.details->>'marked_at',h.created_at::text) FROM admission_history h WHERE h.admission_id=s.admission_id AND h.details->>'visit_id'=s.id::text AND h.action IN ('checked_in','attendance') ORDER BY h.created_at DESC,h.id DESC LIMIT 1),s.created_at::text) marked_at FROM bookings s WHERE s.business_id=$1 AND s.admission_id=ANY($2::uuid[]) AND s.status<>'cancelled' AND s.admission_attendance='present' AND ((s.starts_at>=$3 AND s.starts_at<$4) OR (s.starts_at<=$5 AND s.ends_at>$5)) ORDER BY s.created_at DESC,s.id",
+        [b.id, admissions.map((a) => a.id), from, until, new Date(now)],
+      )
+    ).rows;
+    // One inventory snapshot per business, covering every possible class duration.
+    const occupied = await this.allocations(
+      this.db,
+      b.id,
+      new Date(Math.floor(now / 60000) * 60000).toISOString(),
+      new Date(now + 1440 * 60000).toISOString(),
+    );
+    const result: Row[] = [];
+    for (const a of admissions) {
+      const visit = present.find((p) => p.admission_id === a.id);
+      if (a.remaining <= 0 && !visit) continue;
+      const plan = plans.find((p) => p.id === a.plan_id)!;
+      const space = admissionSpaces(b.configuration).find(
+        (p) => p.id === a.resource_id,
+      );
+      let action = "unavailable",
+        reason: string | null = null;
+      let session: Row | undefined;
+      if (visit) action = "present";
+      else if (!this.allowed(m, "mark_attendance"))
+        reason = "Attendance permission is required.";
+      else if (
+        b.status !== "ready" ||
+        !space?.enabled ||
+        !plan.enabled ||
+        !planSpaceIds(plan).includes(a.resource_id)
+      )
+        reason = "This plan or space is unavailable.";
+      else {
+        try {
+          session = await this.runningCoachingVisit(
+            this.db,
+            a,
+            b,
+            space!,
+            now,
+            true,
+            occupied,
+          );
+          this.check(b, space!, a.plan_snapshot, session, occupied);
+          if (
+            localStamp(Date.parse(session.ends_at) - 1, a.timezone).slice(
+              0,
+              10,
+            ) > a.expires_on
+          )
+            throw new BadRequestException(
+              "The class must end within admission validity.",
+            );
+          action = session.class_started ? "start" : "join";
+        } catch (e) {
+          if (!(
+            e instanceof BadRequestException || e instanceof ConflictException
+          ))
+            throw e;
+          reason = e.message;
+        }
+      }
+      result.push({
+        admission_id: a.id,
+        version: a.version,
+        name: a.customer_snapshot?.name ?? "Student",
+        reference: a.reference,
+        business_name: b.name,
+        plan_name: plan.name,
+        space_name: space?.name ?? "Space",
+        today: date,
+        remaining: a.remaining,
+        duration_minutes: a.plan_snapshot.class_duration_minutes,
+        action,
+        reason,
+        local_marked_at: visit
+          ? localStamp(Date.parse(visit.marked_at), b.timezone)
+          : null,
+        local_start: visit
+          ? localStamp(Date.parse(visit.starts_at), b.timezone)
+          : (session?.local_start ?? null),
+        local_end: visit
+          ? localStamp(Date.parse(visit.ends_at), b.timezone)
+          : (session?.local_end ?? null),
+      });
+    }
+    return result;
   }
   /**
    * Upcoming classes that would overlap for a coach who coaches exactly
@@ -1113,13 +1242,17 @@ export class AdmissionService {
     b: Row,
     pool: Row,
     now: number,
+    startIfMissing = false,
+    allocations?: Row[],
   ) {
-    const occupied = await this.allocations(
-      db,
-      b.id,
-      new Date(now).toISOString(),
-      new Date(now + 1).toISOString(),
-    );
+    const occupied =
+      allocations ??
+      (await this.allocations(
+        db,
+        b.id,
+        new Date(now).toISOString(),
+        new Date(now + 1).toISOString(),
+      ));
     const classes = new Map<string, Row>();
     for (const row of occupied) {
       const start = Date.parse(row.starts_at),
@@ -1134,6 +1267,20 @@ export class AdmissionService {
       )
         continue;
       classes.set(`${start}:${end}`, row);
+    }
+    if (!classes.size && startIfMissing) {
+      const local = localStamp(now, a.timezone);
+      return {
+        ...interval(
+          pool,
+          a.plan_snapshot,
+          local.slice(0, 10),
+          local.slice(11, 16),
+          a.plan_snapshot.class_duration_minutes,
+          a.timezone,
+        ),
+        class_started: true,
+      };
     }
     if (!classes.size)
       throw new BadRequestException(
@@ -1157,13 +1304,18 @@ export class AdmissionService {
       ...session,
       starts_at: new Date(row.starts_at).toISOString(),
       ends_at: new Date(row.ends_at).toISOString(),
+      class_started: false,
     };
   }
 
   async checkIn(actor: Actor, id: string, input: unknown) {
     // New clients omit the clock; older clients may still send a complete visit.
     const automatic = z
-      .object({ command_key: z.uuid(), version: z.number().int().positive() })
+      .object({
+        command_key: z.uuid(),
+        version: z.number().int().positive(),
+        start_class: z.boolean().optional(),
+      })
       .strict();
     const explicit = z
       .object({
@@ -1208,6 +1360,26 @@ export class AdmissionService {
         );
         if (!pool || b.status !== "ready")
           throw new BadRequestException("This space is unavailable.");
+        if ("start_class" in v && v.start_class) {
+          const plan = b.configuration.plans?.find(
+            (p: Row) => p.id === a.plan_id,
+          );
+          if (
+            a.plan_snapshot.kind !== "coaching" ||
+            !plan?.enabled ||
+            !planSpaceIds(plan).includes(a.resource_id)
+          )
+            throw new BadRequestException("This coaching plan is unavailable.");
+          if (
+            m.role !== "owner" &&
+            (!isCoach(m) ||
+              currentCoachId(b.configuration, a.plan_id, a.plan_snapshot) !==
+                m.id)
+          )
+            throw new ForbiddenException(
+              "Only the assigned coach can start this class.",
+            );
+        }
         const s =
           "time" in v
             ? interval(
@@ -1219,7 +1391,14 @@ export class AdmissionService {
                 a.timezone,
               )
             : a.plan_snapshot.kind === "coaching"
-              ? await this.runningCoachingVisit(db, a, b, pool, now)
+              ? await this.runningCoachingVisit(
+                  db,
+                  a,
+                  b,
+                  pool,
+                  now,
+                  "start_class" in v && v.start_class === true,
+                )
               : interval(
                   pool,
                   a.plan_snapshot,
@@ -1262,7 +1441,17 @@ export class AdmissionService {
           s.ends_at,
         );
         const duplicate = occupied.find((r) => r.booking_id === sameDay?.id);
-        if (duplicate) return { id, visit_id: duplicate.booking_id };
+        if (duplicate)
+          return {
+            id,
+            visit_id: duplicate.booking_id,
+            class_started: false,
+            local_start: localStamp(
+              Date.parse(duplicate.starts_at),
+              a.timezone,
+            ),
+            local_end: localStamp(Date.parse(duplicate.ends_at), a.timezone),
+          };
         this.check(b, pool, a.plan_snapshot, s, occupied);
         const [visitId] = await this.visits(db, m, actor, a, b, [s], true);
         await db.query("UPDATE admissions SET version=version+1 WHERE id=$1", [
@@ -1272,8 +1461,18 @@ export class AdmissionService {
           visit_id: visitId,
           local_date: attendanceDate,
           deducted: !sameDay,
+          marked_at: new Date(now).toISOString(),
+          class_started: "class_started" in s && s.class_started === true,
         });
-        return { id, visit_id: visitId };
+        return {
+          id,
+          visit_id: visitId,
+          class_started: "class_started" in s && s.class_started === true,
+          marked_at: new Date(now).toISOString(),
+          local_marked_at: local,
+          local_start: s.local_start,
+          local_end: s.local_end,
+        };
       },
     );
   }
@@ -1356,6 +1555,7 @@ export class AdmissionService {
           previous: s.admission_attendance,
           current: v.attendance,
           reason: v.reason,
+          marked_at: new Date(Date.now()).toISOString(),
         });
         return { id };
       },

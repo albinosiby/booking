@@ -604,3 +604,248 @@ test("subscription management, booking creation and attendance are independent s
     /access|permission/i,
   );
 });
+
+test("flexible coach roster exists before visits; start and join share exact time and retain final-day attendance", async (t) => {
+  const f = await fixture();
+  const ravi = await coach(f, ["coach", "mark_attendance"]);
+  await assign(f, { [f.config.plans[0].id]: ravi.id });
+  const today = localStamp(Date.now(), "UTC").slice(0, 10);
+  const at = Date.parse(today + "T12:10:30Z");
+  t.mock.method(Date, "now", () => at);
+  const first = await enroll(f, {
+    mode: "flexible",
+    weekdays: [],
+    starts_on: today,
+  });
+  const second = await enroll(
+    f,
+    { mode: "flexible", weekdays: [], starts_on: today },
+    "9000000071",
+  );
+  const third = await enroll(
+    f,
+    { mode: "flexible", weekdays: [], starts_on: today },
+    "9000000072",
+  );
+  await db.query("UPDATE admissions SET allowance=1 WHERE id=$1", [first.id]);
+  const day = await service.classes(ravi.staff, { date: today });
+  assert.equal(day.classes.length, 0);
+  assert.equal(day.flexible_students.length, 3);
+  const student = day.flexible_students.find(
+    (s: any) => s.admission_id === first.id,
+  );
+  assert.equal(student.action, "start");
+  assert.equal(student.local_start, today + "T12:10");
+  const request = {
+    command_key: randomUUID(),
+    version: student.version,
+    start_class: true,
+  };
+  const started = await service.checkIn(ravi.staff, first.id, request);
+  assert.equal(started.class_started, true);
+  assert.equal(started.local_marked_at, today + "T12:10");
+  assert.deepEqual(
+    await service.checkIn(ravi.staff, first.id, request),
+    started,
+  );
+  const marked = await service.classes(ravi.staff, { date: today });
+  const firstAfter = marked.flexible_students.find(
+    (s: any) => s.admission_id === first.id,
+  );
+  assert.equal(firstAfter.remaining, 0);
+  assert.equal(firstAfter.action, "present");
+  assert.equal(firstAfter.local_marked_at, today + "T12:10");
+  const next = marked.flexible_students.find(
+    (s: any) => s.admission_id === second.id,
+  );
+  assert.equal(next.action, "join");
+  assert.equal(next.local_start, started.local_start);
+  const joined = await service.checkIn(ravi.staff, second.id, {
+    command_key: randomUUID(),
+    version: next.version,
+    start_class: true,
+  });
+  assert.equal(
+    joined.class_started,
+    false,
+    "concurrent start intent joins an existing class",
+  );
+  assert.equal(joined.local_start, started.local_start);
+  assert.equal(joined.local_end, started.local_end);
+  const full = (
+    await service.classes(ravi.staff, { date: today })
+  ).flexible_students.find((s: any) => s.admission_id === third.id);
+  assert.equal(full.action, "unavailable");
+  assert.match(full.reason, /full/);
+  await assert.rejects(
+    () =>
+      service.checkIn(ravi.staff, third.id, {
+        command_key: randomUUID(),
+        version: full.version,
+        start_class: true,
+      }),
+    /full/,
+  );
+  assert.equal((await service.detail(f.owner, first.id)).sessions.length, 1);
+  t.mock.restoreAll();
+});
+
+test("flexible roster and start enforce coach, permission, resource, expiry and plan hours", async (t) => {
+  const f = await fixture();
+  const ravi = await coach(f, ["coach"]);
+  await assign(f, { [f.config.plans[0].id]: ravi.id });
+  const today = localStamp(Date.now(), "UTC").slice(0, 10);
+  t.mock.method(Date, "now", () => Date.parse(today + "T12:00:00Z"));
+  const saved = await enroll(f, {
+    mode: "flexible",
+    weekdays: [],
+    starts_on: today,
+  });
+  const initial = await service.classes(ravi.staff, { date: today });
+  assert.equal(initial.flexible_students[0].action, "unavailable");
+  assert.match(initial.flexible_students[0].reason, /permission/);
+  const request = {
+    command_key: randomUUID(),
+    version: initial.flexible_students[0].version,
+    start_class: true,
+  };
+  await assert.rejects(
+    () => service.checkIn(ravi.staff, saved.id, request),
+    /permission|access/,
+  );
+  await db.query("UPDATE memberships SET permissions=$1 WHERE id=$2", [
+    JSON.stringify(["coach", "mark_attendance"]),
+    ravi.id,
+  ]);
+  await assign(f, {
+    [f.config.plans[0].id]: (await workspace.workspace(f.owner)).membership.id,
+  });
+  assert.equal(
+    (await service.classes(ravi.staff, { date: today })).flexible_students
+      .length,
+    0,
+  );
+  await assert.rejects(
+    () => service.checkIn(ravi.staff, saved.id, request),
+    /assigned coaching/,
+  );
+  await assign(f, { [f.config.plans[0].id]: ravi.id });
+  await db.query(
+    "UPDATE staff_assignments SET resource_ids=$1 WHERE membership_id=$2",
+    [JSON.stringify([f.config.courts[1].id]), ravi.id],
+  );
+  assert.equal(
+    (await service.classes(ravi.staff, { date: today })).flexible_students
+      .length,
+    0,
+  );
+  await assert.rejects(
+    () => service.checkIn(ravi.staff, saved.id, request),
+    /not assigned/,
+  );
+  await db.query(
+    "UPDATE staff_assignments SET resource_ids='[]' WHERE membership_id=$1",
+    [ravi.id],
+  );
+  // Enrollment remains, but a class cannot start outside the plan's current hours.
+  await db.query(
+    "UPDATE admissions SET plan_snapshot=jsonb_set(plan_snapshot,'{availability}',$1::jsonb) WHERE id=$2",
+    [
+      JSON.stringify({
+        ...hours,
+        all_day: false,
+        opens_at: "18:00",
+        closes_at: "20:00",
+      }),
+      saved.id,
+    ],
+  );
+  const outside = (await service.classes(ravi.staff, { date: today }))
+    .flexible_students[0];
+  assert.equal(outside.action, "unavailable");
+  assert.match(outside.reason, /operating hours/);
+  await assert.rejects(
+    () => service.checkIn(ravi.staff, saved.id, request),
+    /operating hours/,
+  );
+  await db.query(
+    "UPDATE admissions SET starts_on=$1::date-45,expires_on=$1::date-1 WHERE id=$2",
+    [today, saved.id],
+  );
+  assert.equal(
+    (await service.classes(ravi.staff, { date: today })).flexible_students
+      .length,
+    0,
+  );
+  await assert.rejects(
+    () => service.checkIn(ravi.staff, saved.id, request),
+    /expired|remaining/,
+  );
+  t.mock.restoreAll();
+});
+
+test("flexible roster and attendance use business-local time across the UTC date boundary", async (t) => {
+  const f = await fixture();
+  const utcDate = localStamp(Date.now(), "UTC").slice(0, 10);
+  const at = Date.parse(utcDate + "T20:00:30Z");
+  t.mock.method(Date, "now", () => at);
+  await db.query(
+    "UPDATE locations SET timezone='Asia/Kolkata' WHERE organization_id=$1",
+    [(await workspace.workspace(f.owner)).organization.id],
+  );
+  const localDate = localStamp(at, "Asia/Kolkata").slice(0, 10);
+  const saved = await enroll(f, {
+    mode: "flexible",
+    weekdays: [],
+    starts_on: localDate,
+  });
+  assert.equal(
+    (await service.classes(f.owner, { date: utcDate })).flexible_students
+      .length,
+    0,
+  );
+  const student = (await service.classes(f.owner, { date: localDate }))
+    .flexible_students[0];
+  assert.equal(student.action, "start");
+  assert.equal(student.local_start, localDate + "T01:30");
+  const result = await service.checkIn(f.owner, saved.id, {
+    command_key: randomUUID(),
+    version: student.version,
+    start_class: true,
+  });
+  assert.equal(result.local_marked_at, localDate + "T01:30");
+  assert.equal(
+    (await service.classes(f.owner, { date: localDate })).flexible_students[0]
+      .local_marked_at,
+    localDate + "T01:30",
+  );
+  t.mock.restoreAll();
+});
+
+test("starting a flexible class never overlaps a future court reservation", async (t) => {
+  const f = await fixture();
+  const today = localStamp(Date.now(), "UTC").slice(0, 10);
+  const at = Date.parse(today + "T12:00:00Z");
+  t.mock.method(Date, "now", () => at);
+  const weekday = new Date(today + "T00:00:00Z").getUTCDay() || 7;
+  await enroll(f, { starts_on: today, weekdays: [weekday], time: "12:30" });
+  const flexible = await enroll(
+    f,
+    { starts_on: today, mode: "flexible", weekdays: [] },
+    "9000000073",
+  );
+  const student = (await service.classes(f.owner, { date: today }))
+    .flexible_students[0];
+  assert.equal(student.action, "unavailable");
+  await assert.rejects(
+    () =>
+      service.checkIn(f.owner, flexible.id, {
+        command_key: randomUUID(),
+        version: student.version,
+        start_class: true,
+      }),
+    /available|overlapping/,
+  );
+  assert.equal((await service.detail(f.owner, flexible.id)).sessions.length, 0);
+  t.mock.restoreAll();
+});

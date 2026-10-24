@@ -5,6 +5,7 @@ import 'package:eden_booking/design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../cubit/coach_classes_cubit.dart';
 import '../models/coach_class.dart';
+import '../widgets/flexible_students_panel.dart';
 
 /// A coach's classes for one day, with each student's attendance.
 class CoachClassesScreen extends StatefulWidget {
@@ -41,14 +42,14 @@ class _CoachClassesScreenState extends State<CoachClassesScreen> {
       children: [
         IconButton(
           tooltip: 'Previous day',
-          onPressed: s.busy
+          onPressed: s.busy || s.pendingCheckIn
               ? null
               : () => cubit.show(d.subtract(const Duration(days: 1))),
           icon: const Icon(Icons.chevron_left),
         ),
         Expanded(
           child: TextButton.icon(
-            onPressed: s.busy ? null : () => pick(s),
+            onPressed: s.busy || s.pendingCheckIn ? null : () => pick(s),
             icon: const Icon(Icons.calendar_today_outlined, size: 18),
             label: Text(
               MaterialLocalizations.of(context).formatFullDate(d),
@@ -58,7 +59,7 @@ class _CoachClassesScreenState extends State<CoachClassesScreen> {
         ),
         IconButton(
           tooltip: 'Next day',
-          onPressed: s.busy
+          onPressed: s.busy || s.pendingCheckIn
               ? null
               : () => cubit.show(d.add(const Duration(days: 1))),
           icon: const Icon(Icons.chevron_right),
@@ -96,11 +97,15 @@ class _CoachClassesScreenState extends State<CoachClassesScreen> {
           ),
           if (v.markable) ...[
             OutlinedButton(
-              onPressed: s.busy ? null : () => cubit.mark(v, 'present'),
+              onPressed: s.busy || s.loading || s.pendingCheckIn
+                  ? null
+                  : () => cubit.mark(v, 'present'),
               child: const Text('Present'),
             ),
             OutlinedButton(
-              onPressed: s.busy ? null : () => cubit.mark(v, 'absent'),
+              onPressed: s.busy || s.loading || s.pendingCheckIn
+                  ? null
+                  : () => cubit.mark(v, 'absent'),
               child: const Text('Absent'),
             ),
           ],
@@ -132,7 +137,9 @@ class _CoachClassesScreenState extends State<CoachClassesScreen> {
               label: 'Mark $markable present',
               icon: Icons.done_all,
               busy: s.busy,
-              onPressed: s.busy ? null : () => cubit.markAll(c),
+              onPressed: s.busy || s.loading || s.pendingCheckIn
+                  ? null
+                  : () => cubit.markAll(c),
             ),
           ],
         ],
@@ -160,7 +167,11 @@ class _CoachClassesScreenState extends State<CoachClassesScreen> {
           icon: const Icon(Icons.refresh),
         ),
       ],
-      fillRemaining: !s.loading && s.error == null && s.classes.isEmpty
+      fillRemaining:
+          !s.loading &&
+              s.error == null &&
+              s.classes.isEmpty &&
+              s.flexibleStudents.isEmpty
           ? const Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -179,10 +190,21 @@ class _CoachClassesScreenState extends State<CoachClassesScreen> {
         if (s.loading) const AppLoadingState(),
         if (s.error != null)
           AppErrorWidget(message: s.error!, onRetry: cubit.load),
-        for (final c in s.classes) ...[
+        if (s.pendingCheckIn)
+          TextButton.icon(
+            onPressed: s.busy || s.loading ? null : cubit.retryCheckIn,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry attendance save'),
+          ),
+        if (s.notice != null)
+          Semantics(liveRegion: true, child: Text(s.notice!)),
+        if (s.busy)
+          Semantics(liveRegion: true, child: const Text('Saving attendance…')),
+        for (final c in s.displayClasses) ...[
           classCard(s, c),
           const SizedBox(height: 12),
         ],
+        FlexibleStudentsPanel(state: s, onPresent: cubit.checkIn),
       ],
     ),
   );

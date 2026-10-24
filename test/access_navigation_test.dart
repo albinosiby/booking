@@ -47,7 +47,8 @@ class AccessRepository extends Fake
 class PendingClasses extends FakeClasses {
   final result = Completer<List<CoachClass>>();
   @override
-  Future<List<CoachClass>> classes(String date) => result.future;
+  Future<CoachRoster> classes(String date) async =>
+      CoachRoster(classes: await result.future);
 }
 
 void main() {

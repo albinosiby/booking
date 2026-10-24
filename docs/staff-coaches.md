@@ -19,6 +19,8 @@ Home has a roster refresh button and a **My classes** link for browsing other da
 
 Coaches open **My classes** from Home or Profile. It shows one day's classes for the plans they coach: plan, time, space and students. Each class's students share one entry.
 
+Flexible enrolments appear on both Home and My classes before they reserve a visit. **Start class & mark present** starts a class at server time with its first student; later students use **Mark present** to join the running interval. Tiles show the saved attendance time. See [Flexible coaching attendance](flexible-coaching-attendance.md) for rules, API changes, deployment and recovery. This additional flow requires the updated API before releasing the app/web update; no migration is required.
+
 Coaches mark **Present/Absent** for their own classes, one at a time or with **Mark all present**. They require the explicit **Mark attendance** permission, independently of coach status. Subscription management has a separate permission. The existing rules apply: only first marks of fixed-schedule sessions, from the start until 24 hours after the end. The owner corrects marks from the admission. The overlap check and the coach shown on admissions always use each plan's current coach.
 
 ## API

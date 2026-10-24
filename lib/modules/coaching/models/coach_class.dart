@@ -72,6 +72,15 @@ class CoachClass extends Equatable {
   String get time => '${localStart.substring(11)}–${localEnd.substring(11)}';
   int count(String attendance) =>
       students.where((s) => s.attendance == attendance).length;
+  CoachClass withStudents(Iterable<CoachStudent> students) => CoachClass(
+    key: key,
+    businessName: businessName,
+    planName: planName,
+    spaceName: spaceName,
+    localStart: localStart,
+    localEnd: localEnd,
+    students: students,
+  );
   @override
   List<Object?> get props => [
     key,
@@ -82,4 +91,90 @@ class CoachClass extends Equatable {
     localEnd,
     students,
   ];
+}
+
+class CoachRoster {
+  CoachRoster({
+    Iterable<CoachClass> classes = const [],
+    Iterable<FlexibleCoachStudent> flexibleStudents = const [],
+  }) : classes = List.unmodifiable(classes),
+       flexibleStudents = List.unmodifiable(flexibleStudents);
+  final List<CoachClass> classes;
+  final List<FlexibleCoachStudent> flexibleStudents;
+}
+
+/// An enrolment which may not have a visit yet. The server chooses its action.
+class FlexibleCoachStudent extends Equatable {
+  const FlexibleCoachStudent({
+    required this.admissionId,
+    required this.version,
+    required this.name,
+    required this.planName,
+    required this.businessName,
+    required this.spaceName,
+    required this.today,
+    required this.remaining,
+    required this.durationMinutes,
+    required this.action,
+    this.reason,
+    this.localStart,
+    this.localEnd,
+    this.localMarkedAt,
+  });
+  factory FlexibleCoachStudent.fromJson(Map<String, dynamic> j) =>
+      FlexibleCoachStudent(
+        admissionId: j['admission_id'],
+        version: j['version'],
+        name: j['name'],
+        planName: j['plan_name'],
+        businessName: j['business_name'],
+        spaceName: j['space_name'],
+        today: j['today'],
+        remaining: j['remaining'],
+        durationMinutes: j['duration_minutes'],
+        action: j['action'],
+        reason: j['reason'],
+        localStart: j['local_start'],
+        localEnd: j['local_end'],
+        localMarkedAt: j['local_marked_at'],
+      );
+  final String admissionId,
+      name,
+      planName,
+      businessName,
+      spaceName,
+      today,
+      action;
+  final int version, remaining, durationMinutes;
+  final String? reason, localStart, localEnd, localMarkedAt;
+  bool get present => action == 'present';
+  bool get canMark => action == 'start' || action == 'join';
+  @override
+  List<Object?> get props => [
+    admissionId,
+    version,
+    name,
+    planName,
+    businessName,
+    spaceName,
+    today,
+    action,
+    remaining,
+    durationMinutes,
+    reason,
+    localStart,
+    localEnd,
+    localMarkedAt,
+  ];
+}
+
+class FlexibleAttendanceResult {
+  const FlexibleAttendanceResult({
+    required this.started,
+    this.localMarkedAt,
+    this.localStart,
+    this.localEnd,
+  });
+  final bool started;
+  final String? localMarkedAt, localStart, localEnd;
 }

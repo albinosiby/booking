@@ -21,8 +21,13 @@ abstract interface class CoachApi {
     String coachId,
     Set<String> planIds,
   );
-  Future<List<CoachClass>> classes(String date);
+  Future<CoachRoster> classes(String date);
   Future<void> mark(CoachStudent student, String attendance);
+  Future<FlexibleAttendanceResult> checkIn(
+    FlexibleCoachStudent student, {
+    required String commandKey,
+    required bool startClass,
+  });
 }
 
 class RestCoachApi implements CoachApi, RetainedReadEvents {
@@ -80,17 +85,43 @@ class RestCoachApi implements CoachApi, RetainedReadEvents {
   }
 
   @override
-  Future<List<CoachClass>> classes(String date) async {
+  Future<CoachRoster> classes(String date) async {
     final j = await api.request(
       Uri(
         path: '/admissions/classes',
         queryParameters: {'date': date},
       ).toString(),
     );
-    return List.unmodifiable(
-      (j['classes'] as List).map(
+    return CoachRoster(
+      classes: (j['classes'] as List).map(
         (c) => CoachClass.fromJson(Map<String, dynamic>.from(c)),
       ),
+      flexibleStudents: (j['flexible_students'] as List? ?? []).map(
+        (s) => FlexibleCoachStudent.fromJson(Map<String, dynamic>.from(s)),
+      ),
+    );
+  }
+
+  @override
+  Future<FlexibleAttendanceResult> checkIn(
+    FlexibleCoachStudent student, {
+    required String commandKey,
+    required bool startClass,
+  }) async {
+    final j = await api.request(
+      '/admissions/${student.admissionId}/check-ins',
+      method: 'POST',
+      data: {
+        'command_key': commandKey,
+        'version': student.version,
+        'start_class': startClass,
+      },
+    );
+    return FlexibleAttendanceResult(
+      started: j['class_started'] == true,
+      localMarkedAt: j['local_marked_at'],
+      localStart: j['local_start'],
+      localEnd: j['local_end'],
     );
   }
 
