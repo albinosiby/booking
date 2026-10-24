@@ -15,7 +15,10 @@ export default async function Connection({
   params: Promise<{ org: string }>;
 }) {
   const { org } = await params;
-  const c = await admin<any>(`/agent-requests/${org}/connection`);
+  const [c, { organization }] = await Promise.all([
+    admin<any>(`/agent-requests/${org}/connection`),
+    admin<{ organization: { name: string } }>(`/organizations/${org}`),
+  ]);
   const r = c.request;
   return (
     <>
@@ -23,10 +26,14 @@ export default async function Connection({
         <Link href="/agent-requests">← Call service requests</Link>
       </p>
       <PageHeader
-        title="Call service setup"
+        title={organization.name}
         description="Connect the client’s phone service, verify the number, then activate access."
       />
-      <div className="card">
+      <section className="card request-summary" aria-label="Request details">
+        <div className="request-summary-heading">
+          <h2>Call service setup</h2>
+          <Link href={`/organizations/${org}`}>View organization →</Link>
+        </div>
         <div className="row">
           <Badge value={r.status} />
           <span>
@@ -39,13 +46,41 @@ export default async function Connection({
           <b>Requested services:</b>{" "}
           {r.requested_services.map(label).join(", ")}
         </p>
-        {r.note && <p>{r.note}</p>}
+        <p>
+          <b>Approved services:</b>{" "}
+          {r.approved_services.length
+            ? r.approved_services.map(label).join(", ")
+            : "Pending review"}
+        </p>
+        {r.note && (
+          <div className="msg">
+            <small>Customer note</small>
+            <p>{r.note}</p>
+          </div>
+        )}
         <p className="sub">
           Clients see their number, approved services, selected spaces and call
           history. Provider details stay in this panel.
         </p>
-      </div>
-      <ActionForm action={saveManagedConnection}>
+      </section>
+      <nav
+        className="request-setup-nav"
+        aria-label="Call service setup sections"
+      >
+        <a href="#connection">
+          <span>1</span> Connection
+        </a>
+        <a href="#tools">
+          <span>2</span> Agent tools
+        </a>
+        <a href="#verification">
+          <span>3</span> Verification
+        </a>
+        <a href="#client-status">
+          <span>4</span> Client status
+        </a>
+      </nav>
+      <ActionForm id="connection" action={saveManagedConnection}>
         <h2>1. Connection and services</h2>
         <input type="hidden" name="org" value={org} />
         <input type="hidden" name="version" value={c.version} />
@@ -125,7 +160,7 @@ export default async function Connection({
           <button>Save connection</button>
         </div>
       </ActionForm>
-      <ActionForm action={generateManagedToolKey}>
+      <ActionForm id="tools" action={generateManagedToolKey}>
         <h2>2. Configure the agent tools</h2>
         <input type="hidden" name="org" value={org} />
         <p>
@@ -190,7 +225,7 @@ export default async function Connection({
           </pre>
         </details>
       </ActionForm>
-      <ActionForm action={verifyManagedConnection}>
+      <ActionForm id="verification" action={verifyManagedConnection}>
         <h2>3. Verify the connection</h2>
         <input type="hidden" name="org" value={org} />
         <input type="hidden" name="version" value={c.version} />
@@ -215,7 +250,7 @@ export default async function Connection({
         </div>
         <small>Verification does not place a call or create a booking.</small>
       </ActionForm>
-      <ActionForm action={updateRequest}>
+      <ActionForm id="client-status" action={updateRequest}>
         <h2>4. Update client status</h2>
         <input type="hidden" name="id" value={r.id} />
         <input type="hidden" name="version" value={r.version} />

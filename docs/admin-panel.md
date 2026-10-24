@@ -40,8 +40,11 @@ The login asks for one password, **`tatos tech`**, with no username. This value 
 
 ## Agent call service flow
 1. Owner: Profile → Agent call service → Request service (no provider name is shown anywhere in the app).
-2. Admin: Agent call requests → move status (Requested → In review → Setting up), write the message the owner sees, open **Connection** to save the provider IDs/API key and businesses, and generate the tool key (shown once; paste it into the provider agent with the tool base URL).
-3. Admin sets the request to **Active**. The owner's page then shows the on/off switch and Call logs. The service is "ready" only when Active *and* a connection and tool key exist; turning on also needs at least one business assigned.
+2. Admin: **Agent calls** opens a responsive request tile grid (three columns on desktop, two on tablet, one on mobile). Each tile shows live organization/requester details, status, requested/approved services, a customer-note preview and timestamps. Status tabs filter the API results, ordered by latest update; the count is the number shown, not a platform-wide total. Select any tile to open its organization-specific setup screen. There are no inline configuration forms on the list.
+3. The setup screen identifies the organization and provides four section links: **Connection**, **Agent tools**, **Verification**, and **Client status**. Save provider IDs, phone number, API key and approved services; generate the tool key (shown once) and configure the provider tools. Review the full customer note here. Configuration changes disable service access and require verification again.
+4. Verify the connection and then set the client status to **Active**. Client-facing messages and private admin notes are edited in **Client status**. Existing server-side permissions, version conflict checks and verification requirements remain enforced. The client selects spaces and enables approved services after activation.
+
+The list and setup routes have separate loading placeholders and a scoped retry view. This interface change requires only an admin-panel deployment; it introduces no schema migration, API contract change or live data cleanup.
 
 ## Support
 Owners and team members use Profile → Help & support to report issues; admins reply from the panel and the thread updates in the app.

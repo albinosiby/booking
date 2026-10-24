@@ -5,14 +5,17 @@ export function ActionForm({
   action,
   children,
   className = "card",
+  id,
 }: {
   action: (previous: ActionResult, form: FormData) => Promise<ActionResult>;
   children: ReactNode;
   className?: string;
+  id?: string;
 }) {
   const [state, submit, pending] = useActionState(action, {});
   return (
     <form
+      id={id}
       action={submit}
       className={className}
       style={{ display: "grid", gap: 14 }}

@@ -2,9 +2,7 @@ import Link from "next/link";
 import { admin } from "../../../lib/api";
 import { date, label } from "../../../lib/format";
 import { Badge, Tabs, PageHeader, EmptyState } from "../../../components/ui";
-import { SubmitButton } from "../../../components/submit-button";
-import { updateRequest } from "../../../features/call-service/actions";
-import { ActionForm } from "../../../features/call-service/action-form";
+import { Icon } from "../../../components/icon";
 
 const statuses = [
   "requested",
@@ -15,108 +13,126 @@ const statuses = [
   "rejected",
 ];
 
+type CallRequest = {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  user_name: string;
+  user_email: string;
+  status: string;
+  requested_services: string[];
+  approved_services: string[];
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export default async function AgentRequests({
   searchParams,
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
-  const { status } = await searchParams;
-  const { requests } = await admin<{ requests: any[] }>(
+  const { status: selectedStatus } = await searchParams;
+  const status = statuses.includes(selectedStatus ?? "")
+    ? selectedStatus
+    : undefined;
+  const { requests } = await admin<{ requests: CallRequest[] }>(
     `/agent-requests${status ? `?status=${status}` : ""}`,
   );
   return (
     <>
       <PageHeader
         title="Call service requests"
-        description="Help every organization get their call service up and running."
+        description="Choose a request to review its details and configure the call service."
       />
-      <p className="info-note">
-        Move a request through the stages. A connection must be verified before
-        it can be marked <b>Active</b>. Clients then select spaces and enable
-        their approved services. The message below is shown to the user.
-      </p>
       <Tabs base="/agent-requests" current={status} items={statuses} />
-      {requests.map((r) => (
-        <ActionForm key={r.id} className="card" action={updateRequest}>
-          <input type="hidden" name="id" value={r.id} />
-          <input type="hidden" name="version" value={r.version} />
-          <p>
-            <b>Requested:</b> {r.requested_services.map(label).join(", ")}
-            <br />
-            <b>Approved:</b>{" "}
-            {r.approved_services.length
-              ? r.approved_services.map(label).join(", ")
-              : "Pending review"}
-          </p>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <div>
-              <h2 style={{ margin: 0 }}>
-                <Link href={`/organizations/${r.organization_id}`}>
-                  {r.organization_name}
-                </Link>
-              </h2>
-              <small>
-                {r.user_name} · {r.user_email} · requested {date(r.created_at)}{" "}
-                · updated {date(r.updated_at)}
-              </small>
-            </div>
-            <Badge value={r.status} />
-          </div>
-          {r.note && (
-            <div className="msg">
-              <small>Customer note</small>
-              <p>{r.note}</p>
-            </div>
-          )}
-          <div className="two">
-            <label>
-              Status
-              <select name="status" defaultValue={r.status}>
-                {statuses.map((s) => (
-                  <option key={s} value={s}>
-                    {label(s)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Message shown to user
-              <input
-                name="user_message"
-                defaultValue={r.user_message}
-                maxLength={500}
-                placeholder="e.g. We are setting up your number"
-              />
-            </label>
-          </div>
-          <label>
-            Internal notes (admin only)
-            <textarea
-              name="admin_note"
-              defaultValue={r.admin_note}
-              maxLength={2000}
-            />
-          </label>
-          <div className="row">
-            <SubmitButton>Save changes</SubmitButton>
-            <Link
-              className="btn ghost"
-              href={`/agent-requests/${r.organization_id}`}
-            >
-              Manage connection
-            </Link>
-          </div>
-        </ActionForm>
-      ))}
-      {!requests.length && (
+      <div className="request-list-heading">
+        <p>{status ? label(status) : "All requests"}</p>
+        <span>{requests.length} shown · Latest updates first</span>
+      </div>
+      {requests.length > 0 ? (
+        <ul className="request-grid" aria-label="Call service requests">
+          {requests.map((request) => (
+            <li key={request.id}>
+              <Link
+                className="request-tile"
+                href={`/agent-requests/${request.organization_id}`}
+                prefetch={false}
+                aria-label={`Configure call service for ${request.organization_name}`}
+              >
+                <div className="request-tile-top">
+                  <span className="request-icon">
+                    <Icon name="phone" size={20} />
+                  </span>
+                  <Badge value={request.status} />
+                </div>
+                <div>
+                  <h2>{request.organization_name}</h2>
+                  <p className="request-requester">{request.user_name}</p>
+                  <p className="request-email">{request.user_email}</p>
+                </div>
+                <div className="request-services">
+                  <span className="request-caption">Requested services</span>
+                  <div className="request-service-tags">
+                    {request.requested_services.map((service) => (
+                      <span key={service}>{label(service)}</span>
+                    ))}
+                    {!request.requested_services.length && (
+                      <span>No services selected</span>
+                    )}
+                  </div>
+                  <p className="request-approved">
+                    Approved:{" "}
+                    {request.approved_services.length
+                      ? request.approved_services.map(label).join(", ")
+                      : "Pending review"}
+                  </p>
+                </div>
+                {request.note && <p className="request-note">{request.note}</p>}
+                <dl className="request-dates">
+                  <div>
+                    <dt>Requested</dt>
+                    <dd>{date(request.created_at)}</dd>
+                  </div>
+                  <div>
+                    <dt>Updated</dt>
+                    <dd>{date(request.updated_at)}</dd>
+                  </div>
+                </dl>
+                <div className="request-tile-footer">
+                  <span>View details & configure</span>
+                  <Icon name="arrow" size={17} />
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
         <div className="card">
           <EmptyState
             icon="phone"
-            title="Nothing waiting here"
-            description="Agent call requests will appear here as organizations get started."
+            title={
+              status
+                ? `No ${label(status).toLowerCase()} requests`
+                : "No call service requests yet"
+            }
+            description={
+              status
+                ? "Choose another status or view all requests."
+                : "Requests will appear here when organizations ask to enable their call service."
+            }
           />
+          {status && (
+            <Link className="btn ghost" href="/agent-requests">
+              View all requests
+            </Link>
+          )}
         </div>
       )}
+      <p className="sub">
+        Open a request to manage its connection, tools, verification and client
+        status. A verified connection is required before activation.
+      </p>
     </>
   );
 }
