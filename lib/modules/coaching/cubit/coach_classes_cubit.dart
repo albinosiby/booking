@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../utils/exceptions/app_exception.dart';
 import '../models/coach_class.dart';
 import '../repositories/coach_api.dart';
+import '../../workspace/repositories/refreshable_reads.dart';
 
 class CoachClassesState extends Equatable {
   CoachClassesState({
@@ -41,8 +42,20 @@ String coachDate(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 class CoachClassesCubit extends Cubit<CoachClassesState> {
-  CoachClassesCubit(this.api, {DateTime? today, WorkspaceSession? session})
-    : super(CoachClassesState(date: coachDate(today ?? DateTime.now()))) {
+  CoachClassesCubit(
+    this.api, {
+    DateTime? today,
+    WorkspaceSession? session,
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now,
+       super(
+         CoachClassesState(date: coachDate(today ?? (now ?? DateTime.now)())),
+       ) {
+    if (api is RetainedReadEvents) {
+      _reads = (api as RetainedReadEvents).readChanges.listen((_) {
+        if (!isClosed && !state.busy) unawaited(load());
+      });
+    }
     if (session != null) {
       var previous = session.state.data.withLogo(null);
       _access = session.snapshots.listen((snapshot) {
@@ -56,17 +69,25 @@ class CoachClassesCubit extends Cubit<CoachClassesState> {
     }
   }
   StreamSubscription? _access;
+  StreamSubscription<void>? _reads;
+  final DateTime Function() _now;
+  bool _followToday = false;
   @override
   Future<void> close() async {
     generation++;
     await _access?.cancel();
+    await _reads?.cancel();
     return super.close();
   }
 
   final CoachApi api;
   int generation = 0;
   Future<void> load() async {
-    if (isClosed) return;
+    if (isClosed || state.busy) return;
+    final today = coachDate(_now());
+    if (_followToday && state.date != today) {
+      emit(CoachClassesState(date: today));
+    }
     final g = ++generation, date = state.date;
     emit(state.copy(loading: true));
     try {
@@ -88,9 +109,17 @@ class CoachClassesCubit extends Cubit<CoachClassesState> {
   }
 
   Future<void> show(DateTime day) async {
-    if (state.busy) return;
+    if (isClosed || state.busy) return;
+    _followToday = false;
     emit(state.copy(date: coachDate(day), classes: const []));
     await load();
+  }
+
+  /// Home always follows today, including after a retained tab crosses midnight.
+  Future<void> refreshToday({bool force = false}) async {
+    if (isClosed || state.busy || state.loading) return;
+    _followToday = true;
+    if (force || state.date != coachDate(_now())) await load();
   }
 
   Future<void> mark(CoachStudent student, String attendance) =>
@@ -101,7 +130,11 @@ class CoachClassesCubit extends Cubit<CoachClassesState> {
       _marking(c.students.where((s) => s.markable), 'present');
 
   Future<void> _marking(Iterable<CoachStudent> students, String value) async {
-    if (state.busy || state.loading || students.isEmpty) return;
+    if (isClosed || state.busy || state.loading || students.isEmpty) return;
+    if (_followToday && state.date != coachDate(_now())) {
+      await load();
+      return;
+    }
     final g = generation;
     emit(state.copy(busy: true));
     String? error;

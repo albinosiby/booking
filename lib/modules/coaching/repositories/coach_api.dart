@@ -2,6 +2,7 @@ import 'package:uuid/uuid.dart';
 import '../../../constants/api_path.dart';
 import '../../../utils/services/rest_api_service.dart';
 import '../models/coach_class.dart';
+import '../../workspace/repositories/refreshable_reads.dart';
 
 /// Coach endpoints: plan assignment, the owner's coach opt-in, overlap
 /// checks and a coach's own classes.
@@ -24,9 +25,15 @@ abstract interface class CoachApi {
   Future<void> mark(CoachStudent student, String attendance);
 }
 
-class RestCoachApi implements CoachApi {
+class RestCoachApi implements CoachApi, RetainedReadEvents {
   RestCoachApi(this.api);
   final RestApiService api;
+  @override
+  Stream<void> get readChanges => api.readUpdates
+      .where((key) => key == '*' || key.startsWith('/admissions'))
+      .map((_) {});
+  @override
+  void revalidateReads() => api.revalidateReads();
   @override
   Future<void> assignPlans(
     String businessId,

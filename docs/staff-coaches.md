@@ -13,6 +13,10 @@ Turning Coach off, removing a business or space from a coach's access, or removi
 
 ## My classes
 
+The coach's **Home** page shows **Today’s students** as individual tiles, ordered by class start time. Each tile shows the student's name, scheduled time, plan, space/business and current attendance. Eligible unmarked sessions have **Present** and **Absent** buttons; saved marks remain visible without correction controls. A student with multiple sessions has a tile for each session. The time shown is the scheduled class time in the business's time zone, not the time the button was pressed.
+
+Home has a roster refresh button and a **My classes** link for browsing other dates. It refreshes after marking, when returning from My classes, on app resume and on retained-page revalidation. An open Home roster follows the current calendar date; an attempt to mark an old tile after midnight refreshes today's list instead. Loading, save failures and an empty day are shown explicitly. Coach status/permission changes clear or refresh the roster through the existing workspace session. This Home change needs an updated app/web frontend; it adds no API endpoints or database migration.
+
 Coaches open **My classes** from Home or Profile. It shows one day's classes for the plans they coach: plan, time, space and students. Each class's students share one entry.
 
 Coaches mark **Present/Absent** for their own classes, one at a time or with **Mark all present**. They require the explicit **Mark attendance** permission, independently of coach status. Subscription management has a separate permission. The existing rules apply: only first marks of fixed-schedule sessions, from the start until 24 hours after the end. The owner corrects marks from the admission. The overlap check and the coach shown on admissions always use each plan's current coach.
