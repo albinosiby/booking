@@ -12,9 +12,11 @@ class AdmissionScheduleFields extends StatelessWidget {
     super.key,
     required this.cubit,
     required this.state,
+    this.showPlanKind = true,
   });
   final AdmissionCubit cubit;
   final AdmissionState state;
+  final bool showPlanKind;
   @override
   Widget build(BuildContext context) {
     final s = state,
@@ -24,18 +26,25 @@ class AdmissionScheduleFields extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         AppPicker(
-          label: 'Plan',
+          label: !showPlanKind && s.formKind == 'coaching'
+              ? 'Coaching plan'
+              : 'Plan',
           value: d.planId,
           enabled: enabled,
           items: s.availablePlans
               .map(
                 (p) => PickerItem(
                   p.id,
-                  '${p.name} · ${switch (p.kind) {
-                    'swimming' => 'Swimming plan',
-                    'play' => 'Court plan',
-                    _ => 'Coaching',
-                  }} · ${bookingMoney(p.total, s.catalog.currency)}',
+                  [
+                    p.name,
+                    if (showPlanKind)
+                      switch (p.kind) {
+                        'swimming' => 'Swimming plan',
+                        'play' => 'Court plan',
+                        _ => 'Coaching',
+                      },
+                    bookingMoney(p.total, s.catalog.currency),
+                  ].join(' · '),
                 ),
               )
               .toList(),

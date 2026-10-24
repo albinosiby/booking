@@ -107,6 +107,13 @@ export class AdminController {
   ) {
     return this.service.saveConnection(r.actor, id, b);
   }
+  @Post("agent-requests/:id/verify") verifyConnection(
+    @Req() r: AuthRequest,
+    @Param("id") id: string,
+    @Body() b: unknown,
+  ) {
+    return this.service.verifyConnection(r.actor, id, b);
+  }
   @Post("agent-requests/:id/tool-key") toolKey(
     @Req() r: AuthRequest,
     @Param("id") id: string,

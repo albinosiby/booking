@@ -27,20 +27,26 @@ Admission student(
   String space = 'pool',
   String plan = 'plan',
   String kind = 'swimming',
+  String business = 'business',
+  String status = 'active',
 }) {
   final a = example();
   return Admission(
     id: id,
     reference: 'AD-$id',
-    businessId: 'business',
+    businessId: business,
     poolId: space,
     planId: plan,
     customer: a.customer.copyWith(name: 'Student $id'),
-    planName: plan == 'coaching' ? 'Swimming coaching' : 'Monthly swimming',
+    planName: plan == 'coaching'
+        ? 'Swimming coaching'
+        : kind == 'play'
+        ? 'Court membership'
+        : 'Monthly swimming',
     kind: kind,
     coach: 'Coach Asha',
     mode: a.mode,
-    status: a.status,
+    status: status,
     start: a.start,
     expiry: a.expiry,
     allowance: a.allowance,
@@ -53,15 +59,31 @@ Admission student(
     duration: a.duration,
     time: a.time,
     weekdays: a.weekdays,
-    poolName: 'Pool 1',
-    businessName: 'Swimming Centre',
+    poolName: space == 'court'
+        ? 'Court 1'
+        : space == 'pool-2'
+        ? 'Pool 2'
+        : 'Pool 1',
+    businessName: business == 'business' ? 'Swimming Centre' : 'Sports Centre',
   );
 }
 
 class OverviewFake extends AdmissionsFake {
   bool manage = true, fail = false, deny = false;
   Completer<AdmissionPage>? delayedRoster;
-  final calls = <({String? plan, String? space, int cursor, bool previous})>[];
+  final calls =
+      <
+        ({
+          String kind,
+          String? business,
+          String? plan,
+          String? space,
+          String? status,
+          String query,
+          int cursor,
+          bool previous,
+        })
+      >[];
   final students = [
     student('A'),
     student('B'),
@@ -69,6 +91,14 @@ class OverviewFake extends AdmissionsFake {
     student('D', space: 'pool-2', plan: 'other'),
     student('E', plan: 'coaching', kind: 'coaching'),
     student('F', plan: 'removed'),
+    student(
+      'G',
+      business: 'sports',
+      space: 'court',
+      plan: 'play',
+      kind: 'play',
+    ),
+    student('H', status: 'cancelled'),
   ];
   @override
   Future<AdmissionCatalog> catalog() async => AdmissionCatalog(
@@ -126,6 +156,28 @@ class OverviewFake extends AdmissionsFake {
           ),
         ],
       ),
+      AdmissionBusiness(
+        'sports',
+        'Sports Centre',
+        '2030-06-04',
+        'Asia/Kolkata',
+        [
+          AdmissionPool('court', 'Court 1', [60], 60),
+        ],
+        [
+          AdmissionPlan(
+            'play',
+            'Court membership',
+            'play',
+            ['court'],
+            10,
+            100000,
+            null,
+            'Unassigned',
+          ),
+        ],
+        spaceKind: 'court',
+      ),
     ],
   );
   @override
@@ -140,23 +192,31 @@ class OverviewFake extends AdmissionsFake {
     int cursor = 0,
   }) async {
     calls.add((
+      kind: kind,
+      business: businessId,
       plan: planId,
       space: spaceId,
+      status: status,
+      query: query,
       cursor: cursor,
       previous: previousPlans,
     ));
     if (deny) throw const AppException('Forbidden', code: 'FORBIDDEN');
-    if (planId == 'plan' && delayedRoster != null) return delayedRoster!.future;
-    if (fail && planId == 'plan') {
+    if (kind == 'swimming' && spaceId == null && delayedRoster != null) {
+      return delayedRoster!.future;
+    }
+    if (fail && kind == 'swimming') {
       throw const AppException('Offline', code: 'NETWORK');
     }
     final filtered = students
         .where(
           (a) =>
               a.kind == kind &&
-              a.businessId == businessId &&
-              a.poolId == spaceId &&
-              (previousPlans ? a.planId == 'removed' : a.planId == planId) &&
+              (businessId == null || a.businessId == businessId) &&
+              (spaceId == null || a.poolId == spaceId) &&
+              (previousPlans
+                  ? a.planId == 'removed'
+                  : planId == null || a.planId == planId) &&
               (status == null || a.status == status) &&
               a.customer.name.toLowerCase().contains(query.toLowerCase()),
         )
@@ -170,6 +230,17 @@ class OverviewFake extends AdmissionsFake {
 }
 
 Future<void> settleRequests() => Future<void>.delayed(Duration.zero);
+
+Future<void> chooseOverviewFilter(
+  WidgetTester tester,
+  String key,
+  String option,
+) async {
+  await tester.tap(find.byKey(ValueKey(key)));
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(ListTile, option));
+  await tester.pumpAndSettle();
+}
 
 Future<void> captureOverview(
   WidgetTester tester,
@@ -346,66 +417,113 @@ void main() {
         'true',
       );
       expect(api.paths.first, isNot(api.paths.last));
+      await repository.list(kind: 'play');
+      expect(Uri.parse(api.paths.last).queryParameters, {
+        'q': '',
+        'kind': 'play',
+        'cursor': '0',
+      });
     },
   );
 
   test(
-    'each plan paginates independently and previous plans remain available',
+    'global Plans roster combines businesses and retains historical plans',
     () async {
       final session = await workspace(), repository = OverviewFake();
       final c = AdmissionCubit(session, repository);
       await c.loadOverview();
-      expect(c.state.overview.businessId, 'business');
-      expect(c.state.overview.spaceId, 'pool');
-      expect(c.state.overview.rosters.keys, ['plan', 'previous-plans']);
-      expect(c.state.overview.rosters['plan']!.items.map((a) => a.id), [
+      expect(c.state.overview.businessId, isNull);
+      expect(c.state.overview.spaceId, isNull);
+      expect(c.state.overview.rosters.keys, ['swimming', 'play']);
+      expect(c.state.overview.rosters['swimming']!.items.map((a) => a.id), [
         'A',
         'B',
       ]);
-      expect(c.state.overview.rosters['previous-plans']!.items.single.id, 'F');
+      expect(c.state.overview.rosters['play']!.items.single.id, 'G');
+      expect(repository.calls.map((call) => call.kind), ['swimming', 'play']);
+      expect(repository.calls.every((call) => call.business == null), isTrue);
+      expect(repository.calls.every((call) => call.space == null), isTrue);
+      expect(repository.calls.every((call) => call.plan == null), isTrue);
+      expect(repository.calls.every((call) => !call.previous), isTrue);
       await c.loadMoreStudents();
-      expect(c.state.overview.rosters['plan']!.items.map((a) => a.id), [
+      expect(c.state.overview.rosters['swimming']!.items.map((a) => a.id), [
         'A',
         'B',
         'C',
+        'D',
       ]);
-      expect(c.state.overview.rosters['plan']!.next, isNull);
       expect(repository.calls.last, (
-        plan: 'plan',
-        space: 'pool',
+        kind: 'swimming',
+        business: null,
+        plan: null,
+        space: null,
+        status: null,
+        query: '',
         cursor: 2,
         previous: false,
       ));
+      await c.loadMoreStudents();
+      expect(c.state.overview.rosters['swimming']!.items.map((a) => a.id), [
+        'A',
+        'B',
+        'C',
+        'D',
+        'F',
+        'H',
+      ]);
+      expect(c.state.overview.rosters['swimming']!.next, isNull);
       await c.close();
       await session.close();
     },
   );
 
   test(
-    'tabs remember their spaces and roster failures retain loaded data',
+    'tabs remember location filters and roster failures retain loaded data',
     () async {
       final session = await workspace(), repository = OverviewFake();
       final c = AdmissionCubit(session, repository);
       await c.loadOverview();
       repository.fail = true;
-      await c.loadRoster('plan');
-      expect(c.state.overview.rosters['plan']!.items.length, 2);
-      expect(c.state.overview.rosters['plan']!.error, 'Offline');
+      await c.loadRoster('swimming');
+      expect(c.state.overview.rosters['swimming']!.items.length, 2);
+      expect(c.state.overview.rosters['swimming']!.error, 'Offline');
       repository.fail = false;
-      await c.loadRoster('plan');
-      expect(c.state.overview.rosters['plan']!.error, isNull);
-      c.selectOverview(spaceId: 'pool-2');
+      await c.loadRoster('swimming');
+      expect(c.state.overview.rosters['swimming']!.error, isNull);
+      c.selectOverview(
+        businessId: 'business',
+        spaceId: 'pool-2',
+        status: 'active',
+      );
       await settleRequests();
-      expect(c.state.overview.rosters['other']!.items.single.id, 'D');
+      expect(c.state.overview.rosters['swimming']!.items.single.id, 'D');
       c.selectOverview(coaching: true);
       await settleRequests();
       expect(c.state.overview.spaceId, 'pool-2');
+      expect(c.state.overview.status, 'active');
       c.selectOverview(spaceId: 'pool');
       await settleRequests();
       expect(c.state.overview.rosters['coaching']!.items.single.id, 'E');
+      c.selectOverview(status: 'cancelled');
+      await settleRequests();
       c.selectOverview(coaching: false);
       await settleRequests();
       expect(c.state.overview.spaceId, 'pool-2');
+      expect(c.state.overview.status, 'active');
+      c.selectOverview(coaching: true);
+      await settleRequests();
+      expect(c.state.overview.spaceId, 'pool');
+      expect(c.state.overview.status, 'cancelled');
+      c.selectOverview(clearSelection: true, clearStatus: true);
+      await settleRequests();
+      c.selectOverview(coaching: false);
+      await settleRequests();
+      expect(c.state.overview.spaceId, 'pool-2');
+      c.selectOverview(coaching: true);
+      await settleRequests();
+      expect(c.state.overview.businessId, isNull);
+      expect(c.state.overview.spaceId, isNull);
+      expect(c.state.overview.status, isNull);
       await c.close();
       await session.close();
     },
@@ -417,16 +535,53 @@ void main() {
     final c = AdmissionCubit(session, repository);
     final first = c.loadOverview();
     await settleRequests();
-    c.selectOverview(spaceId: 'pool-2');
+    c.selectOverview(businessId: 'business', spaceId: 'pool-2');
     await settleRequests();
     repository.delayedRoster!.complete(AdmissionPage([student('late')], null));
     await first;
     expect(c.state.overview.spaceId, 'pool-2');
-    expect(c.state.overview.rosters.containsKey('plan'), isFalse);
-    expect(c.state.overview.rosters['other']!.items.single.id, 'D');
+    expect(c.state.overview.rosters['swimming']!.items.single.id, 'D');
     await c.close();
     await session.close();
   });
+
+  test(
+    'business changes clear incompatible spaces and clearing restores all',
+    () async {
+      final session = await workspace(), repository = OverviewFake();
+      final c = AdmissionCubit(session, repository);
+      await c.loadOverview();
+      c.selectOverview(businessId: 'business', spaceId: 'pool-2');
+      await settleRequests();
+      c.selectOverview(businessId: 'sports');
+      await settleRequests();
+      expect(c.state.overview.businessId, 'sports');
+      expect(c.state.overview.spaceId, isNull);
+      expect(
+        c.state.overview.rosters.values.expand((r) => r.items).map((a) => a.id),
+        ['G'],
+      );
+      expect(repository.calls.last.business, 'sports');
+      expect(repository.calls.last.space, isNull);
+      c.selectOverview(
+        query: 'Student H',
+        status: 'cancelled',
+        clearSelection: true,
+      );
+      await settleRequests();
+      expect(c.state.overview.businessId, isNull);
+      expect(c.state.overview.spaceId, isNull);
+      expect(c.state.overview.rosters['swimming']!.items.single.id, 'H');
+      expect(repository.calls.last.query, 'Student H');
+      expect(repository.calls.last.status, 'cancelled');
+      c.selectOverview(query: '', clearStatus: true);
+      await settleRequests();
+      expect(c.state.overview.status, isNull);
+      expect(c.state.overview.rosters['play']!.items.single.id, 'G');
+      await c.close();
+      await session.close();
+    },
+  );
 
   test('access failures clear all previously loaded rosters', () async {
     final session = await workspace(), repository = OverviewFake();
@@ -449,14 +604,14 @@ void main() {
       await c.loadOverview();
       repository.delayedRoster = Completer<AdmissionPage>();
       final before = repository.calls.length;
-      final first = c.loadRoster('plan', more: true);
-      await c.loadRoster('plan', more: true);
+      final first = c.loadRoster('swimming', more: true);
+      await c.loadRoster('swimming', more: true);
       expect(repository.calls.length, before + 1);
       repository.delayedRoster!.complete(
         AdmissionPage([student('B'), student('C')], null),
       );
       await first;
-      expect(c.state.overview.rosters['plan']!.items.map((a) => a.id), [
+      expect(c.state.overview.rosters['swimming']!.items.map((a) => a.id), [
         'A',
         'B',
         'C',
@@ -520,6 +675,14 @@ void main() {
         expect(find.text('Plans'), findsOneWidget);
         expect(find.text('Coaching'), findsOneWidget);
         expect(find.byType(FloatingActionButton), findsOneWidget);
+        expect(find.byType(AppPicker), findsNothing);
+        expect(find.byTooltip('Filter admissions'), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byKey(const ValueKey('admission-search'))).dy,
+          lessThan(
+            tester.getTopLeft(find.byKey(const ValueKey('admission-tabs'))).dy,
+          ),
+        );
         expect(find.byType(AdmissionPlanCard), findsNothing);
         expect(find.text('Enroll student'), findsNothing);
         await captureOverview(tester, boundary, 'overview-${width.toInt()}');
@@ -530,21 +693,38 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('admission-A')), findsOneWidget);
-        expect(find.byKey(const ValueKey('admission-A')), findsOneWidget);
         expect(tester.takeException(), isNull);
         await captureOverview(tester, boundary, 'plans-${width.toInt()}');
         await tester.tap(find.byKey(const ValueKey('admissions-new')));
         await tester.pumpAndSettle();
-        expect(find.text('New plan admission'), findsOneWidget);
         final form = tester.widget<AdmissionFormScreen>(
           find.byType(AdmissionFormScreen),
         );
         expect(form.formKind, 'plans');
-        expect(form.poolId, 'pool');
+        expect(form.businessId, isNull);
+        expect(form.poolId, isNull);
+        expect(
+          find.byWidgetPredicate(
+            (w) => w is AppPicker && w.label == 'Admission type',
+          ),
+          findsOneWidget,
+        );
         final planPicker = tester.widget<AppPicker>(
           find.byWidgetPredicate((w) => w is AppPicker && w.label == 'Plan'),
         );
         expect(planPicker.items.map((p) => p.value), ['plan']);
+        if (const bool.fromEnvironment('ADMISSIONS_PREVIEWS')) {
+          await Scrollable.ensureVisible(
+            tester.element(find.byKey(const ValueKey('admission-type'))),
+            alignment: .15,
+          );
+          await tester.pumpAndSettle();
+          await captureOverview(
+            tester,
+            boundary,
+            'form-plans-${width.toInt()}',
+          );
+        }
         router.pop();
         await tester.pumpAndSettle();
         await tester.drag(find.byType(CustomScrollView), const Offset(0, 2000));
@@ -562,11 +742,30 @@ void main() {
         expect(find.byKey(const ValueKey('admission-E')), findsOneWidget);
         await tester.tap(find.byKey(const ValueKey('admissions-new')));
         await tester.pumpAndSettle();
-        expect(find.text('New coaching admission'), findsOneWidget);
+        final coachingForm = tester.widget<AdmissionFormScreen>(
+          find.byType(AdmissionFormScreen),
+        );
+        expect(coachingForm.formKind, 'coaching');
+        expect(coachingForm.businessId, isNull);
+        expect(coachingForm.poolId, isNull);
         final coachingPicker = tester.widget<AppPicker>(
-          find.byWidgetPredicate((w) => w is AppPicker && w.label == 'Plan'),
+          find.byWidgetPredicate(
+            (w) => w is AppPicker && w.label == 'Coaching plan',
+          ),
         );
         expect(coachingPicker.items.map((p) => p.value), ['coaching']);
+        if (const bool.fromEnvironment('ADMISSIONS_PREVIEWS')) {
+          await Scrollable.ensureVisible(
+            tester.element(find.byKey(const ValueKey('admission-type'))),
+            alignment: .15,
+          );
+          await tester.pumpAndSettle();
+          await captureOverview(
+            tester,
+            boundary,
+            'form-coaching-${width.toInt()}',
+          );
+        }
         expect(tester.takeException(), isNull);
       },
     );
@@ -588,8 +787,113 @@ void main() {
       router.pop();
       await tester.pumpAndSettle();
       expect(c.state.overview.coaching, isTrue);
-      expect(c.state.overview.spaceId, 'pool');
+      expect(c.state.overview.spaceId, isNull);
       expect(find.byKey(const ValueKey('admission-E')), findsOneWidget);
     },
   );
+
+  testWidgets('search spans locations and stays shared between tabs', (
+    tester,
+  ) async {
+    final repository = OverviewFake();
+    final (c, _) = await pumpOverview(tester, repository);
+    await tester.enterText(
+      find.byKey(const ValueKey('admission-search')),
+      'Student G',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(c.state.overview.query, 'Student G');
+    expect(c.state.overview.rosters['play']!.items.single.id, 'G');
+    expect(find.byKey(const ValueKey('admission-G')), findsOneWidget);
+    expect(find.byKey(const ValueKey('admission-A')), findsNothing);
+    await tester.tap(find.text('Coaching'));
+    await tester.pumpAndSettle();
+    expect(c.state.overview.query, 'Student G');
+    expect(find.text('No students match these filters'), findsOneWidget);
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pumpAndSettle();
+    expect(c.state.overview.query, isEmpty);
+    expect(c.state.overview.rosters['coaching']!.items.single.id, 'E');
+    expect(find.byKey(const ValueKey('admission-E')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final width in [390.0, 1440.0]) {
+    testWidgets(
+      'filters apply atomically, cancel and clear at ${width.toInt()}px',
+      (tester) async {
+        final repository = OverviewFake();
+        final boundary = GlobalKey();
+        final (c, router) = await pumpOverview(
+          tester,
+          repository,
+          size: Size(width, 1000),
+          boundary: boundary,
+        );
+        final initialCalls = repository.calls.length;
+        await tester.tap(find.byTooltip('Filter admissions'));
+        await tester.pumpAndSettle();
+        expect(find.text('All businesses'), findsOneWidget);
+        expect(find.text('All pools or courts'), findsOneWidget);
+        expect(find.text('All statuses'), findsOneWidget);
+        await captureOverview(tester, boundary, 'filters-${width.toInt()}');
+        await chooseOverviewFilter(
+          tester,
+          'admission-filter-business',
+          'Swimming Centre',
+        );
+        await chooseOverviewFilter(tester, 'admission-filter-space', 'Pool 2');
+        await chooseOverviewFilter(tester, 'admission-filter-status', 'Active');
+        expect(c.state.overview.businessId, isNull);
+        expect(repository.calls.length, initialCalls);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(c.state.overview.businessId, isNull);
+        expect(c.state.overview.spaceId, isNull);
+        expect(c.state.overview.status, isNull);
+        expect(repository.calls.length, initialCalls);
+
+        await tester.tap(find.byTooltip('Filter admissions'));
+        await tester.pumpAndSettle();
+        await chooseOverviewFilter(
+          tester,
+          'admission-filter-business',
+          'Swimming Centre',
+        );
+        await chooseOverviewFilter(tester, 'admission-filter-space', 'Pool 2');
+        await chooseOverviewFilter(tester, 'admission-filter-status', 'Active');
+        await tester.tap(find.text('Apply filters'));
+        await tester.pumpAndSettle();
+        expect(c.state.overview.businessId, 'business');
+        expect(c.state.overview.spaceId, 'pool-2');
+        expect(c.state.overview.status, 'active');
+        expect(c.state.overview.rosters['swimming']!.items.single.id, 'D');
+        expect(find.byKey(const ValueKey('admission-D')), findsOneWidget);
+        expect(find.byType(AppPicker), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('admissions-new')));
+        await tester.pumpAndSettle();
+        final form = tester.widget<AdmissionFormScreen>(
+          find.byType(AdmissionFormScreen),
+        );
+        expect(form.formKind, 'plans');
+        expect(form.businessId, 'business');
+        expect(form.poolId, 'pool-2');
+        router.pop();
+        await tester.pumpAndSettle();
+        expect(c.state.overview.spaceId, 'pool-2');
+
+        await tester.tap(find.byTooltip('Filter admissions'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Clear filters'));
+        await tester.pumpAndSettle();
+        expect(c.state.overview.businessId, isNull);
+        expect(c.state.overview.spaceId, isNull);
+        expect(c.state.overview.status, isNull);
+        expect(find.byType(AppPicker), findsNothing);
+        expect(c.state.overview.rosters['play']!.items.single.id, 'G');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

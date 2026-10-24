@@ -259,6 +259,9 @@ export function createHandler(
   add("PUT", "/v1/agent-calls/enabled", (i) =>
     services.agentCalls.setEnabled(i.actor, i.body),
   );
+  add("PUT", "/v1/agent-calls/spaces", (i) =>
+    services.agentCalls.setSpaces(i.actor, i.body),
+  );
   add("GET", "/v1/agent-calls/calls", (i) =>
     services.agentCalls.calls(i.actor, i.query),
   );
@@ -283,6 +286,9 @@ export function createHandler(
   add("PUT", "/v1/admin/agent-requests/:id/connection", (i) =>
     ad.saveConnection(i.actor, i.params.id, i.body),
   );
+  add("POST", "/v1/admin/agent-requests/:id/verify", (i) =>
+    ad.verifyConnection(i.actor, i.params.id, i.body),
+  );
   add("POST", "/v1/admin/agent-requests/:id/tool-key", (i) =>
     ad.rotateToolKey(i.actor, i.params.id),
   );
@@ -290,6 +296,7 @@ export function createHandler(
     string,
     (actor: Actor, body: unknown) => Promise<unknown>
   > = {
+    "/voice/v1/call-events": (a, b) => services.agentCalls.recordEvent(a, b),
     "/voice/v1/catalog": (a) => services.voice.catalog(a),
     "/voice/v1/availability": (a, b) => services.voice.availability(a, b),
     "/voice/v1/bookings": (a, b) => services.voice.book(a, b),
@@ -693,6 +700,7 @@ export function createHandler(
         // Sarvam tool calls: tool key instead of a user session.
         const actor = await services.sarvam.authenticateToolKey(
           req.headers.get("x-api-key"),
+          path === "/voice/v1/call-events",
         );
         const now = Date.now();
         const burst = bursts.get(actor.uid) ?? { until: now + 60000, count: 0 };

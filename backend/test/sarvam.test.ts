@@ -110,9 +110,22 @@ async function connect() {
     business_ids: [o.booked.id],
     sarvam_org_id: "org-1",
     workspace_id: "ws-1",
-    app_id: "Edens-Sport-1",
+    app_id: `Eden-${o.owner.uid}`,
     api_key: "sk_test_secret_1234",
   });
+  const member = await workspace.member(o.owner, true);
+  await db.query(
+    "INSERT INTO agent_call_requests(id,organization_id,membership_id,status,approved_services) VALUES($1,$2,$3,'active',ARRAY['booking','rescheduling','enquiry','cancellation'])",
+    [randomUUID(), member.organization_id, member.id],
+  );
+  await db.query(
+    "UPDATE sarvam_integrations SET verified_at=now() WHERE organization_id=$1",
+    [member.organization_id],
+  );
+  await db.query(
+    "UPDATE staff_assignments a SET resource_ids=(SELECT jsonb_agg(r.id::text) FROM resources r WHERE r.business_id=a.business_id) WHERE a.membership_id=(SELECT membership_id FROM sarvam_integrations WHERE organization_id=$1)",
+    [member.organization_id],
+  );
   return {
     ...o,
     tool_key,
@@ -206,7 +219,7 @@ test("rejects unknown, rotated and disabled tool keys", async () => {
   });
   await assert.rejects(sarvam.authenticateToolKey(tool_key), /turned off/);
   // The membership is inactive too, so old actors cannot keep booking.
-  await assert.rejects(voice.catalog(o.agent), /membership/);
+  await assert.rejects(voice.catalog(o.agent), /turned off/);
 });
 
 test("books, lists, reschedules and cancels a caller's booking", async () => {
@@ -313,7 +326,7 @@ test("books, lists, reschedules and cancels a caller's booking", async () => {
   assert.equal((await voice.cancel(o.agent, cancel)).status, "cancelled");
   const after = await bookings.detail(o.owner, detail.id);
   assert.equal(after.status, "cancelled");
-  assert.match(after.history.at(-1).details.reason, /Sarvam voice agent: Rain/);
+  assert.match(after.history.at(-1).details.reason, /call service: Rain/);
 });
 
 test("voice agent cannot reach unassigned businesses", async () => {
@@ -382,7 +395,7 @@ test("proxies Sarvam call logs with the stored key", async () => {
   assert.equal(calls.items[0].contact, "+919847012345");
   assert.ok(
     seen[0].url.startsWith(
-      "https://apps.sarvam.ai/api/analytics/v1/org-1/ws-1/Edens-Sport-1/interactions?",
+      `https://apps.sarvam.ai/api/analytics/v1/org-1/ws-1/Eden-${o.owner.uid}/interactions?`,
     ),
   );
   assert.equal(seen[0].key, "sk_test_secret_1234");

@@ -1,3 +1,4 @@
+import { voiceAccess } from "../agent-calls/agent-call-policy";
 import { recordBookingHistory } from "./booking-history";
 import { bookingAvailability } from "./booking.availability";
 import { inventoryAllocations } from "../slot-blocks/inventory-blocks";
@@ -255,6 +256,21 @@ export class BookingService {
     work: (db: Queryable, m: Row, b: Row) => Promise<Row>,
   ) {
     return this.db.transaction(async (db) => {
+      if (actor.uid.startsWith("sarvam:")) {
+        const service =
+          kind === "create"
+            ? "booking"
+            : kind === "reschedule"
+              ? "rescheduling"
+              : kind === "status" && (input as Row).status === "cancelled"
+                ? "cancellation"
+                : null;
+        if (!service)
+          throw new ForbiddenException(
+            "This action is not available by phone.",
+          );
+        await voiceAccess(db, actor, [service]);
+      }
       const m = await this.member(actor, db);
       if (!this.allowed(m, permission))
         throw new ForbiddenException(

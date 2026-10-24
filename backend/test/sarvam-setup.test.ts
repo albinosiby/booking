@@ -351,7 +351,11 @@ test("Publish is explicit, updates the chosen deployment, and switch revocation 
     )
   ).rows[0];
   const key = openSecret(row.tool_key_ciphertext);
-  await f.api.authenticateToolKey(key);
+  // Legacy publication does not bypass the managed service approval gate.
+  await assert.rejects(
+    f.api.authenticateToolKey(key),
+    /turned off or not ready/,
+  );
   // Disabling is safe even if a concurrent progress update made this version stale.
   await f.api.bookingEnabled(f.owner, { version: 0, enabled: false });
   await assert.rejects(f.api.authenticateToolKey(key), /turned off/);

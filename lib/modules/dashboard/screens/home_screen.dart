@@ -43,6 +43,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final businesses = workspace.businesses;
       final ready = businesses.where((b) => b.ready).toList(),
           pending = businesses.where((b) => !b.ready).toList();
+      final showStatus =
+          ready.isNotEmpty &&
+          (WorkspaceNavigation(workspace).bookings ||
+              WorkspaceNavigation(workspace).finance);
       return AppPage(
         title: workspace.organization?.name ?? 'Your organization',
         header: HomeGreetingCard(
@@ -81,10 +85,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           if (s.needsAccountSetup) SizedBox(height: 16.h),
-          if (workspace.isCoach) ...[
-            const TodayStudentsSection(),
-            SizedBox(height: 16.h),
-          ],
           if (ready.isEmpty)
             AppCard(
               child: Column(
@@ -105,9 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-          if (ready.isNotEmpty &&
-              (WorkspaceNavigation(workspace).bookings ||
-                  WorkspaceNavigation(workspace).finance)) ...[
+          if (showStatus) ...[
             LayoutBuilder(
               builder: (c, constraints) => Wrap(
                 spacing: 12,
@@ -151,6 +149,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 28),
+          ],
+          if (workspace.isCoach) ...[
+            const TodayStudentsSection(),
+            const SizedBox(height: 28),
+          ],
+          if (showStatus) ...[
             LayoutBuilder(
               builder: (context, constraints) {
                 final showDue =

@@ -10,6 +10,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Database } from "../common/database";
 import { Actor } from "../common/auth.guard";
 import { BookingService } from "../bookings/booking.service";
+import { voiceAccess } from "../agent-calls/agent-call-policy";
 type Row = Record<string, any>;
 
 /**
@@ -152,6 +153,7 @@ export class VoiceService {
     return actor.uid.slice(actor.uid.indexOf(":") + 1);
   }
   async catalog(actor: Actor) {
+    const services = await voiceAccess(this.db, actor);
     const c = await this.bookings.catalog(actor);
     const businesses = c.businesses.map((b: Row) => ({
       name: b.name,
@@ -180,7 +182,12 @@ export class VoiceService {
           )
           .join(". ") + `. Today is ${businesses[0].today}.`
       : "No spaces are available for phone booking right now.";
-    return { ok: true, message, businesses };
+    return {
+      ok: true,
+      message: `Available services: ${services.join(", ")}. ${message}`,
+      services,
+      businesses,
+    };
   }
   /** Resolves spoken business/space/activity names to catalog IDs. */
   private async resolve(
@@ -265,6 +272,7 @@ export class VoiceService {
     };
   }
   async availability(actor: Actor, input: unknown) {
+    await voiceAccess(this.db, actor, ["enquiry", "booking", "rescheduling"]);
     const v = availabilitySchema.parse(input);
     const found = await this.resolve(actor, v);
     const selection = this.selection(
@@ -324,6 +332,7 @@ export class VoiceService {
     };
   }
   async book(actor: Actor, input: unknown) {
+    await voiceAccess(this.db, actor, ["booking"]);
     const v = bookSchema.parse(input);
     const phoneNumber = v.contact_phone || v.caller_phone;
     if (digits(phoneNumber).length < 7)
@@ -366,7 +375,7 @@ export class VoiceService {
       selection,
       quote_token: quote.quote_token,
       customer,
-      notes: `Booked by phone through the Sarvam voice agent${v.interaction_id ? ` (call ${v.interaction_id})` : ""}.`,
+      notes: `Booked through the call service${v.interaction_id ? ` (call ${v.interaction_id})` : ""}.`,
       payments: [],
     });
     return this.booked(await this.detail(actor, id), found);
@@ -398,7 +407,7 @@ export class VoiceService {
       await this.db.query<Row>(
         `SELECT b.customer_id FROM bookings b JOIN memberships m ON m.user_id=$1 AND m.organization_id=b.organization_id
          JOIN staff_assignments a ON a.membership_id=m.id AND a.business_id=b.business_id
-         WHERE right(regexp_replace(b.customer_snapshot->>'phone','\\D','','g'),10)=$2 ORDER BY b.created_at DESC LIMIT 1`,
+         WHERE a.resource_ids ? b.resource_id::text AND right(regexp_replace(b.customer_snapshot->>'phone','\\D','','g'),10)=$2 ORDER BY b.created_at DESC LIMIT 1`,
         [actor.uid, key],
       )
     ).rows[0];
@@ -425,7 +434,7 @@ export class VoiceService {
       await this.db.query<Row>(
         `SELECT b.id FROM bookings b JOIN memberships m ON m.user_id=$1 AND m.organization_id=b.organization_id
          JOIN staff_assignments a ON a.membership_id=m.id AND a.business_id=b.business_id
-         WHERE b.status='confirmed' AND b.starts_at>now() AND b.admission_id IS NULL
+         WHERE b.status='confirmed' AND b.starts_at>now() AND b.admission_id IS NULL AND a.resource_ids ? b.resource_id::text
          AND right(regexp_replace(b.customer_snapshot->>'phone','\\D','','g'),10)=$2${where}
          ORDER BY b.starts_at LIMIT 10`,
         values,
@@ -447,6 +456,7 @@ export class VoiceService {
     };
   }
   async mine(actor: Actor, input: unknown) {
+    await voiceAccess(this.db, actor, ["rescheduling", "cancellation"]);
     const v = mineSchema.parse(input);
     const ids = await this.callerBookings(actor, v.caller_phone);
     const { currency } = await this.bookings.catalog(actor);
@@ -476,6 +486,7 @@ export class VoiceService {
     return this.detail(actor, id);
   }
   async reschedule(actor: Actor, input: unknown) {
+    await voiceAccess(this.db, actor, ["rescheduling"]);
     const v = rescheduleSchema.parse(input);
     const { interaction_id, ...request } = v;
     request.reference = request.reference.toUpperCase().replace(/\s+/g, "");
@@ -520,7 +531,7 @@ export class VoiceService {
       version: old.version,
       selection,
       quote_token: quote.quote_token,
-      reason: `Rescheduled by the caller through the Sarvam voice agent${v.interaction_id ? ` (call ${v.interaction_id})` : ""}.`,
+      reason: `Rescheduled by the caller through the call service${v.interaction_id ? ` (call ${v.interaction_id})` : ""}.`,
     });
     return this.moved(await this.detail(actor, old.id), catalog, old);
   }
@@ -540,6 +551,7 @@ export class VoiceService {
     };
   }
   async cancel(actor: Actor, input: unknown) {
+    await voiceAccess(this.db, actor, ["cancellation"]);
     const v = cancelSchema.parse(input);
     const key = commandKey(this.org(actor), v.interaction_id, "cancel", [
       v.reference.toUpperCase().replace(/\s+/g, ""),
@@ -553,7 +565,7 @@ export class VoiceService {
       version: b.version,
       status: "cancelled",
       reason:
-        `Cancelled by the caller through the Sarvam voice agent${v.reason ? `: ${v.reason}` : ""}`.slice(
+        `Cancelled by the caller through the call service${v.reason ? `: ${v.reason}` : ""}`.slice(
           0,
           500,
         ),

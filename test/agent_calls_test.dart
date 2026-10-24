@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,37 +20,76 @@ import 'booking_module_test.dart' show BookingSource;
 class TestAgentCalls implements AgentCallRepository {
   AgentServiceStatus value = const AgentServiceStatus();
   final requests = <String>[];
+  List<CallService> requestedServices = [];
   AppException? failure;
   @override
   Future<AgentServiceStatus> status() async => value;
   @override
-  Future<AgentServiceStatus> request(String note) async {
+  Future<AgentServiceStatus> request(
+    String note,
+    List<CallService> services,
+  ) async {
     if (failure != null) throw failure!;
     requests.add(note);
+    requestedServices = services;
     return value = const AgentServiceStatus(status: 'requested');
   }
 
   @override
-  Future<AgentServiceStatus> setEnabled(bool enabled) async => value =
-      AgentServiceStatus(status: 'active', ready: true, enabled: enabled);
+  Future<AgentServiceStatus> setEnabled(bool enabled, int version) async =>
+      value = AgentServiceStatus(
+        status: 'active',
+        ready: true,
+        enabled: enabled,
+        phoneNumber: value.phoneNumber,
+        spaces: value.spaces,
+        approvedServices: value.approvedServices,
+        callLogsAvailable: true,
+        version: 2,
+      );
   @override
-  Future<AgentCallPage> calls(DateTime start, DateTime end) async =>
-      AgentCallPage.fromJson({
-        'total': 1,
-        'items': [
-          {
-            'interaction_id': '20260920/a71c352f-11:03:08-e6013eb8',
-            'started_at': '2026-09-20 05:33:08',
-            'duration_seconds': 137.6,
-            'language': 'Malayalam',
-            'direction': 'inbound',
-            'contact': '+919847012345',
-            'caller_name': 'Ebin',
-            'summary': 'Caller booked Court 1 for 8 PM tomorrow.',
-            'disposition': 'request_captured',
-          },
+  Future<AgentServiceStatus> setSpaces(List<String> ids, int version) async =>
+      value = AgentServiceStatus(
+        status: 'active',
+        ready: true,
+        enabled: value.enabled && ids.isNotEmpty,
+        phoneNumber: value.phoneNumber,
+        approvedServices: value.approvedServices,
+        spaces: [
+          for (final s in value.spaces)
+            CallSpace(
+              id: s.id,
+              name: s.name,
+              businessId: s.businessId,
+              businessName: s.businessName,
+              ready: s.ready,
+              enabled: ids.contains(s.id),
+            ),
         ],
-      });
+        callLogsAvailable: true,
+        version: version + 1,
+      );
+  @override
+  Future<AgentCallPage> calls(
+    DateTime start,
+    DateTime end, {
+    int offset = 0,
+  }) async => AgentCallPage.fromJson({
+    'total': 1,
+    'items': [
+      {
+        'interaction_id': '20260920/a71c352f-11:03:08-e6013eb8',
+        'started_at': '2026-09-20 05:33:08',
+        'duration_seconds': 137.6,
+        'language': 'Malayalam',
+        'direction': 'inbound',
+        'contact': '+919847012345',
+        'caller_name': 'Ebin',
+        'summary': 'Caller booked Court 1 for 8 PM tomorrow.',
+        'disposition': 'request_captured',
+      },
+    ],
+  });
   @override
   Future<List<TranscriptLine>> transcript(String interactionId) async => const [
     TranscriptLine(agent: true, text: 'Hi, this is Eden Sports.'),
@@ -113,7 +153,24 @@ void main() {
 
   test('toggle works only once active and reports failures', () async {
     final repo = TestAgentCalls()
-      ..value = const AgentServiceStatus(status: 'active', ready: true);
+      ..value = const AgentServiceStatus(
+        status: 'active',
+        ready: true,
+        phoneNumber: '+919876543210',
+        callLogsAvailable: true,
+        approvedServices: [CallService.booking],
+        spaces: [
+          CallSpace(
+            id: 'court1',
+            name: 'Court 1',
+            businessId: 'arena',
+            businessName: 'Arena',
+            ready: true,
+            enabled: true,
+          ),
+        ],
+        version: 1,
+      );
     final cubit = AgentServiceCubit(await workspace(), repo);
     await cubit.load();
     await cubit.setEnabled(true);
@@ -123,6 +180,26 @@ void main() {
     expect(cubit.state.error, 'Not allowed.');
     await cubit.close();
   });
+
+  test(
+    'service selection requires at least one and submits the chosen services',
+    () async {
+      final repo = TestAgentCalls();
+      final c = AgentServiceCubit(await workspace(), repo);
+      c.selectService(CallService.booking, false);
+      await c.request('');
+      expect(c.state.error, contains('at least one'));
+      expect(repo.requests, isEmpty);
+      c.selectService(CallService.enquiry, true);
+      c.selectService(CallService.cancellation, true);
+      await c.request('Support');
+      expect(repo.requestedServices, [
+        CallService.enquiry,
+        CallService.cancellation,
+      ]);
+      await c.close();
+    },
+  );
 
   test('staff cannot manage the service', () async {
     final cubit = AgentServiceCubit(
@@ -187,6 +264,81 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.requests, hasLength(1));
     expect(find.text('Under review'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'connected client copies the number and deselecting the last space disables service',
+    (tester) async {
+      final repo = TestAgentCalls()
+        ..value = const AgentServiceStatus(
+          status: 'active',
+          ready: true,
+          enabled: true,
+          version: 1,
+          phoneNumber: '+919876543210',
+          callLogsAvailable: true,
+          approvedServices: [CallService.enquiry],
+          spaces: [
+            CallSpace(
+              id: 'court1',
+              name: 'Court 1',
+              businessId: 'arena',
+              businessName: 'Arena',
+              ready: true,
+              enabled: true,
+            ),
+          ],
+        );
+      await pump(tester, const AgentServiceScreen(), repo, TestSaver());
+      expect(find.text('+919876543210'), findsOneWidget);
+      expect(find.text('Activated services'), findsOneWidget);
+      String? clipboard;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            clipboard = (call.arguments as Map)['text'] as String;
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      await tester.ensureVisible(find.text('Copy number'));
+      await tester.tap(find.text('Copy number'));
+      await tester.pumpAndSettle();
+      expect(clipboard, '+919876543210');
+      final space = find.byKey(const ValueKey('call-space-court1'));
+      await tester.ensureVisible(space);
+      await tester.tap(space);
+      await tester.pumpAndSettle();
+      expect(repo.value.spaces.single.enabled, isFalse);
+      expect(repo.value.enabled, isFalse);
+      final toggle = tester.widget<SwitchListTile>(
+        find.byKey(const ValueKey('call-service-enabled')),
+      );
+      expect(toggle.onChanged, isNull);
+      expect(find.textContaining('Sarvam'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('paused service still offers call logs', (tester) async {
+    final repo = TestAgentCalls()
+      ..value = const AgentServiceStatus(
+        status: 'paused',
+        callLogsAvailable: true,
+      );
+    await pump(tester, const AgentServiceScreen(), repo, TestSaver());
+    expect(find.text('Call logs'), findsOneWidget);
+    expect(find.byKey(const ValueKey('call-service-enabled')), findsNothing);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -255,7 +407,24 @@ void main() {
       tester,
     ) async {
       final repo = TestAgentCalls()
-        ..value = const AgentServiceStatus(status: 'active', ready: true);
+        ..value = const AgentServiceStatus(
+          status: 'active',
+          ready: true,
+          phoneNumber: '+919876543210',
+          callLogsAvailable: true,
+          approvedServices: [CallService.booking],
+          spaces: [
+            CallSpace(
+              id: 'court1',
+              name: 'Court 1',
+              businessId: 'arena',
+              businessName: 'Arena',
+              ready: true,
+              enabled: true,
+            ),
+          ],
+          version: 1,
+        );
       await pump(
         tester,
         const AgentServiceScreen(),
@@ -263,12 +432,12 @@ void main() {
         TestSaver(),
         width: width,
       );
-      final toggle = find.byType(SwitchListTile);
+      final toggle = find.byKey(const ValueKey('call-service-enabled'));
       await tester.ensureVisible(toggle);
       await tester.tap(toggle);
       await tester.pumpAndSettle();
       expect(repo.value.enabled, isTrue);
-      expect(find.text('Answering calls'), findsOneWidget);
+      expect(find.text('Service enabled'), findsOneWidget);
       expect(find.text('Call logs'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

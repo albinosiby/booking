@@ -112,7 +112,7 @@ Future<void> pumpDesktop(
 }
 
 void main() {
-  testWidgets('plans show space selection, student roster and admission FAB', (
+  testWidgets('plans show optional filters, student roster and admission FAB', (
     tester,
   ) async {
     await pumpDesktop(tester, AdmissionsFake(), const AdmissionsScreen());
@@ -120,7 +120,8 @@ void main() {
     expect(find.byKey(const ValueKey('admissions-new')), findsOneWidget);
     expect(find.byTooltip('Refresh admissions'), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsOneWidget);
-    expect(find.text('Pool 1'), findsWidgets);
+    expect(find.byTooltip('Filter admissions'), findsOneWidget);
+    expect(find.byType(AppPicker), findsNothing);
     expect(find.text('Due INR 3000.00'), findsOneWidget);
     expect(find.byKey(const ValueKey('admission-admission')), findsOneWidget);
     expect(find.text('Search name, phone or admission no.'), findsOneWidget);
@@ -137,7 +138,8 @@ void main() {
     tester,
   ) async {
     await pumpDesktop(tester, CourtAdmissionsFake(), const AdmissionsScreen());
-    expect(find.text('Court 1'), findsWidgets);
+    expect(find.byTooltip('Filter admissions'), findsOneWidget);
+    expect(find.byType(AppPicker), findsNothing);
     expect(find.text('Coaching'), findsOneWidget);
     await tester.tap(find.text('Plans'));
     await tester.pumpAndSettle();

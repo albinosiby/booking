@@ -14,6 +14,7 @@ import { Actor } from "../common/auth.guard";
 import { WorkspaceService } from "../workspace/workspace.service";
 import { sealSecret, openSecret, hashToolKey } from "./sarvam-secrets";
 export { sealSecret, openSecret, hashToolKey } from "./sarvam-secrets";
+import { voiceAccess } from "../agent-calls/agent-call-policy";
 import { SarvamSetup } from "./sarvam-setup";
 type Row = Record<string, any>;
 
@@ -137,6 +138,54 @@ export class SarvamService {
       [organizationId, membershipId],
     );
     return (await this.row(organizationId, db))!;
+  }
+  /** Called only by the super-admin service, within its configuration transaction. */
+  ensureManaged(db: Queryable, organizationId: string) {
+    return this.ensure(db, organizationId);
+  }
+  async verifyDeployment(s: Row) {
+    if (
+      !s.api_key_ciphertext ||
+      !s.tool_key_hash ||
+      !s.phone_number ||
+      !s.deployment_id
+    )
+      throw new BadRequestException(
+        "Save credentials, deployment, phone number and a tool key first.",
+      );
+    const url = `${SARVAM_ORIGIN}/api/app-authoring/v1/orgs/${encodeURIComponent(s.sarvam_org_id)}/workspaces/${encodeURIComponent(s.workspace_id)}/deployments/${encodeURIComponent(s.deployment_id)}`;
+    let res: Response;
+    try {
+      res = await this.http(url, {
+        headers: { "X-API-Key": openSecret(s.api_key_ciphertext) },
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch {
+      throw new ServiceUnavailableException(
+        "Sarvam did not respond. Retry verification.",
+      );
+    }
+    if (!res.ok)
+      throw new BadRequestException(
+        "Cannot verify this Sarvam deployment. Check credentials and deployment access.",
+      );
+    const deployment = (await res.json()) as Row;
+    const numbers = Array.isArray(deployment.connection_configs)
+      ? deployment.connection_configs.flatMap((c: Row) =>
+          Array.isArray(c.phone_numbers) ? c.phone_numbers : [],
+        )
+      : [];
+    if (
+      deployment.app_id !== s.app_id ||
+      deployment.deployment_id !== s.deployment_id ||
+      !numbers.includes(s.phone_number) ||
+      !["inbound", "inbound_outbound"].includes(deployment.channel_direction) ||
+      deployment.status !== "active"
+    )
+      throw new BadRequestException(
+        "The active inbound deployment must match this agent and phone number.",
+      );
+    return { app_version: deployment.app_version };
   }
   async settings(actor: Actor) {
     const m = await this.workspace.member(actor, true);
@@ -286,7 +335,7 @@ export class SarvamService {
     });
   }
   /** Resolves an X-API-Key from Sarvam to the organization's voice actor. */
-  async authenticateToolKey(key: string | null) {
+  async authenticateToolKey(key: string | null, callEvent = false) {
     if (!key || !/^bkv_[A-Za-z0-9_-]{43}$/.test(key))
       throw new UnauthorizedException("A valid voice tool key is required.");
     const s = (
@@ -297,11 +346,14 @@ export class SarvamService {
     ).rows[0];
     if (!s)
       throw new UnauthorizedException("A valid voice tool key is required.");
+    if (callEvent) return voiceActor(s.organization_id);
     if (!s.enabled)
       throw new HttpException("The voice agent is turned off.", 403);
-    return voiceActor(s.organization_id);
+    const actor = voiceActor(s.organization_id);
+    await voiceAccess(this.db, actor);
+    return actor;
   }
-  private async analytics(actor: Actor) {
+  private async analytics(actor: Actor, expectedScope?: string) {
     const m = await this.workspace.member(actor, true);
     const s = await this.row(m.organization_id);
     if (
@@ -314,35 +366,43 @@ export class SarvamService {
         "The call service is not connected yet. Contact support.",
       );
     const base = `${SARVAM_ORIGIN}/api/analytics/v1/${s.sarvam_org_id}/${s.workspace_id}/${s.app_id}`;
+    const scope = JSON.stringify([s.sarvam_org_id, s.workspace_id, s.app_id]);
+    if (expectedScope && scope !== expectedScope)
+      throw new NotFoundException(
+        "This call belongs to a previous connection.",
+      );
     const key = openSecret(s.api_key_ciphertext);
-    return async (path: string, query: Record<string, string> = {}) => {
-      const url = new URL(base + path);
-      for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
-      let res: Response;
-      try {
-        res = await this.http(url, {
-          headers: { "X-API-Key": key },
-          signal: AbortSignal.timeout(20000),
-        });
-      } catch {
-        throw new ServiceUnavailableException(
-          "The call service did not respond. Try again.",
-        );
-      }
-      if (res.status === 401 || res.status === 403)
-        throw new BadRequestException(
-          "The call service connection needs attention. Contact support.",
-        );
-      if (res.status === 404)
-        throw new NotFoundException(
-          "The call service could not find this call. Contact support if it persists.",
-        );
-      if (!res.ok)
-        throw new ServiceUnavailableException(
-          `The call service returned an error (${res.status}). Try again.`,
-        );
-      return res;
-    };
+    return Object.assign(
+      async (path: string, query: Record<string, string> = {}) => {
+        const url = new URL(base + path);
+        for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
+        let res: Response;
+        try {
+          res = await this.http(url, {
+            headers: { "X-API-Key": key },
+            signal: AbortSignal.timeout(20000),
+          });
+        } catch {
+          throw new ServiceUnavailableException(
+            "The call service did not respond. Try again.",
+          );
+        }
+        if (res.status === 401 || res.status === 403)
+          throw new BadRequestException(
+            "The call service connection needs attention. Contact support.",
+          );
+        if (res.status === 404)
+          throw new NotFoundException(
+            "The call service could not find this call. Contact support if it persists.",
+          );
+        if (!res.ok)
+          throw new ServiceUnavailableException(
+            `The call service returned an error (${res.status}). Try again.`,
+          );
+        return res;
+      },
+      { scope },
+    );
   }
   async test(actor: Actor) {
     const get = await this.analytics(actor);
@@ -372,6 +432,7 @@ export class SarvamService {
     const items: Row[] = Array.isArray(data.items) ? data.items : [];
     const text = (x: unknown) => (typeof x === "string" ? x : "");
     return {
+      provider_scope: get.scope,
       total: Number(data.total ?? items.length),
       offset: Number(data.offset ?? v.offset),
       limit: Number(data.limit ?? items.length),
@@ -398,9 +459,9 @@ export class SarvamService {
       }),
     };
   }
-  async transcript(actor: Actor, id: unknown) {
+  async transcript(actor: Actor, id: unknown, expectedScope?: string) {
     const interaction = interactionId.parse(id);
-    const get = await this.analytics(actor);
+    const get = await this.analytics(actor, expectedScope);
     const data = (await (
       await get(`/transcripts/${interaction}`)
     ).json()) as Row;
@@ -416,9 +477,9 @@ export class SarvamService {
       ),
     };
   }
-  async recording(actor: Actor, id: unknown) {
+  async recording(actor: Actor, id: unknown, expectedScope?: string) {
     const interaction = interactionId.parse(id);
-    const get = await this.analytics(actor);
+    const get = await this.analytics(actor, expectedScope);
     const res = await get(`/recordings/${interaction}`);
     if (!res.headers.get("content-type")?.startsWith("audio/"))
       throw new ServiceUnavailableException(

@@ -1,14 +1,18 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
 import { z } from "zod";
 import type { Actor } from "../common/auth.guard";
 import type { Database } from "../common/database";
 import type { SarvamService } from "../sarvam/sarvam.service";
+import { serviceSelection } from "../agent-calls/agent-call-policy";
+import { sealSecret, hashToolKey } from "../sarvam/sarvam-secrets";
+import { BOOKING_PROMPT, TOOLS } from "../sarvam/sarvam-booking-config";
 import { isPanelActor } from "./panel-auth";
 
 const uuid = z.string().uuid();
@@ -35,12 +39,25 @@ const connectionSchema = z.object({
     .string()
     .trim()
     .regex(/^[A-Za-z0-9_-]{1,100}$/, "Invalid app ID."),
-  business_ids: z.array(z.string().uuid()).max(100),
+  version: z.number().int().nonnegative(),
+  phone_number: z
+    .string()
+    .trim()
+    .regex(
+      /^\+[1-9][0-9]{7,14}$/,
+      "Enter the booking number with country code, for example +919876543210.",
+    ),
+  deployment_id: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_-]{1,200}$/, "Enter the deployment ID."),
+  approved_services: serviceSelection,
 });
 const replySchema = z.object({ body: z.string().trim().min(1).max(4000) });
 const statusSchema = z.object({ status: ticketStatus });
 const activeSchema = z.object({ active: z.boolean() });
 const requestUpdateSchema = z.object({
+  version: z.number().int().positive(),
   status: requestStatus,
   admin_note: z.string().trim().max(2000).optional(),
   user_message: z.string().trim().max(500).optional(),
@@ -87,6 +104,12 @@ export class AdminService {
     );
     if (!rows[0]) throw new ForbiddenException("Admin access required.");
     return rows[0];
+  }
+  private async superAdmin(actor: Actor) {
+    const admin = await this.admin(actor);
+    if (admin.role !== "super_admin")
+      throw new ForbiddenException("Super-admin access required.");
+    return admin;
   }
   private async audit(
     admin: { email: string },
@@ -314,7 +337,7 @@ export class AdminService {
     await this.admin(actor);
     const status = requestStatus.safeParse(query.status);
     const { rows } = await this.db.query(
-      `SELECT r.id,r.status,r.note,r.admin_note,r.user_message,r.created_at,r.updated_at,
+      `SELECT r.id,r.status,r.note,r.admin_note,r.user_message,r.created_at,r.updated_at,r.version,r.requested_services,r.approved_services,
         r.organization_id,o.name AS organization_name,m.email AS user_email,m.display_name AS user_name
        FROM agent_call_requests r
        JOIN organizations o ON o.id=r.organization_id
@@ -327,20 +350,72 @@ export class AdminService {
   }
 
   async updateAgentRequest(actor: Actor, requestId: string, body: unknown) {
-    const admin = await this.admin(actor);
-    const rid = id(requestId);
-    const input = parse(requestUpdateSchema, body);
-    const { rows } = await this.db.query(
-      `UPDATE agent_call_requests SET status=$2,
-        admin_note=coalesce($3,admin_note), user_message=coalesce($4,user_message), updated_at=now()
-       WHERE id=$1 RETURNING id,status,admin_note,user_message`,
-      [rid, input.status, input.admin_note ?? null, input.user_message ?? null],
-    );
-    if (!rows[0]) throw new NotFoundException("Request not found.");
-    await this.audit(admin, "agent_request.update", "agent_request", rid, {
-      status: input.status,
+    const admin = await this.superAdmin(actor);
+    const rid = id(requestId),
+      input = parse(requestUpdateSchema, body);
+    const before = (
+      await this.db.query<any>(
+        "SELECT organization_id FROM agent_call_requests WHERE id=$1",
+        [rid],
+      )
+    ).rows[0];
+    if (!before) throw new NotFoundException("Request not found.");
+    await this.db.transaction(async (db) => {
+      const connection = (
+        await db.query<any>(
+          "SELECT * FROM sarvam_integrations WHERE organization_id=$1 FOR UPDATE",
+          [before.organization_id],
+        )
+      ).rows[0];
+      const request = (
+        await db.query<any>(
+          "SELECT * FROM agent_call_requests WHERE id=$1 FOR UPDATE",
+          [rid],
+        )
+      ).rows[0];
+      if (request.version !== input.version)
+        throw new ConflictException("Request changed. Refresh and try again.");
+      if (
+        input.status === "active" &&
+        (!connection?.verified_at ||
+          !connection.phone_number ||
+          !connection.api_key_ciphertext ||
+          !connection.tool_key_hash ||
+          !request.approved_services.length)
+      )
+        throw new BadRequestException(
+          "Verify the connection, assigned number and approved services before activating.",
+        );
+      await db.query(
+        `UPDATE agent_call_requests SET status=$2,admin_note=coalesce($3,admin_note),user_message=coalesce($4,user_message),updated_at=now(),version=version+1 WHERE id=$1`,
+        [
+          rid,
+          input.status,
+          input.admin_note ?? null,
+          input.user_message ?? null,
+        ],
+      );
+      // Activation never turns the client switch on; suspension always turns it off.
+      if (connection && input.status !== "active") {
+        await db.query(
+          "UPDATE sarvam_integrations SET enabled=false,version=version+1,updated_at=now() WHERE organization_id=$1",
+          [before.organization_id],
+        );
+        await db.query("UPDATE memberships SET active=false WHERE id=$1", [
+          connection.membership_id,
+        ]);
+      }
+      await db.query(
+        "INSERT INTO admin_audit_log(id,admin_email,action,target_type,target_id,detail) VALUES($1,$2,'agent_request.update','agent_request',$3,$4)",
+        [
+          randomUUID(),
+          admin.email,
+          rid,
+          JSON.stringify({ status: input.status }),
+        ],
+      );
     });
-    return rows[0];
+    return { id: rid, status: input.status };
   }
 
   async auditLog(actor: Actor, query: Record<string, string>) {
@@ -371,54 +446,224 @@ export class AdminService {
   }
   private async connectionState(orgId: string) {
     const owner = await this.ownerActor(orgId);
-    const s = (await this.provider.settings(owner)) as Record<string, any>;
+    const settings = await this.provider.settings(owner);
+    const request = (
+      await this.db.query<any>(
+        "SELECT id,status,note,admin_note,user_message,requested_services,approved_services,version FROM agent_call_requests WHERE organization_id=$1",
+        [orgId],
+      )
+    ).rows[0];
+    if (!request) throw new NotFoundException("Request not found.");
+    const s = (
+      await this.db.query<any>(
+        "SELECT phone_number,deployment_id,verified_at,verified_by FROM sarvam_integrations WHERE organization_id=$1",
+        [orgId],
+      )
+    ).rows[0];
     return {
-      version: s.version,
-      enabled: s.enabled,
-      has_api_key: s.has_credentials,
-      api_key_last4: s.api_key_last4,
-      sarvam_org_id: s.sarvam_org_id,
-      workspace_id: s.workspace_id,
-      app_id: s.app_id,
-      has_tool_key: !!s.tool_key_prefix,
-      tool_key_prefix: s.tool_key_prefix,
-      tool_base_url: s.tool_base_url,
-      businesses: s.businesses,
+      version: settings.version,
+      enabled: settings.enabled,
+      has_api_key: settings.has_credentials,
+      api_key_last4: settings.api_key_last4,
+      sarvam_org_id: settings.sarvam_org_id,
+      workspace_id: settings.workspace_id,
+      app_id: settings.app_id,
+      has_tool_key: !!settings.tool_key_prefix,
+      tool_key_prefix: settings.tool_key_prefix,
+      tool_base_url: settings.tool_base_url,
+      phone_number: s?.phone_number ?? "",
+      deployment_id: s?.deployment_id ?? "",
+      verified_at: s?.verified_at ?? null,
+      verified_by: s?.verified_by ?? "",
+      request,
+      instructions: BOOKING_PROMPT,
+      tools: TOOLS.map(([name, path, fields]) => ({ name, path, fields })),
     };
   }
-
   async connection(actor: Actor, orgId: string) {
-    await this.admin(actor);
-    return this.connectionState(orgId);
+    await this.superAdmin(actor);
+    return this.connectionState(id(orgId));
   }
-
   async saveConnection(actor: Actor, orgId: string, body: unknown) {
-    const admin = await this.admin(actor);
-    const input = parse(connectionSchema, body);
-    const owner = await this.ownerActor(orgId);
-    const current = await this.connectionState(orgId);
-    await this.provider.save(owner, {
-      version: current.version,
-      enabled: current.enabled,
-      business_ids: input.business_ids,
-      sarvam_org_id: input.sarvam_org_id,
-      workspace_id: input.workspace_id,
-      app_id: input.app_id,
-      ...(input.api_key ? { api_key: input.api_key } : {}),
+    const admin = await this.superAdmin(actor),
+      org = id(orgId),
+      input = parse(connectionSchema, body);
+    await this.db.transaction(async (db) => {
+      const s = await this.provider.ensureManaged(db, org);
+      // ensureManaged serializes first creation; explicitly lock existing configuration too.
+      const current = (
+        await db.query<any>(
+          "SELECT * FROM sarvam_integrations WHERE organization_id=$1 FOR UPDATE",
+          [org],
+        )
+      ).rows[0];
+      const request = (
+        await db.query<any>(
+          "SELECT * FROM agent_call_requests WHERE organization_id=$1 FOR UPDATE",
+          [org],
+        )
+      ).rows[0];
+      if (!request) throw new NotFoundException("Request not found.");
+      if (
+        input.version === 0
+          ? current.version !== 1
+          : current.version !== input.version
+      )
+        throw new ConflictException(
+          "Connection changed. Refresh and try again.",
+        );
+      if (
+        input.approved_services.some(
+          (x) => !request.requested_services.includes(x),
+        )
+      )
+        throw new BadRequestException(
+          "Approve only services requested by the client.",
+        );
+      if (!current.api_key_ciphertext && !input.api_key)
+        throw new BadRequestException("Enter the Sarvam API key.");
+      const duplicate = (
+        await db.query(
+          "SELECT 1 FROM sarvam_integrations WHERE organization_id<>$1 AND (phone_number=$2 OR (sarvam_org_id=$3 AND workspace_id=$4 AND app_id=$5))",
+          [
+            org,
+            input.phone_number,
+            input.sarvam_org_id,
+            input.workspace_id,
+            input.app_id,
+          ],
+        )
+      ).rows.length;
+      if (duplicate)
+        throw new ConflictException(
+          "This phone number or agent is already assigned to another organization.",
+        );
+      if (
+        current.setup_lease_until &&
+        new Date(current.setup_lease_until).getTime() > Date.now()
+      )
+        throw new ConflictException(
+          "Provider setup is running. Retry when it finishes.",
+        );
+      if (
+        current.sarvam_org_id !== input.sarvam_org_id ||
+        current.workspace_id !== input.workspace_id ||
+        current.app_id !== input.app_id
+      ) {
+        await db.query(
+          "UPDATE sarvam_integrations SET tool_key_hash=NULL,tool_key_prefix='' WHERE organization_id=$1",
+          [org],
+        );
+      }
+      await db.query(
+        `UPDATE sarvam_integrations SET enabled=false,api_key_ciphertext=$2,api_key_last4=$3,sarvam_org_id=$4,workspace_id=$5,app_id=$6,
+        phone_number=$7,deployment_id=$8,verified_at=NULL,verified_by='',version=version+1,updated_at=now(),setup_status='legacy',
+        oauth_state_hash=NULL,oauth_pending_ciphertext=NULL,authoring_ciphertext=NULL,pending_tool_key_hash=NULL,tool_key_ciphertext=NULL,setup_state='{}',setup_error='' WHERE organization_id=$1`,
+        [
+          org,
+          input.api_key
+            ? sealSecret(input.api_key)
+            : current.api_key_ciphertext,
+          input.api_key ? input.api_key.slice(-4) : current.api_key_last4,
+          input.sarvam_org_id,
+          input.workspace_id,
+          input.app_id,
+          input.phone_number,
+          input.deployment_id,
+        ],
+      );
+      await db.query("UPDATE memberships SET active=false WHERE id=$1", [
+        s.membership_id,
+      ]);
+      await db.query(
+        "UPDATE agent_call_requests SET approved_services=$2,status=CASE WHEN status IN ('requested','in_review','active') THEN 'setting_up' ELSE status END,version=version+1,updated_at=now() WHERE organization_id=$1",
+        [org, input.approved_services],
+      );
+      await db.query(
+        "INSERT INTO admin_audit_log(id,admin_email,action,target_type,target_id,detail) VALUES($1,$2,'agent_connection.save','organization',$3,$4)",
+        [
+          randomUUID(),
+          admin.email,
+          org,
+          JSON.stringify({ services: input.approved_services }),
+        ],
+      );
     });
-    await this.audit(admin, "agent_connection.save", "organization", orgId, {
-      app_id: input.app_id,
-      businesses: input.business_ids.length,
-    });
-    return this.connectionState(orgId);
+    return this.connectionState(org);
   }
-
-  /** Returns the new key once; it is only stored hashed. */
+  async verifyConnection(actor: Actor, orgId: string, body: unknown) {
+    const admin = await this.superAdmin(actor),
+      org = id(orgId);
+    const input = parse(
+      z
+        .object({
+          version: z.number().int().positive(),
+          tools_confirmed: z.literal(true),
+        })
+        .strict(),
+      body,
+    );
+    const s = (
+      await this.db.query<any>(
+        "SELECT * FROM sarvam_integrations WHERE organization_id=$1",
+        [org],
+      )
+    ).rows[0];
+    if (!s || s.version !== input.version)
+      throw new ConflictException("Connection changed. Refresh and try again.");
+    await this.provider.verifyDeployment(s);
+    await this.provider.test(await this.ownerActor(org));
+    await this.db.transaction(async (db) => {
+      const result = await db.query(
+        "UPDATE sarvam_integrations SET verified_at=now(),verified_by=$3,version=version+1,updated_at=now() WHERE organization_id=$1 AND version=$2 RETURNING organization_id",
+        [org, input.version, admin.email],
+      );
+      if (!result.rows.length)
+        throw new ConflictException(
+          "Connection changed during verification. Verify again.",
+        );
+      await db.query(
+        "INSERT INTO admin_audit_log(id,admin_email,action,target_type,target_id) VALUES($1,$2,'agent_connection.verified','organization',$3)",
+        [randomUUID(), admin.email, org],
+      );
+    });
+    return this.connectionState(org);
+  }
   async rotateToolKey(actor: Actor, orgId: string) {
-    const admin = await this.admin(actor);
-    const owner = await this.ownerActor(orgId);
-    const key = await this.provider.rotateToolKey(owner);
-    await this.audit(admin, "agent_connection.tool_key", "organization", orgId);
-    return key;
+    const admin = await this.superAdmin(actor),
+      org = id(orgId);
+    const key = "bkv_" + randomBytes(32).toString("base64url");
+    await this.db.transaction(async (db) => {
+      const s = (
+        await db.query<any>(
+          "SELECT * FROM sarvam_integrations WHERE organization_id=$1 FOR UPDATE",
+          [org],
+        )
+      ).rows[0];
+      if (!s) throw new BadRequestException("Save the connection first.");
+      if (
+        s.setup_lease_until &&
+        new Date(s.setup_lease_until).getTime() > Date.now()
+      )
+        throw new ConflictException(
+          "Provider setup is running. Retry when it finishes.",
+        );
+      await db.query(
+        "UPDATE sarvam_integrations SET tool_key_hash=$2,tool_key_prefix=$3,enabled=false,verified_at=NULL,verified_by='',version=version+1,updated_at=now() WHERE organization_id=$1",
+        [org, hashToolKey(key), key.slice(0, 10)],
+      );
+      await db.query("UPDATE memberships SET active=false WHERE id=$1", [
+        s.membership_id,
+      ]);
+      await db.query(
+        "UPDATE agent_call_requests SET status=CASE WHEN status='active' THEN 'setting_up' ELSE status END,version=version+1,updated_at=now() WHERE organization_id=$1",
+        [org],
+      );
+      await db.query(
+        "INSERT INTO admin_audit_log(id,admin_email,action,target_type,target_id) VALUES($1,$2,'agent_connection.tool_key','organization',$3)",
+        [randomUUID(), admin.email, org],
+      );
+    });
+    return { tool_key: key, tool_key_prefix: key.slice(0, 10) };
   }
 }

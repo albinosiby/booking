@@ -8,9 +8,13 @@ const _steps = [
   (
     'setting_up',
     'Being set up',
-    'Your agent is being configured for your venue.',
+    'Your call service is being configured for your venue.',
   ),
-  ('active', 'Ready to use', 'Your agent is ready to answer customer calls.'),
+  (
+    'active',
+    'Connected',
+    'Your number and services are connected. Choose spaces to get started.',
+  ),
 ];
 
 String agentStatusLabel(AgentServiceStatus status) => switch (status.status) {
@@ -21,8 +25,8 @@ String agentStatusLabel(AgentServiceStatus status) => switch (status.status) {
     !status.ready
         ? 'Finishing setup'
         : status.enabled
-        ? 'Answering calls'
-        : 'Answering turned off',
+        ? 'Service enabled'
+        : 'Connected · service off',
   'paused' => 'Service paused',
   'rejected' => 'Request declined',
   _ => 'Not requested',
@@ -34,15 +38,16 @@ String agentStatusDescription(
   'requested' =>
     'Your request has arrived. You can follow each setup step here.',
   'in_review' => 'We are reviewing the details for your venue’s call service.',
-  'setting_up' => 'Your agent is being prepared. Check back here for updates.',
+  'setting_up' =>
+    'Your call service is being prepared. Check back here for updates.',
   'active' =>
     !status.ready
         ? 'Final setup is still in progress. Call controls will appear when ready.'
         : status.enabled
-        ? 'Your agent can help callers book, reschedule and cancel by phone.'
-        : 'Your service is ready. Turn on automatic answering to receive calls.',
+        ? 'Callers can use your activated services for selected spaces.'
+        : 'Your service is connected. Select spaces and enable the service when ready.',
   'paused' =>
-    'Setup or call answering is on hold. Contact support for details.',
+    'Your service is on hold. Call actions are blocked. Contact support for details.',
   'rejected' => 'Review the message below before sending another request.',
   _ => 'Give your callers a helpful first response, even when you are busy.',
 };

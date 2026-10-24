@@ -396,7 +396,8 @@ void main() {
     await tester.pumpAndSettle();
     // Court-only organizations offer court plans and coaching, not swimming.
     expect(find.text('Swimming'), findsNothing);
-    expect(find.text('Court 1'), findsWidgets);
+    expect(find.byTooltip('Filter admissions'), findsOneWidget);
+    expect(find.byType(AppPicker), findsNothing);
     expect(find.text('Coaching'), findsOneWidget);
     expect(tester.takeException(), isNull);
     expect(find.text('Play pass'), findsNothing);

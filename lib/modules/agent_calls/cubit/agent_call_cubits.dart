@@ -54,7 +54,14 @@ class AgentServiceCubit extends OwnerAgentCubit<AgentServiceState> {
     try {
       final status = await work();
       if (valid(g)) {
-        emit(AgentServiceState(status: status, loading: false));
+        emit(
+          state.copyWith(
+            status: status,
+            loading: false,
+            busy: false,
+            error: null,
+          ),
+        );
       }
     } catch (e) {
       if (valid(g)) {
@@ -70,14 +77,39 @@ class AgentServiceCubit extends OwnerAgentCubit<AgentServiceState> {
     return _run(repository.status);
   }
 
+  void selectService(CallService service, bool selected) {
+    if (state.busy || !owner) return;
+    final next = {...state.selectedServices};
+    selected ? next.add(service) : next.remove(service);
+    emit(
+      state.copyWith(selectedServices: List.unmodifiable(next), error: null),
+    );
+  }
+
   Future<void> request(String note) {
+    if (state.busy) return Future.value();
+    if (state.selectedServices.isEmpty) {
+      emit(state.copyWith(error: 'Choose at least one service.'));
+      return Future.value();
+    }
     emit(state.copyWith(busy: true, error: null));
-    return _run(() => repository.request(note));
+    return _run(() => repository.request(note, state.selectedServices));
   }
 
   Future<void> setEnabled(bool enabled) {
+    if (state.busy) return Future.value();
     emit(state.copyWith(busy: true, error: null));
-    return _run(() => repository.setEnabled(enabled));
+    return _run(() => repository.setEnabled(enabled, state.status.version));
+  }
+
+  Future<void> setSpace(CallSpace space, bool enabled) {
+    if (state.busy) return Future.value();
+    final ids = state.status.spaces
+        .where((s) => s.ready && (s.id == space.id ? enabled : s.enabled))
+        .map((s) => s.id)
+        .toList();
+    emit(state.copyWith(busy: true, error: null));
+    return _run(() => repository.setSpaces(ids, state.status.version));
   }
 }
 
@@ -102,13 +134,54 @@ class CallLogsCubit extends OwnerAgentCubit<CallLogsState> {
     }
     final d = day ?? state.day;
     final g = ++generation;
-    emit(state.copyWith(day: d, loading: true));
+    emit(
+      state.copyWith(
+        day: d,
+        loading: true,
+        page: d == state.day ? state.page : const AgentCallPage(),
+      ),
+    );
     try {
       final page = await repository.calls(
         d,
         DateTime(d.year, d.month, d.day + 1),
       );
       if (valid(g)) emit(state.copyWith(page: page, loading: false));
+    } catch (e) {
+      if (valid(g)) {
+        emit(state.copyWith(loading: false, error: agentCallError(e)));
+      }
+    }
+  }
+
+  Future<void> loadMore() async {
+    final offset = state.page.nextOffset;
+    if (state.loading || offset == null || !owner) return;
+    final g = ++generation, day = state.day;
+    emit(state.copyWith(loading: true));
+    try {
+      final page = await repository.calls(
+        day,
+        DateTime(day.year, day.month, day.day + 1),
+        offset: offset,
+      );
+      if (valid(g)) {
+        final items = {
+          for (final item in state.page.items) item.id: item,
+          for (final item in page.items) item.id: item,
+        };
+        emit(
+          state.copyWith(
+            loading: false,
+            page: AgentCallPage(
+              items: List.unmodifiable(items.values),
+              total: page.total,
+              nextOffset: page.nextOffset,
+              warning: page.warning,
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (valid(g)) {
         emit(state.copyWith(loading: false, error: agentCallError(e)));

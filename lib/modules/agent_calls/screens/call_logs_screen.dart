@@ -87,7 +87,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
         final t = Theme.of(context);
         return AppPage(
           title: 'Call logs',
-          subtitle: 'Calls answered by your agent call service.',
+          subtitle: 'Conversations handled by your call service.',
           back: true,
           showAppBar: true,
           compactHeader: true,
@@ -123,6 +123,21 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
               const SizedBox(height: 12),
             ],
             if (s.loading) const AppRefreshIndicator(label: 'Loading calls…'),
+            if (s.page.warning.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(s.page.warning),
+              ),
+            if (s.page.nextOffset != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: AppButton(
+                  label: 'Load more calls',
+                  secondary: true,
+                  busy: s.loading,
+                  onPressed: s.loading ? null : cubit.loadMore,
+                ),
+              ),
             if (s.error != null)
               AppErrorWidget(message: s.error!, onRetry: () => cubit.load()),
             if (!s.loading && s.error == null && s.page.items.isEmpty)
@@ -223,7 +238,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
                 Text('Call logs', style: t.textTheme.headlineLarge),
                 const SizedBox(height: 6),
                 Text(
-                  'Calls answered by your agent call service.',
+                  'Conversations handled by your call service.',
                   style: TextStyle(color: c.onSurface.withValues(alpha: .65)),
                 ),
               ],
@@ -252,6 +267,21 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
         ),
         const SizedBox(height: 20),
         if (s.loading) const AppRefreshIndicator(label: 'Loading calls…'),
+        if (s.page.warning.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(s.page.warning),
+          ),
+        if (s.page.nextOffset != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: AppButton(
+              label: 'Load more calls',
+              secondary: true,
+              busy: s.loading,
+              onPressed: s.loading ? null : cubit.loadMore,
+            ),
+          ),
         if (s.error != null)
           AppErrorWidget(message: s.error!, onRetry: () => cubit.load()),
         if (!s.loading && s.error == null && calls.isEmpty)
@@ -622,7 +652,11 @@ class _CallDetailSheetState extends State<CallDetailSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      line.agent ? 'Agent' : 'Caller',
+                      line.unattributed
+                          ? 'Transcript'
+                          : line.agent
+                          ? 'Agent'
+                          : 'Caller',
                       style: t.textTheme.labelSmall,
                     ),
                     Text(line.text),

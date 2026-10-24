@@ -76,39 +76,3 @@ export async function setTicketStatus(form: FormData) {
   });
   revalidatePath(adminPath("/support"), "layout");
 }
-
-export async function updateAgentRequest(form: FormData) {
-  await admin(`/agent-requests/${form.get("id")}`, {
-    method: "PUT",
-    body: {
-      status: String(form.get("status")),
-      admin_note: String(form.get("admin_note") ?? ""),
-      user_message: String(form.get("user_message") ?? ""),
-    },
-  });
-  revalidatePath(adminPath("/"), "layout");
-}
-
-export async function saveConnection(form: FormData) {
-  const org = String(form.get("org"));
-  const key = String(form.get("api_key") ?? "").trim();
-  await admin(`/agent-requests/${org}/connection`, {
-    method: "PUT",
-    body: {
-      ...(key ? { api_key: key } : {}),
-      sarvam_org_id: String(form.get("sarvam_org_id") ?? ""),
-      workspace_id: String(form.get("workspace_id") ?? ""),
-      app_id: String(form.get("app_id") ?? ""),
-      business_ids: form.getAll("business_ids").map(String),
-    },
-  });
-  revalidatePath(adminPath(`/agent-requests/${org}`));
-}
-
-export async function generateToolKey(_: string | null, form: FormData) {
-  const res = await admin<{ tool_key: string }>(
-    `/agent-requests/${form.get("org")}/tool-key`,
-    { method: "POST" },
-  );
-  return res.tool_key;
-}

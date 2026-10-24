@@ -3,7 +3,8 @@ import { admin } from "../../../lib/api";
 import { date, label } from "../../../lib/format";
 import { Badge, Tabs, PageHeader, EmptyState } from "../../../components/ui";
 import { SubmitButton } from "../../../components/submit-button";
-import { updateAgentRequest } from "../../actions";
+import { updateRequest } from "../../../features/call-service/actions";
+import { ActionForm } from "../../../features/call-service/action-form";
 
 const statuses = [
   "requested",
@@ -26,23 +27,27 @@ export default async function AgentRequests({
   return (
     <>
       <PageHeader
-        title="Agent calls"
+        title="Call service requests"
         description="Help every organization get their call service up and running."
       />
       <p className="info-note">
-        Move a request through the stages. Setting it to <b>Active</b> tells the
-        user their call service is ready; they can then turn it on or off and
-        view call logs. The message below is shown to the user.
+        Move a request through the stages. A connection must be verified before
+        it can be marked <b>Active</b>. Clients then select spaces and enable
+        their approved services. The message below is shown to the user.
       </p>
       <Tabs base="/agent-requests" current={status} items={statuses} />
       {requests.map((r) => (
-        <form
-          key={r.id}
-          className="card"
-          action={updateAgentRequest}
-          style={{ display: "grid", gap: 10 }}
-        >
+        <ActionForm key={r.id} className="card" action={updateRequest}>
           <input type="hidden" name="id" value={r.id} />
+          <input type="hidden" name="version" value={r.version} />
+          <p>
+            <b>Requested:</b> {r.requested_services.map(label).join(", ")}
+            <br />
+            <b>Approved:</b>{" "}
+            {r.approved_services.length
+              ? r.approved_services.map(label).join(", ")
+              : "Pending review"}
+          </p>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <div>
               <h2 style={{ margin: 0 }}>
@@ -101,7 +106,7 @@ export default async function AgentRequests({
               Manage connection
             </Link>
           </div>
-        </form>
+        </ActionForm>
       ))}
       {!requests.length && (
         <div className="card">

@@ -1,180 +1,162 @@
-# Sarvam automatic booking connection
+# Managed call service
 
-The owner enters the Sarvam workspace API key, organization ID, workspace ID and agent App ID, selects businesses, and presses **Connect**. BookingOS verifies the API credentials, opens Sarvam sign-in for authoring authorization, then creates and verifies the booking integration. **Publish changes is a separate, explicit action.**
+Clients request a call service and choose Booking, Rescheduling, Enquiries and/or Cancellation. Only a platform super admin configures Sarvam, assigns the number and verifies the connection. Clients see provider-neutral status, the number, activated services, space switches and call history.
 
-This source change does not apply a live migration, deploy code, publish an agent, place a call or install an APK.
+## Ownership and state
 
-## Architecture and authentication
+- Organization owners request the service and manage space access/the service switch. Existing staff permissions do not grant these controls.
+- Super admins approve a subset of the requested services, store provider credentials, assign the phone number, rotate the tool key, verify and activate the connection. Support-role admins cannot perform these operations.
+- Requests progress through `requested`, `in_review`, `setting_up`, `active`, `paused` or `rejected`. The client renders `active` as connected. Rejected requests can be submitted again.
+- `active` is separate from `enabled`. Activation never enables client actions automatically. A verified connection, an active request, approved services and at least one ready selected space are required to enable.
+- Moving out of `active` immediately disables the integration and voice membership. Changing connection details or rotating the tool key also disables access and clears verification. A provider identity change revokes the previous tool key.
+- Off blocks call-service actions. It does not pause telephony or disconnect the number. The UI explains this. Stop inbound answering in Sarvam when that is required: [deployment pause/resume](https://docs.sarvam.ai/voice-agents/api/deployments/update-status).
+- Existing bookings are preserved. Rescheduling/cancellation through phone is restricted to the caller's bookings in selected spaces. Caller identity still relies on trusted provider caller context; this change does not add OTP verification.
 
-- Flutter uses the existing authenticated booking API. Only the organization owner can connect, change booking access, publish, disconnect or read call logs.
-- The workspace API key is used for call analytics. New credentials are staged encrypted; a failed reconnect does not replace a working analytics credential.
-- Authoring uses Sarvam's supported [OAuth MCP interface](https://docs.sarvam.ai/voice-agents/mcp), not undocumented dashboard REST endpoints or browser cookies.
-- Public discovery was verified at `https://mcp.sarvam.ai/.well-known/oauth-protected-resource/voice-agents` and `https://mcp.sarvam.ai/.well-known/oauth-authorization-server/voice-agents`. They advertise dynamic client registration, authorization code, PKCE S256 and public-client authentication. Registration requests only the authorization-code grant. Although discovery advertises refresh-token support, the current MCP guide describes 24-hour sessions without refresh tokens; fresh Sarvam sign-in is needed when such a session expires.
-- The backend registers an OAuth client, stores a hashed single-use state and encrypted PKCE verifier, and exchanges the authorization code server-side. Links expire after ten minutes. Access/refresh tokens are encrypted using the existing `BOOKING_SECRETS_KEY` and are never returned to Flutter.
-- The MCP authorization is scoped to the Sarvam workspace selected during sign-in. Before any secret/tool/configuration write, BookingOS checks that the returned agent's organization, workspace and App ID match the entered IDs. A mismatched login must be authorized again.
-- Booking tool keys are generated inside the backend. Flutter never receives them. The backend stores their hashes for request authentication, with encrypted copies for safe retry/reconnect. Sarvam stores the credential in its secret store.
-- The agent is an internal membership limited to booking permissions and selected businesses. It uses the normal BookingService for validation, inventory, pricing and history.
-- Starting Connect does not rotate the live booking key or switch the deployed version. Publish promotes the configured key and business selection. Existing auto-configured connections reuse their key during reconnect.
+## Architecture
 
-The MCP adapter negotiates a Streamable HTTP session and accepts JSON or SSE results. A partially applied MCP write is a setup failure. Each short setup request is fenced by a database lease, and resource names/ownership metadata survive interruptions. The UI advances one durable step per request; reloading or retrying resumes from server state.
+Flutter Screen → Cubit → repository → `/v1/agent-calls` → organization-scoped backend. Next.js server actions → signed admin API → super-admin authorization → encrypted provider configuration. Voice HTTP tools authenticate through a unique hashed key scoped to one organization.
 
-## Prerequisites
+Services are checked in the voice service and again inside the booking transaction. The transaction takes shared locks on connection/request state before the membership lock. Admin/client control writes lock the connection first, so a completed revocation blocks later booking writes. Space permissions use explicit resource IDs in the existing voice membership's staff assignments. No selection removes an assignment: an empty array has legacy all-space semantics and must never be used by the managed workflow.
 
-1. The booking backend and `booking_app` private schema are already configured.
-2. The original voice migration `20261022100000_sarvam_voice_agent.sql` is applied, as are the earlier booking/admissions/slot-block prerequisites. Do not blindly apply unrelated pending migrations.
-3. `BOOKING_SECRETS_KEY` is a server-only base64-encoded 32-byte key. Keep it backed up in a password manager. Losing it requires reconnecting the integrations.
-4. The backend public URL is HTTPS. The Supabase runtime derives it from the project URL; a Node deployment uses `PUBLIC_APP_URL`.
-5. Sarvam account permissions allow secrets, agent configuration, API tools, version commit, deployment reads and deployment updates. Workspace capabilities are checked during setup. Automatic setup currently supports a single-state agent.
-6. A phone deployment for that agent already exists. This feature does not purchase numbers or create campaigns. If none exists, configure telephony in Sarvam, then reconnect to refresh the deployment list.
-7. **Sarvam must allow-list the exact production HTTPS callback below.** The public registration endpoint currently accepts loopback HTTPS callbacks or exact URLs on its deployment allow-list. A custom Supabase HTTPS callback is not automatically accepted. Ask Sarvam support to approve it before using Connect.
-8. If Sarvam supplies a pre-registered public PKCE client for that approved callback, set its client ID as server-only `SARVAM_OAUTH_CLIENT_ID`. A client ID does not itself approve a different callback. This setting is optional when dynamic registration of the approved URL is allowed.
+One provider agent and one phone number can be assigned to only one organization. This keeps provider analytics, tools and numbers isolated. New resources do not inherit voice access.
 
-For the current Supabase project, the exact callback is:
+## Super-admin setup
 
-```
-https://scwwkaywewecspsrskft.supabase.co/functions/v1/booking-api/v1/sarvam/oauth/callback
-```
+1. Open **Call service requests**, review the requested services and update progress/client-visible messages.
+2. Open **Manage connection**. Enter the Sarvam workspace API key, provider organization ID, workspace ID, agent App ID, inbound deployment ID, and the phone number in E.164 form (`+` and country code). Select the requested services to approve and save.
+3. Generate a tool key. Copy the one-time value into a Sarvam secret. Never paste credentials in prompts. Existing selections are retained when configuration changes, but the service becomes disabled until it is verified again.
+4. Configure the HTTP tools below in Sarvam. Use the backend's HTTPS tool base URL shown in the admin panel. Every request uses `X-API-Key` from that secret and `Content-Type: application/json`. Publish/review the intended agent version in Sarvam and connect it to the number. Saving a number in BookingOS does not provision or route a number.
+5. Use the provided managed conversation instructions. The catalog's message starts with available services; the agent must offer only those services. The backend enforces them independently. Clarify dates, repeat details and price, obtain explicit caller confirmation, and announce success only after `ok:true` with a booking result. Venue policies must come from approved knowledge; refer unknown questions to venue staff.
+6. Check **I configured and reviewed...**, then **Verify connection**. The backend checks analytics credentials and reads the deployment to verify its agent ID, deployment ID, inbound direction, active status and phone-number association. It does not place a test call, inspect every remote tool definition, or create a booking. The checkbox records the admin's tool/configuration review. [Sarvam deployment read API](https://docs.sarvam.ai/voice-agents/api/deployments/get).
+7. Set the request to **Connected**. The client selects spaces and enables the service. Perform an authorized test call using a controlled slot before advertising the number. Test each approved service and at least one forbidden action.
 
-A Node deployment uses `<PUBLIC_APP_URL>/v1/sarvam/oauth/callback`.
+The first version deliberately uses the existing admin-managed provider configuration path. The old automatic OAuth authoring implementation remains internal for compatibility, but clients have no connection/configuration endpoint. This flow does not require the old custom OAuth callback allow-list prerequisite. It requires an existing configured Sarvam agent and inbound deployment.
 
-The registration request was tested against Sarvam with the exact callback above. Sarvam returned HTTP 400, `invalid_redirect_uri`, because that callback is not allow-listed. This is a provider configuration prerequisite, not a workspace permission problem, and repeated retries cannot resolve it. The app now shows the specific approval requirement instead of a generic HTTP error. Real sign-in and subsequent setup still need validation after Sarvam approves the callback. No real secrets or calls are needed for the local test suite.
+### Voice tools
 
-## Migration: owner applies it
+All endpoints are POST under `/voice/v1`; business refusals return `{ok:false,message}`. Authentication failures use HTTP 401/403. The agent must not interpret HTTP 200 alone as successful booking.
 
-The new additive migration is:
+| Tool | Path | Permission |
+|---|---|---|
+| `bookingos_list_spaces` | `/catalog` | Any approved service; returns permitted services and selected spaces |
+| `bookingos_check_availability` | `/availability` | Booking, rescheduling or enquiry |
+| `bookingos_book_slot` | `/bookings` | Booking |
+| `bookingos_my_bookings` | `/my-bookings` | Rescheduling or cancellation |
+| `bookingos_reschedule_booking` | `/reschedule` | Rescheduling |
+| `bookingos_cancel_booking` | `/cancel` | Cancellation |
+| `bookingos_call_completed` | `/call-events` | Authenticated call completion, including when actions are off |
 
-`supabase/migrations/20261022110000_sarvam_automatic_setup.sql`
+Run catalog at call start and store its `message` as `bookingos_spaces`. Other action tools run during conversation and return their `message`. The admin panel includes their fields and conversation instructions. Map `caller_phone` and `interaction_id` to Sarvam's trusted User Identifier and Interaction ID variables; do not let the LLM supply caller identity. Keep the same interaction ID on retries. The booking service retains its existing duplicate-request and inventory protections.
 
-The CLI generated the initial migration file; its timestamp was advanced to sort **after the existing future-dated voice migration**. The backend copy is for local development/test database initialization only.
+Configure `bookingos_call_completed` as an **on_end HTTP API tool**, using the same secret. Map:
 
-Before applying:
+| JSON field | Source |
+|---|---|
+| `interaction_id` | Interaction ID |
+| `caller_phone` | User Identifier |
+| `duration_seconds` | Call Length |
+| `transcript` | Call Transcript, supplied as text |
+| `summary` (optional) | Captured call summary |
+| `caller_name` (optional) | Captured caller name |
+| `disposition` (optional) | Captured outcome |
 
-1. Take a database backup.
-2. In the Supabase **booking** project (`scwwkaywewecspsrskft`), verify the prerequisites with read-only SQL:
+This is our authenticated on-end tool contract, not Sarvam's differently shaped deployment-webhook payload. [Sarvam HTTP tool lifecycle and context](https://docs.sarvam.ai/voice-agents/build/tools/https-tool). Use a bounded timeout and provider delivery retries where available. Repeated completion events update the same record. Call start time is estimated from event receipt minus duration until analytics supplies the precise timestamp.
+
+## Client API
+
+All routes require the authenticated organization owner. Credentials/provider identifiers/internal notes never appear in client responses.
+
+| Method | Path | Contract |
+|---|---|---|
+| GET | `/v1/agent-calls` | Status, client message, requested/approved services, phone number, settings version, ready/enabled flags, spaces, call-log availability |
+| POST | `/v1/agent-calls/request` | `{note?,services:["booking","enquiry"]}`; at least one distinct known service |
+| PUT | `/v1/agent-calls/spaces` | `{version,resource_ids:[...]}`; only ready spaces from the owner's organization |
+| PUT | `/v1/agent-calls/enabled` | `{version,enabled}`; stale enable is rejected, stale disable remains safe |
+| GET | `/v1/agent-calls/calls` | `start`, `end` ISO timestamps (maximum 31 days), `offset`; returns items, total, next_offset and warning |
+| GET | `/v1/agent-calls/transcript` | `interaction_id` from this organization's call history |
+| GET | `/v1/agent-calls/recording` | Same ownership check; authenticated audio proxy |
+
+Admin request updates require the request version. Connection updates and verification require the connection version. Stale writes return 409; ownership failures return 403; invalid selections return 400. No space is selected by default for a new connection. Deselecting the last space turns the service off.
+
+## Call history and privacy
+
+The authenticated on-end tool stores call metadata and a transcript in private `booking_app.agent_call_logs`. Reads also cache analytics pages. The primary key deduplicates events by organization and interaction ID; a history index supports tenant/date pagination. Provider-scope metadata prevents archived calls being fetched through a replacement provider connection.
+
+Switching off or admin suspension does not remove history. If analytics is unavailable, the API serves saved records with an explicit warning that recent calls may be missing. When analytics returns no calls but completion events are saved, those saved calls are shown while analytics catches up. Saved transcripts remain available on provider failure; recordings are fetched from the provider and can become unavailable. Transcript details must first belong to a known call in the tenant's history. Client lists support load-more pagination.
+
+The application does not claim all remote calls have been backfilled: configure the completion tool before launch, and browse historical analytics ranges as needed. Saved data is retained until a platform retention process removes it; agree an appropriate retention period with the organization before production use. Never log tool keys, API keys, transcript bodies or caller numbers in operational logs.
+
+## Migration — applied by the owner
+
+File: `supabase/migrations/20261024075411_managed_call_service.sql`.
+The same-named backend migration is used only by the disposable local/test database. Do not run both files against production.
+
+This migration **turns existing voice integrations off** and moves active requests to setting_up, because old connections have no verified assigned number/services. It preserves credentials, bookings and resource selections, freezing previous business-wide assignments to today's explicit spaces. Plan a maintenance window and reverify/re-enable existing connections after deployment.
+
+Prerequisites: the booking schema, original Sarvam voice/automatic setup migrations, admin-panel migration, and the repository's earlier migrations (through `20261024050810_permanent_team_deletion.sql`). Keep `BOOKING_SECRETS_KEY` available and backed up; it is the existing server-only base64 32-byte encryption key. Back up the database before applying.
+
+Run these read-only checks in the intended project first:
 
 ```sql
-SELECT to_regclass('booking_app.sarvam_integrations');
 SELECT name FROM booking_app.schema_migrations
 WHERE name IN ('20261022100000_sarvam_voice_agent.sql',
-               '20261022110000_sarvam_automatic_setup.sql');
-SELECT grantee, privilege_type
-FROM information_schema.role_table_grants
-WHERE table_schema='booking_app' AND table_name='sarvam_integrations'
-ORDER BY grantee, privilege_type;
+ '20261022110000_sarvam_automatic_setup.sql','20261023100000_admin_panel.sql',
+ '20261024050810_permanent_team_deletion.sql','20261024075411_managed_call_service.sql')
+ORDER BY name;
+SELECT sarvam_org_id,workspace_id,app_id,count(*)
+FROM booking_app.sarvam_integrations WHERE app_id<>''
+GROUP BY sarvam_org_id,workspace_id,app_id HAVING count(*)>1;
+SELECT organization_id,status FROM booking_app.agent_call_requests ORDER BY created_at;
+SELECT grantee,privilege_type FROM information_schema.role_table_grants
+WHERE table_schema='booking_app' AND table_name IN ('sarvam_integrations','staff_assignments');
 ```
 
-The original table/migration must exist; the new migration must not already be recorded. `booking_api` needs SELECT/INSERT/UPDATE, while PUBLIC/anon/authenticated must not have access. Existing membership/staff-assignment grants from the original feature remain required.
+The new migration must not already be recorded. Duplicate provider agent assignments must be resolved before applying; the new unique index intentionally rejects them. `booking_api` needs its existing integration/assignment privileges. Confirm no live authoring job is running.
 
-Run the **whole new Supabase migration file once** in SQL Editor. It includes BEGIN/COMMIT and registers itself in `booking_app.schema_migrations`. Do not also run the backend copy or use `supabase db push` to apply all pending files.
+Run the entire Supabase migration file once in SQL Editor. It includes BEGIN/COMMIT, private-schema permissions and application migration registration. Do not run a bulk `db push` that also applies unrelated pending files.
 
-Validate after applying:
+Validate:
 
 ```sql
-SELECT column_name, data_type
-FROM information_schema.columns
-WHERE table_schema='booking_app' AND table_name='sarvam_integrations'
-  AND column_name IN ('setup_status','setup_state','setup_error',
-                     'setup_lease','setup_lease_until','tool_key_ciphertext',
-                     'pending_tool_key_hash','authoring_ciphertext',
-                     'oauth_state_hash','oauth_pending_ciphertext')
-ORDER BY column_name;
-SELECT indexname, indexdef FROM pg_indexes
-WHERE schemaname='booking_app' AND tablename='sarvam_integrations';
-SELECT name FROM booking_app.schema_migrations
-WHERE name='20261022110000_sarvam_automatic_setup.sql';
-SELECT setup_status, count(*) FROM booking_app.sarvam_integrations GROUP BY setup_status;
+SELECT column_name,data_type FROM information_schema.columns
+WHERE table_schema='booking_app' AND table_name IN ('agent_call_requests','sarvam_integrations')
+AND column_name IN ('requested_services','approved_services','phone_number','deployment_id','verified_at','verified_by','version')
+ORDER BY table_name,column_name;
+SELECT count(*) AS enabled_connections FROM booking_app.sarvam_integrations WHERE enabled;
+SELECT count(*) AS unsafe_assignments FROM booking_app.staff_assignments a
+JOIN booking_app.sarvam_integrations s ON s.membership_id=a.membership_id
+WHERE jsonb_array_length(a.resource_ids)=0;
+SELECT indexname,indexdef FROM pg_indexes WHERE schemaname='booking_app'
+AND tablename IN ('sarvam_integrations','agent_call_logs');
+SELECT grantee,privilege_type FROM information_schema.role_table_grants
+WHERE table_schema='booking_app' AND table_name='agent_call_logs';
+SELECT name FROM booking_app.schema_migrations WHERE name='20261024075411_managed_call_service.sql';
 ```
 
-Expect ten new columns, the existing primary/key indexes, a unique OAuth-state index, a partial unique `sarvam_one_managed_agent` index and one migration registration. Existing integrations start as `legacy`; their enabled flags, booking keys, assignments and bookings are preserved. Legacy owners can turn phone booking off or upgrade using Connect.
+Immediately after migration expect zero enabled connections, zero unsafe assignments, both uniqueness indexes and the call-history index, one migration record, and only `booking_api` SELECT/INSERT/UPDATE access on the new table (plus database-owner privileges).
 
-If application fails, run `ROLLBACK;`, correct the prerequisite and retry. Do not register the migration manually. The change is additive: for application rollback, leave the columns in place and disable phone booking; dropping them discards encrypted credentials and recovery state.
+If migration execution fails, `ROLLBACK;` the failed transaction, correct prerequisites and retry the whole file. Do not manually register an incomplete migration. For application rollback, leave the additive schema in place and disable integrations before reverting binaries. Dropping columns/tables loses settings, verification and saved call history. Restoring the database backup is the full schema recovery path and should be rehearsed separately; it has not been performed by these code tests.
 
-## Deploy and validate
+## Deployment and verification
 
-Run local checks from the repository:
+After migration validation, deploy the backend first, then the admin panel and Flutter clients through the existing deployment process. This change does not deploy anything, publish an agent, place calls or install an APK. Old clients must update: request and settings mutations now require services/versions.
 
-```bash
-npm --prefix backend test
-npm --prefix backend run edge:check
-npm --prefix backend run edge:build
-flutter analyze
-flutter test test/sarvam_test.dart test/web_layout_settings_test.dart
-```
-
-If a sandbox prevents the tsx CLI from creating its IPC socket, the equivalent backend test command, run inside `backend`, is:
+Checks from the repository:
 
 ```bash
+# Run in backend/
 node --import tsx --test --test-concurrency=2 test/*.test.ts
+npm run build
+npm run edge:check
+npm run edge:build
+# Run in admin-panel/
+npm run typecheck
+npm run build
+# Run at repository root
+flutter analyze
+flutter test test/agent_calls_test.dart
 ```
 
-After the owner has applied and validated the migration, deploy the backend using the existing project deployment procedure:
+Acceptance: owner requests selected services; support staff cannot configure; super admin saves number/services; wrong deployment or number fails verification; unverified activation fails; client copies the number and selects spaces; enquiries-only cannot book; unselected/new spaces remain inaccessible; booking retries do not duplicate; suspension and the client switch block actions; completion/history remain accessible while paused; foreign call IDs are refused; saved history remains visible on provider failure. Review mobile and desktop layouts with enlarged text.
 
-```bash
-npx supabase functions deploy booking-api --project-ref scwwkaywewecspsrskft --use-api --no-verify-jwt
-curl -sS https://scwwkaywewecspsrskft.supabase.co/functions/v1/booking-api/health
-```
-
-Expected health revision: `2026-10-22-sarvam-automatic-setup`. Keep `verify_jwt=false` for this multi-route function: user routes validate the Supabase session themselves; voice routes authenticate their own tool keys; the OAuth callback validates expiring single-use state. The removed `/v1/sarvam/tool-key` route must not return a key.
-
-Rebuild the Flutter app from this source. APK installation remains a separate user action.
-
-## Owner workflow
-
-1. Open **Profile → Sarvam voice agent**.
-2. Enter the four connection fields and select businesses.
-3. Press **Connect**. When the sign-in page opens, authorize the intended Sarvam workspace. If a browser blocks the automatic popup, use **Authorize with Sarvam**.
-4. Return to the app. Returning to the foreground resumes setup; **Continue setup** also refreshes it. Setup configures the secret, catalog hook, six tools, variables and booking instructions, then verifies the readback.
-5. Review/test the draft in Sarvam. The existing voice, languages and phone deployment remain in place. BookingOS replaces the agent's booking instructions with its managed flow. It disables the recognized old BookingOS API tools in the draft to avoid duplicate booking flows.
-6. Select a phone deployment and press **Publish changes**. Confirm the reviewed version. Publication commits that version, changes only the selected deployment's agent version, then verifies the deployment readback. A timeout can be retried without intentionally committing another version or creating another deployment.
-7. Turn **Accept phone bookings** on. First connections remain off until publication and this explicit switch.
-
-Turning the switch **off** immediately rejects booking, finding bookings, rescheduling and cancellation through the voice API and deactivates the voice membership. It does not delete bookings or prevent the phone number from answering general enquiries.
-
-**Disconnect Sarvam** immediately disables booking access, revokes active/pending keys, removes the analytics credential and cancels pending OAuth. It then disables only BookingOS-managed draft tools and replaces its managed remote secret with an unusable value. Existing bookings and the phone deployment are preserved. Authoring credentials are kept encrypted only while cleanup is pending and removed when cleanup completes. Non-secret resource ownership metadata is retained so reconnect can reuse the same resources. Disconnect does not revoke a shared workspace-wide API key at Sarvam.
-
-If cleanup fails, the status says **Disconnected — cleanup pending** and booking access stays blocked. Retry cleanup. A request that was already in flight is fenced locally; allow up to 90 seconds for its lease to expire before retrying. Sign-in can be renewed if authoring access expired. Cleanup and setup resume while the screen is open; this implementation does not run a background job when the app is closed.
-
-## API
-
-All routes below require the authenticated organization owner, except the OAuth callback.
-
-| Method | Path under `/v1/sarvam` | Request / purpose |
-|---|---|---|
-| GET | `/settings` | Safe status, step/error, credential suffix, businesses and deployment choices |
-| POST | `/connect` | `{version, sarvam_org_id, workspace_id, app_id, business_ids, api_key?}`; version 0 is valid initially |
-| POST | `/setup` | Advance/resume one durable step; no body fields |
-| PUT | `/booking-enabled` | `{version, enabled}`; turning off is allowed with a stale version |
-| POST | `/disconnect` | Revoke local access first; safe to repeat |
-| POST | `/publish` | `{version, deployment_id}`; explicitly authorize publishing the prepared version |
-| GET | `/oauth/callback` | Public OAuth callback with single-use state, code and optional issuer |
-| POST | `/test` | Verify analytics access only, not phone-booking configuration |
-| GET | `/calls`, `/transcript`, `/recording` | Existing owner-only call analytics |
-
-All mutation routes return refreshed safe settings. Stale/concurrent changes return 409; validation/permission problems return actionable errors without provider response bodies or credentials. Setup failures also persist safe status for reload/retry. No raw internal tool key, OAuth verifier or access/refresh token is returned.
-
-The six managed tools are `bookingos_list_spaces`, `bookingos_check_availability`, `bookingos_book_slot`, `bookingos_my_bookings`, `bookingos_reschedule_booking` and `bookingos_cancel_booking`. Their endpoints remain `/voice/v1/catalog`, `/availability`, `/bookings`, `/my-bookings`, `/reschedule` and `/cancel`. Caller number and interaction ID use Sarvam system variables. Business refusals are HTTP 200 with `ok:false`; the prompt requires interpreting this rather than treating HTTP success as booking success.
-
-## Controlled rollout and recovery
-
-Before serving regular callers, use the owner's own phone and an appropriate test slot to verify a booking, duplicate-request retry, another caller's access denial, reschedule, cancellation, unpaid balance, switch-off and Disconnect. Test English and Malayalam and confirm the correct phone deployment/version. Live calls and bookings are not created by the automated test suite.
-
-Local tests cover OAuth state replay, wrong workspace, missing capabilities, invalid analytics keys, interrupted tool/secret writes, duplicate Connect, resource reuse, explicit publishing, revocation, Cubit cancellation and responsive layout.
-
-For an emergency backend shutdown, the owner can run:
-
-```sql
-BEGIN;
-UPDATE booking_app.sarvam_integrations SET enabled=false, version=version+1;
-UPDATE booking_app.memberships SET active=false WHERE user_id LIKE 'sarvam:%';
-COMMIT;
-```
-
-Bookings remain valid. Use the app for normal reconnection and cleanup. Do not drop the integration table while the API uses it.
-
-Remaining constraints: caller identity relies on provider-reported caller ID rather than OTP; recordings remain downloadable; call logs retain the existing first-page pagination limit. Setup does not add payment collection or automatic messaging. Monitor failed setup stages, cleanup-pending integrations, tool errors/latency and actual booking outcomes using the existing audit history, backend logs and Sarvam analytics. Do not log request bodies, OAuth callback queries or tokens.
-
-## Owner call-service interface
-
-The Agent call service screen uses a two-column overview and action/status layout on wide windows. Phones show the current request or answering controls first, followed by the service overview. Request progress includes stage descriptions, supplied request/update dates and a separate latest-update message. Paused requests show the hold without claiming that earlier stages completed; an active response still awaiting readiness stays at setup. Refresh, request/re-request, owner restrictions and the automatic-answering switch retain their existing contracts.
-
-Call logs use direction/outcome badges and call summaries. Desktop users select a call beside the list; phones open a full-screen conversation with recording download, caller details, transcript, retry and an explicit empty transcript state. Talk-time and direction summaries describe the calls shown, since analytics still use the existing first page. These UI changes need no migration or backend deployment.
+Monitor backend errors, verification failures, rejected tool operations, completion delivery failures, missing history and provider latency. Admin/control actions are audited without secrets. Use the existing database backup strategy for settings and saved history. Maintain separate provider availability alerts; a successful one-time verification does not guarantee the provider stays online.

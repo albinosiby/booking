@@ -1,18 +1,16 @@
 import 'package:equatable/equatable.dart';
 import 'admission_models.dart';
 
-/// One independently paginated roster. A null plan represents previous plans.
+/// One independently paginated admission kind.
 class AdmissionRoster extends Equatable {
   const AdmissionRoster({
     required this.id,
-    this.plan,
     this.items = const [],
     this.next,
     this.loading = false,
     this.error,
   });
   final String id;
-  final AdmissionPlan? plan;
   final List<Admission> items;
   final int? next;
   final bool loading;
@@ -26,7 +24,6 @@ class AdmissionRoster extends Equatable {
     String? error,
   }) => AdmissionRoster(
     id: id,
-    plan: plan,
     items: items ?? this.items,
     next: clearNext ? null : next ?? this.next,
     loading: loading ?? this.loading,
@@ -34,7 +31,16 @@ class AdmissionRoster extends Equatable {
   );
 
   @override
-  List<Object?> get props => [id, plan, items, next, loading, error];
+  List<Object?> get props => [id, items, next, loading, error];
+}
+
+/// A filter draft is committed only when the filter sheet returns a selection.
+class AdmissionFilterSelection extends Equatable {
+  const AdmissionFilterSelection({this.businessId, this.spaceId, this.status});
+  final String? businessId, spaceId, status;
+
+  @override
+  List<Object?> get props => [businessId, spaceId, status];
 }
 
 class AdmissionOverview extends Equatable {

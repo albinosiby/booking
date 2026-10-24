@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ForbiddenException, ConflictException } from "@nestjs/common";
 import { createHandler } from "../edge/handler";
+import { signAdminRequest } from "../../admin-panel/lib/request-signature";
 const id = "00000000-0000-4000-8000-000000000001";
 function fixture() {
   const calls: any[] = [];
@@ -33,6 +34,8 @@ function fixture() {
     court: service,
     pool: service,
     hall: service,
+    agentCalls: service,
+    admin: service,
   } as any;
   const handler = createHandler(
     services,
@@ -519,15 +522,24 @@ test("Edge routes Sarvam voice tools by tool key and speaks refusals", async () 
   const { BadRequestException, UnauthorizedException } =
     await import("@nestjs/common");
   const voiceCalls: any[] = [];
+  const authenticationModes: boolean[] = [];
+  const events: any[] = [];
   const handler = createHandler(
     {
       sarvam: {
-        authenticateToolKey: async (key: string | null) => {
+        authenticateToolKey: async (key: string | null, callEvent: boolean) => {
+          authenticationModes.push(callEvent);
           if (key !== "bkv_good")
             throw new UnauthorizedException(
               "A valid voice tool key is required.",
             );
           return { uid: "sarvam:org", email: "v@x", name: "Voice" };
+        },
+      },
+      agentCalls: {
+        recordEvent: async (actor: any, body: any) => {
+          events.push({ actor, body });
+          return { ok: true };
         },
       },
       voice: {
@@ -571,6 +583,84 @@ test("Edge routes Sarvam voice tools by tool key and speaks refusals", async () 
     ok: false,
     message: "That slot is taken.",
   });
+  assert.ok(authenticationModes.every((mode) => mode === false));
+  const event = (key: string) =>
+    handler(
+      new Request(
+        "https://example.com/functions/v1/booking-api/voice/v1/call-events",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-api-key": key },
+          body: JSON.stringify({
+            interaction_id: "call-1",
+            duration_seconds: 30,
+          }),
+        },
+      ),
+    );
+  assert.equal((await event("invalid")).status, 401);
+  assert.equal(events.length, 0);
+  assert.equal((await event("bkv_good")).status, 200);
+  assert.equal(authenticationModes.at(-1), true);
+  assert.equal(events[0].actor.uid, "sarvam:org");
+  assert.equal(events[0].body.interaction_id, "call-1");
+});
+
+test("Edge protects managed call settings and forwards versions and service selections", async (t) => {
+  const f = fixture();
+  const routes = [
+    [
+      "/v1/agent-calls/request",
+      "POST",
+      { services: ["booking", "enquiry"] },
+      "request",
+    ],
+    [
+      "/v1/agent-calls/spaces",
+      "PUT",
+      { version: 7, resource_ids: [id] },
+      "setSpaces",
+    ],
+  ] as const;
+  for (const [path, method, body, target] of routes) {
+    const before = f.calls.length;
+    assert.equal((await f.request(path, method, body, null)).status, 401);
+    assert.equal(f.calls.length, before);
+    assert.ok((await f.request(path, method, body)).ok);
+    assert.equal(f.calls.at(-1).method, target);
+    assert.equal(f.calls.at(-1).args[0].uid, "actor");
+    assert.deepEqual(f.calls.at(-1).args.at(-1), body);
+  }
+  const previous = process.env.ADMIN_SESSION_SECRET;
+  process.env.ADMIN_SESSION_SECRET =
+    "test-only-panel-signing-secret-0123456789";
+  t.after(() => {
+    if (previous === undefined) delete process.env.ADMIN_SESSION_SECRET;
+    else process.env.ADMIN_SESSION_SECRET = previous;
+  });
+  const path = `/v1/admin/agent-requests/${id}/verify`;
+  const body = { version: 7, tools_confirmed: true };
+  const before = f.calls.length;
+  assert.equal((await f.request(path, "POST", body)).status, 401);
+  assert.equal(f.calls.length, before);
+  const response = await f.handler(
+    new Request(`https://example.com/functions/v1/booking-api${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-bookingos-admin": signAdminRequest(
+          "POST",
+          path,
+          JSON.stringify(body),
+        ),
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+  assert.equal(response.status, 201);
+  assert.equal(f.calls.at(-1).method, "verifyConnection");
+  assert.equal(f.calls.at(-1).args[0].uid, "admin-panel");
+  assert.deepEqual(f.calls.at(-1).args.slice(1), [id, body]);
 });
 
 test("Edge device registration verifies user auth; cleanup uses only installation proof", async () => {

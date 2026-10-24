@@ -2,37 +2,50 @@
 
 ## Workspace flow
 
-Open **Profile → Plans & Coaching**. The two tabs are **Plans** (swimming/court
-access packages) and **Coaching** (taught classes). Below the tabs, select the
-business and a specific pool or court. The page shows a single student list,
-without package cards or **Enroll student** buttons. Search and status chips
-filter students, and **Load more students**
-fetches additional enrollments. Students from previous, disabled or removed
-packages remain included in the selected space’s list. Student cards open the
-existing attendance, payment and renewal details.
+Open **Profile → Plans & Coaching**. Search appears first, followed by the
+**Plans** (swimming/court access packages) and **Coaching** (taught classes) tabs.
+Each tab directly lists enrolled students across all permitted businesses and
+spaces. Use the app bar's **Filter admissions** button to narrow business,
+pool/court and status. **Apply filters** commits changes together; **Cancel**
+leaves the current list unchanged; **Clear filters** restores all locations and
+statuses while preserving search. Applied filters appear as removable chips.
+Search by name, phone or admission number and submit the search to update results.
+**Load more students** fetches additional enrollments. Students from previous,
+disabled or removed packages remain included. Student cards open the existing
+attendance, payment and renewal details.
 
 The **New admission** floating action button opens **New plan admission** or
-**New coaching admission** according to the current tab. It preserves business
-and space, and restricts the form's plan choices to that category. The package
-itself is selected inside the admission form. Returning from forms/details
-refreshes the roster while retaining the tab, space and filters.
-The two tabs remember their own space selection. Coaches continue to use
+**New coaching admission** according to the current tab. It preserves any
+selected business and space. **Plan & schedule → Admission type** lets staff
+choose **Plan** or **Coaching** before selecting a matching plan. Changing type
+preserves customer, location and schedule entries and clears the incompatible
+plan selection. The selector remains available when a category has no plans;
+renewals keep their original admission type. Embedded booking controls retain
+their existing layout. Returning from forms/details refreshes the roster while
+retaining the tab and filters. The two tabs remember their own location and
+status filters, with a shared search query. Coaches continue to use
 **My classes** for their daily roster and attendance.
 
 The Flutter screen is owned by `AdmissionCubit`; typed `AdmissionOverview` and
-`AdmissionRoster` models hold selection and per-plan loading, errors, rows and
-cursors. Requests run at most four at a time. Late responses are discarded after
+`AdmissionRoster` models hold selection and per-kind loading, errors, rows and
+cursors. Plans uses separate swimming and court requests, while Coaching uses
+one coaching request. This retains every kind's pagination across locations.
+Late responses are discarded after
 scope/selection changes; access failures clear protected data. Student rows
 are built lazily, and retained rows remain visible during refresh failures.
 
-The existing `GET /v1/admissions` now also accepts `resource_id` and `plan_id`
+The existing `GET /v1/admissions` accepts `resource_id` and `plan_id`
 (UUIDs), and `previous_plans=true` for enrollments without a currently enabled
 matching plan in that space. These combine with `business_id`, `kind`, `q`,
 `status` and `cursor` before the 50-row pagination limit. Membership and staff
 resource restrictions apply to every query. The existing admission scope index
-supports business/space filtering; no database migration is needed for this UI.
+supports business/space filtering. This student list omits plan partitioning and
+includes historical plans through the ordinary list response. The redesign
+requires no API, database or environment changes against the current API.
 
-**Release:** deploy the updated API before releasing this client; older APIs
+**Release:** rebuild/release the Flutter web and native clients for this redesign.
+For installations upgrading from before automatic attendance, deploy the updated
+API before releasing the client; older APIs
 reject the new strict query parameters and require a manually supplied check-in
 time. Run backend `npm run build`,
 `npm run edge:check`, `npm run edge:build`, then deploy the generated existing
@@ -41,7 +54,8 @@ database change or device installation is performed by this UI change. The
 prerequisite admissions migration described below remains unchanged.
 
 Verification: `flutter analyze`; Flutter tests `admission_overview_test.dart`,
-`admissions_test.dart`, `web_layout_admissions_test.dart`, `court_coaching_test.dart`,
+`admission_type_selector_test.dart`, `admissions_test.dart`,
+`web_layout_admissions_test.dart`, `court_coaching_test.dart`,
 `pool_booking_options_test.dart`, `coach_classes_test.dart`; backend tests
 `admissions.test.ts`, `court-admissions.test.ts`, `coach-classes.test.ts`.
 

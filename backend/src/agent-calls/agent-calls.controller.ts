@@ -26,6 +26,9 @@ export class AgentCallController {
   @Put("enabled") enabled(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.service.setEnabled(r.actor, b);
   }
+  @Put("spaces") spaces(@Req() r: AuthRequest, @Body() b: unknown) {
+    return this.service.setSpaces(r.actor, b);
+  }
   @Get("calls") calls(@Req() r: AuthRequest, @Query() q: unknown) {
     return this.service.calls(r.actor, q);
   }

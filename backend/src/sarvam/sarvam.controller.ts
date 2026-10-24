@@ -16,6 +16,7 @@ import { Request, Response } from "express";
 import { Actor, AuthGuard } from "../common/auth.guard";
 import { SarvamService } from "./sarvam.service";
 import { VoiceService } from "./voice.service";
+import { AgentCallService } from "../agent-calls/agent-calls.service";
 import { voiceResult } from "./voice-result";
 type AuthRequest = Request & { actor: Actor };
 /** Public tool endpoints for Sarvam, authenticated by the X-API-Key tool key. */
@@ -24,7 +25,18 @@ export class VoiceController {
   constructor(
     private readonly sarvam: SarvamService,
     private readonly voice: VoiceService,
+    private readonly calls: AgentCallService,
   ) {}
+  @Header("Cache-Control", "no-store")
+  @Post("call-events")
+  @HttpCode(200)
+  async event(
+    @Headers("x-api-key") key: string | undefined,
+    @Body() body: unknown,
+  ) {
+    const actor = await this.sarvam.authenticateToolKey(key ?? null, true);
+    return this.calls.recordEvent(actor, body);
+  }
   private async run(
     key: string | undefined,
     work: (actor: Actor) => Promise<unknown>,

@@ -38,7 +38,7 @@ class AdmissionCubit extends Cubit<AdmissionState> {
   final AdmissionRepository repository;
   late final StreamSubscription readSubscription;
   bool _listing = false, _readPending = false, _overview = false;
-  final Map<bool, (String?, String?)> _overviewSelections = {};
+  final Map<bool, (String?, String?, String?)> _overviewSelections = {};
   String? _detailView;
   Timer? _readTimer;
   void _refreshRetainedRead() {
@@ -82,12 +82,6 @@ class AdmissionCubit extends Cubit<AdmissionState> {
   AdmissionPool? get overviewSpace => overviewBusiness?.pools
       .where((p) => p.id == state.overview.spaceId)
       .firstOrNull;
-  String get overviewKind => state.overview.coaching
-      ? 'coaching'
-      : overviewBusiness?.court == true
-      ? 'play'
-      : 'swimming';
-
   Future<void> loadOverview({bool refreshCatalog = true}) async {
     if (!authorized || state.busy) return;
     _listing = true;
@@ -101,35 +95,21 @@ class AdmissionCubit extends Cubit<AdmissionState> {
           : state.catalog;
       if (!valid(g)) return;
       final old = state.overview;
-      final business =
-          catalog.businesses.where((b) => b.id == old.businessId).firstOrNull ??
-          catalog.businesses.firstOrNull;
-      final space =
-          business?.pools.where((p) => p.id == old.spaceId).firstOrNull ??
-          business?.pools.firstOrNull;
-      final plans =
-          business?.plans
-              .where(
-                (p) =>
-                    p.poolIds.contains(space?.id) &&
-                    p.matchesKind(old.coaching ? 'coaching' : 'plans'),
-              )
-              .toList() ??
-          [];
+      // Null means all permitted locations; never silently select the first one.
+      final business = catalog.businesses
+          .where((b) => b.id == old.businessId)
+          .firstOrNull;
+      final space = business?.pools
+          .where((p) => p.id == old.spaceId)
+          .firstOrNull;
       final sameScope =
           old.businessId == business?.id && old.spaceId == space?.id;
+      final kinds = old.coaching ? ['coaching'] : ['swimming', 'play'];
       final groups = <String, AdmissionRoster>{
-        for (final p in plans)
-          p.id: AdmissionRoster(
-            id: p.id,
-            plan: p,
-            items: sameScope ? old.rosters[p.id]?.items ?? [] : [],
-            loading: true,
-          ),
-        if (space != null)
-          'previous-plans': AdmissionRoster(
-            id: 'previous-plans',
-            items: sameScope ? old.rosters['previous-plans']?.items ?? [] : [],
+        for (final kind in kinds)
+          kind: AdmissionRoster(
+            id: kind,
+            items: sameScope ? old.rosters[kind]?.items ?? [] : [],
             loading: true,
           ),
       };
@@ -147,7 +127,7 @@ class AdmissionCubit extends Cubit<AdmissionState> {
           ),
         ),
       );
-      // Bound parallel requests for businesses with many plans.
+      // Each admission kind retains its own server-side cursor.
       final ids = groups.keys.toList();
       for (var i = 0; i < ids.length && valid(g); i += 4) {
         await Future.wait(ids.skip(i).take(4).map((id) => _fetchRoster(id, g)));
@@ -166,14 +146,26 @@ class AdmissionCubit extends Cubit<AdmissionState> {
     String? query,
     String? status,
     bool clearStatus = false,
+    bool clearSelection = false,
+    bool clearSpace = false,
   }) {
     if (!authorized || state.busy) return;
     final old = state.overview;
     if (coaching != null && coaching != old.coaching) {
-      _overviewSelections[old.coaching] = (old.businessId, old.spaceId);
+      _overviewSelections[old.coaching] = (
+        old.businessId,
+        old.spaceId,
+        old.status,
+      );
       final selection = _overviewSelections[coaching];
-      businessId = selection?.$1 ?? old.businessId;
-      spaceId = selection?.$2 ?? old.spaceId;
+      if (selection != null) {
+        businessId = selection.$1;
+        spaceId = selection.$2;
+        status = selection.$3;
+        clearSelection = businessId == null;
+        clearSpace = spaceId == null;
+        clearStatus = status == null;
+      }
     }
     final changedBusiness = businessId != null && businessId != old.businessId;
     emit(
@@ -182,7 +174,8 @@ class AdmissionCubit extends Cubit<AdmissionState> {
           coaching: coaching,
           businessId: businessId,
           spaceId: spaceId,
-          clearSpace: changedBusiness && spaceId == null,
+          clearSelection: clearSelection,
+          clearSpace: clearSpace || (changedBusiness && spaceId == null),
           query: query,
           status: status,
           clearStatus: clearStatus,
@@ -238,13 +231,11 @@ class AdmissionCubit extends Cubit<AdmissionState> {
     final selection = state.overview;
     try {
       final page = await repository.list(
-        kind: overviewKind,
+        kind: id,
         query: selection.query,
         status: selection.status,
         businessId: selection.businessId,
         spaceId: selection.spaceId,
-        planId: roster.plan?.id,
-        previousPlans: roster.plan == null,
         cursor: more ? roster.next ?? 0 : 0,
       );
       if (!valid(g)) return;
@@ -418,6 +409,9 @@ class AdmissionCubit extends Cubit<AdmissionState> {
               .firstOrNull ??
           (strictLocation ? null : c.businesses.firstOrNull);
       final chosen = b?.plans.where((p) => p.id == planId).firstOrNull;
+      final effectiveKind = a != null
+          ? (a.kind == 'coaching' ? 'coaching' : 'plans')
+          : formKind ?? (chosen?.kind == 'coaching' ? 'coaching' : 'plans');
       final p =
           b?.pools.where((p) => p.id == (a?.poolId ?? poolId)).firstOrNull ??
           b?.pools
@@ -430,8 +424,8 @@ class AdmissionCubit extends Cubit<AdmissionState> {
                 (a != null
                     ? plan.id == a.planId
                     : chosen != null
-                    ? plan.id == chosen.id && plan.matchesKind(formKind)
-                    : formKind != null && plan.matchesKind(formKind)) &&
+                    ? plan.id == chosen.id && plan.matchesKind(effectiveKind)
+                    : plan.matchesKind(effectiveKind)) &&
                 plan.poolIds.contains(p?.id),
           )
           .firstOrNull;
@@ -448,7 +442,15 @@ class AdmissionCubit extends Cubit<AdmissionState> {
         weekdays: a?.weekdays ?? const [],
         renewedFrom: a?.id,
       );
-      emit(state.copyWith(catalog: c, draft: draft, loading: false, detail: a));
+      emit(
+        state.copyWith(
+          catalog: c,
+          draft: draft,
+          loading: false,
+          detail: a,
+          formKind: effectiveKind,
+        ),
+      );
     } catch (e) {
       if (valid(g)) {
         emit(
@@ -514,6 +516,29 @@ class AdmissionCubit extends Cubit<AdmissionState> {
         k,
         date: date,
         time: time,
+      ),
+    );
+  }
+
+  void admissionType(String value) {
+    if (!authorized ||
+        state.loading ||
+        state.busy ||
+        state.locked ||
+        state.preview != null ||
+        state.draft.renewedFrom != null ||
+        !const {'plans', 'coaching'}.contains(value) ||
+        state.formKind == value) {
+      return;
+    }
+    emit(
+      state.copyWith(
+        formKind: value,
+        draft: state.draft.copyWith(
+          resetPlan: true,
+          duration: state.pool?.defaultDuration ?? 60,
+        ),
+        clearPreview: true,
       ),
     );
   }

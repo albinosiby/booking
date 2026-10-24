@@ -105,10 +105,13 @@ test("admin sees organizations, tickets and agent requests", async () => {
   assert.equal(replied.ticket.status, "in_progress");
   assert.equal(replied.messages.length, 1);
   await service.updateAgentRequest(admin, request, {
-    status: "active",
-    user_message: "Ready",
+    status: "in_review",
+    version: 1,
+    user_message: "Reviewing",
   });
-  const list = (await service.agentRequests(admin, { status: "active" })) as {
+  const list = (await service.agentRequests(admin, {
+    status: "in_review",
+  })) as {
     requests: unknown[];
   };
   assert.equal(list.requests.length, 1);

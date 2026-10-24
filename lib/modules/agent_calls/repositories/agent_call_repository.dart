@@ -4,10 +4,11 @@ import '../models/agent_call_models.dart';
 
 abstract interface class AgentCallRepository {
   Future<AgentServiceStatus> status();
-  Future<AgentServiceStatus> request(String note);
-  Future<AgentServiceStatus> setEnabled(bool enabled);
+  Future<AgentServiceStatus> request(String note, List<CallService> services);
+  Future<AgentServiceStatus> setEnabled(bool enabled, int version);
+  Future<AgentServiceStatus> setSpaces(List<String> ids, int version);
 
-  Future<AgentCallPage> calls(DateTime start, DateTime end);
+  Future<AgentCallPage> calls(DateTime start, DateTime end, {int offset = 0});
   Future<List<TranscriptLine>> transcript(String interactionId);
   Future<List<int>> recording(String interactionId);
 }

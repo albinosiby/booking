@@ -111,10 +111,63 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
     ];
   }
 
+  Widget planAndSchedule(AdmissionState s, bool enabled) => AppCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Plan & schedule', style: Theme.of(context).textTheme.titleMedium),
+        SizedBox(height: 14.h),
+        AppPicker(
+          key: const ValueKey('admission-type'),
+          label: 'Admission type',
+          value: s.formKind == 'coaching' ? 'coaching' : 'plans',
+          enabled:
+              enabled &&
+              !s.loading &&
+              s.preview == null &&
+              widget.renewalId == null &&
+              s.draft.renewedFrom == null,
+          items: const [
+            PickerItem('plans', 'Plan'),
+            PickerItem('coaching', 'Coaching'),
+          ],
+          onChanged: cubit.admissionType,
+        ),
+        if (widget.renewalId != null || s.draft.renewedFrom != null) ...[
+          SizedBox(height: 8.h),
+          Text(
+            'Renewals keep the original admission type.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        SizedBox(height: 12.h),
+        ...location(s, enabled),
+        if (s.availablePlans.isNotEmpty)
+          AdmissionScheduleFields(cubit: cubit, state: s, showPlanKind: false)
+        else ...[
+          AppEmptyState(
+            showCard: false,
+            title: s.formKind == 'coaching'
+                ? 'No coaching plans'
+                : 'No access plans',
+            message:
+                'No matching plans are configured for this ${(s.business?.spaceLabel ?? 'space').toLowerCase()}. Choose another admission type or location.',
+          ),
+          if (s.catalog.owner && s.business != null)
+            TextButton(
+              onPressed: () =>
+                  context.push('/businesses/${s.business!.id}/settings'),
+              child: const Text('Configure plans'),
+            ),
+        ],
+      ],
+    ),
+  );
+
   Widget reviewButton(AdmissionState s, bool enabled) => AppButton(
     label: 'Review admission',
     busy: s.busy,
-    onPressed: enabled ? cubit.review : null,
+    onPressed: enabled && s.availablePlans.isNotEmpty ? cubit.review : null,
   );
 
   List<Widget> confirm(AdmissionState s) => [
@@ -151,16 +204,7 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
       primary: [
         customer(s, enabled),
         const SizedBox(height: 16),
-        AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              heading('Plan & schedule'),
-              ...location(s, enabled),
-              AdmissionScheduleFields(cubit: cubit, state: s),
-            ],
-          ),
-        ),
+        planAndSchedule(s, enabled),
       ],
       secondary: [
         _PlanSummaryCard(state: s),
@@ -192,7 +236,7 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
         poolId: widget.poolId,
         planId: widget.planId,
         date: widget.date,
-        formKind: widget.formKind,
+        formKind: widget.formKind ?? (widget.planId == null ? 'plans' : null),
       );
     }
   }
@@ -217,7 +261,11 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
       return PopScope(
         canPop: !s.busy && !s.locked,
         child: AppPage(
-          title: s.formKind == 'plans'
+          title: widget.renewalId != null
+              ? 'Renew admission'
+              : widget.formKind == null && widget.planId == null
+              ? 'New admission'
+              : s.formKind == 'plans'
               ? 'New plan admission'
               : s.formKind == 'swimming'
               ? 'New swimming plan'
@@ -225,9 +273,7 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
               ? 'New court plan'
               : s.formKind == 'coaching'
               ? 'New coaching admission'
-              : widget.renewalId == null
-              ? 'New admission'
-              : 'Renew admission',
+              : 'New admission',
           back: true,
           scrollId: 'admission-form',
           maxWidth: wide ? 1200 : 620,
@@ -261,27 +307,7 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
             if (!s.loading &&
                 s.catalog.canManage &&
                 s.catalog.businesses.isNotEmpty)
-              if (s.formKind != null && s.availablePlans.isEmpty) ...[
-                if (!widget.fixedLocation) ...location(s, enabled),
-                AppEmptyState(
-                  showCard: false,
-                  title: s.formKind == 'coaching'
-                      ? 'No coaching plans'
-                      : s.formKind == 'play'
-                      ? 'No court plans'
-                      : s.formKind == 'plans'
-                      ? 'No access plans'
-                      : 'No swimming plans',
-                  message:
-                      'No matching plans are configured for this ${(s.business?.spaceLabel ?? 'space').toLowerCase()}.',
-                ),
-                if (s.catalog.owner && s.business != null)
-                  TextButton(
-                    onPressed: () =>
-                        context.push('/businesses/${s.business!.id}/settings'),
-                    child: const Text('Configure plans'),
-                  ),
-              ] else if (wide)
+              if (wide)
                 desktop(s, enabled)
               else if (s.preview != null) ...[
                 AdmissionReviewSummary(state: s),
@@ -290,8 +316,7 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
               ] else ...[
                 customer(s, enabled),
                 SizedBox(height: 16.h),
-                ...location(s, enabled),
-                AdmissionScheduleFields(cubit: cubit, state: s),
+                planAndSchedule(s, enabled),
                 SizedBox(height: 16.h),
                 if (s.catalog.canCollect)
                   AppCard(

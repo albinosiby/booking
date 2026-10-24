@@ -11,48 +11,78 @@ class RestAgentCallRepository implements AgentCallRepository {
   Future<AgentServiceStatus> status() async =>
       _status(await api.request('/agent-calls'));
   @override
-  Future<AgentServiceStatus> request(String note) async => _status(
+  Future<AgentServiceStatus> request(
+    String note,
+    List<CallService> services,
+  ) async => _status(
     await api.request(
       '/agent-calls/request',
       method: 'POST',
-      data: {'note': note},
+      data: {'note': note, 'services': services.map((s) => s.id).toList()},
     ),
   );
   @override
-  Future<AgentServiceStatus> setEnabled(bool enabled) async => _status(
-    await api.request(
-      '/agent-calls/enabled',
-      method: 'PUT',
-      data: {'enabled': enabled},
-    ),
-  );
-  @override
-  Future<AgentCallPage> calls(DateTime start, DateTime end) async =>
-      AgentCallPage.fromJson(
-        Map<String, dynamic>.from(
-          await api.request(
-            Uri(
-              path: '/agent-calls/calls',
-              queryParameters: {
-                'start': start.toUtc().toIso8601String(),
-                'end': end.toUtc().toIso8601String(),
-              },
-            ).toString(),
-          ),
+  Future<AgentServiceStatus> setEnabled(bool enabled, int version) async =>
+      _status(
+        await api.request(
+          '/agent-calls/enabled',
+          method: 'PUT',
+          data: {'enabled': enabled, 'version': version},
         ),
       );
+  @override
+  Future<AgentServiceStatus> setSpaces(List<String> ids, int version) async =>
+      _status(
+        await api.request(
+          '/agent-calls/spaces',
+          method: 'PUT',
+          data: {'resource_ids': ids, 'version': version},
+        ),
+      );
+  @override
+  Future<AgentCallPage> calls(
+    DateTime start,
+    DateTime end, {
+    int offset = 0,
+  }) async => AgentCallPage.fromJson(
+    Map<String, dynamic>.from(
+      await api.request(
+        Uri(
+          path: '/agent-calls/calls',
+          queryParameters: {
+            'start': start.toUtc().toIso8601String(),
+            'end': end.toUtc().toIso8601String(),
+            'offset': '$offset',
+          },
+        ).toString(),
+      ),
+    ),
+  );
   String _call(String path, String id) =>
       Uri(path: path, queryParameters: {'interaction_id': id}).toString();
   @override
-  Future<List<TranscriptLine>> transcript(String interactionId) async => [
-    for (final m
-        in (await api.request(
-                  _call('/agent-calls/transcript', interactionId),
-                ))['messages']
-                as List? ??
-            const [])
-      TranscriptLine.fromJson(Map<String, dynamic>.from(m as Map)),
-  ];
+  Future<List<TranscriptLine>> transcript(String interactionId) async {
+    final data = Map<String, dynamic>.from(
+      await api.request(_call('/agent-calls/transcript', interactionId)) as Map,
+    );
+    final messages = [
+      for (final m in data['messages'] as List? ?? const [])
+        TranscriptLine.fromJson(Map<String, dynamic>.from(m as Map)),
+    ];
+    if (messages.isEmpty &&
+        data['text'] is String &&
+        (data['text'] as String).isNotEmpty) {
+      return [
+        TranscriptLine(
+          agent: true,
+          text: data['text'] as String,
+          unattributed: true,
+        ),
+      ];
+    }
+    return messages;
+  }
+
   @override
   Future<List<int>> recording(String interactionId) => api.bytes(
     _call('/agent-calls/recording', interactionId),

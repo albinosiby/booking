@@ -6,9 +6,11 @@ import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
 import '../cubit/admission_cubit.dart';
 import '../cubit/admission_state.dart';
+import '../models/admission_overview.dart';
 import '../widgets/admission_cards.dart';
+import '../widgets/admission_filters_sheet.dart';
 
-/// Enrolled students, scoped to Plans/Coaching and a business and pool/court.
+/// Enrolled students across permitted locations, with optional location filters.
 class AdmissionsScreen extends StatefulWidget {
   const AdmissionsScreen({super.key});
   @override
@@ -53,104 +55,70 @@ class _AdmissionsScreenState extends State<AdmissionsScreen> {
     );
   }
 
-  Widget selection(AdmissionState s) {
-    final overview = s.overview;
-    final business = cubit.overviewBusiness;
-    final businessPicker = AppPicker(
-      key: const ValueKey('admission-business'),
-      label: 'Business',
-      value: overview.businessId,
-      enabled: !s.loading && s.catalog.businesses.isNotEmpty,
-      items: s.catalog.businesses
-          .map(
-            (b) => PickerItem(
-              b.id,
-              '${b.name} · ${b.court ? 'Court' : 'Swimming'}',
-            ),
-          )
-          .toList(),
-      onChanged: (id) => cubit.selectOverview(businessId: id),
+  Future<void> filterStudents() async {
+    final overview = cubit.state.overview;
+    final result = await showAdaptiveSheet<AdmissionFilterSelection>(
+      context: context,
+      scrollable: false,
+      showClose: false,
+      builder: (_) => AdmissionFiltersSheet(
+        businesses: cubit.state.catalog.businesses,
+        initial: AdmissionFilterSelection(
+          businessId: overview.businessId,
+          spaceId: overview.spaceId,
+          status: overview.status,
+        ),
+      ),
     );
-    final spacePicker = AppPicker(
-      key: const ValueKey('admission-space'),
-      label: business?.spaceLabel ?? 'Pool or court',
-      value: overview.spaceId,
-      enabled: !s.loading && business?.pools.isNotEmpty == true,
-      items:
-          business?.pools.map((p) => PickerItem(p.id, p.name)).toList() ?? [],
-      onChanged: (id) => cubit.selectOverview(spaceId: id),
-    );
-    return LayoutBuilder(
-      builder: (context, box) => box.maxWidth >= 650
-          ? Row(
-              children: [
-                Expanded(child: businessPicker),
-                const SizedBox(width: 16),
-                Expanded(child: spacePicker),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                businessPicker,
-                const SizedBox(height: 12),
-                spacePicker,
-              ],
-            ),
+    if (!mounted || result == null) return;
+    cubit.selectOverview(
+      businessId: result.businessId,
+      spaceId: result.spaceId,
+      clearSelection: result.businessId == null,
+      clearSpace: result.spaceId == null,
+      status: result.status,
+      clearStatus: result.status == null,
     );
   }
 
-  Widget filters(AdmissionState s) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget searchField() => TextField(
+    key: const ValueKey('admission-search'),
+    controller: search,
+    textInputAction: TextInputAction.search,
+    decoration: InputDecoration(
+      hintText: 'Search name, phone or admission no.',
+      prefixIcon: const Icon(Icons.search),
+      suffixIcon: IconButton(
+        tooltip: 'Clear search',
+        onPressed: () {
+          search.clear();
+          cubit.selectOverview(query: '');
+        },
+        icon: const Icon(Icons.close),
+      ),
+    ),
+    onSubmitted: (value) => cubit.selectOverview(query: value.trim()),
+  );
+
+  Widget appliedFilters(AdmissionState s) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
     children: [
-      TextField(
-        controller: search,
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          hintText: 'Search name, phone or admission no.',
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: IconButton(
-            tooltip: 'Clear search',
-            onPressed: () {
-              search.clear();
-              cubit.selectOverview(query: '');
-            },
-            icon: const Icon(Icons.close),
-          ),
+      if (cubit.overviewBusiness != null)
+        InputChip(
+          label: Text(cubit.overviewBusiness!.name),
+          onDeleted: () => cubit.selectOverview(clearSelection: true),
         ),
-        onSubmitted: (value) => cubit.selectOverview(query: value.trim()),
-      ),
-      const SizedBox(height: 12),
-      SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            for (final status in <String?>[
-              null,
-              'active',
-              'upcoming',
-              'completed',
-              'expired',
-              'cancelled',
-            ])
-              Padding(
-                padding: const EdgeInsetsDirectional.only(end: 8),
-                child: ChoiceChip(
-                  label: Text(
-                    status == null
-                        ? 'All students'
-                        : admissionStatusLabel(status),
-                  ),
-                  selected: s.overview.status == status,
-                  onSelected: (_) => cubit.selectOverview(
-                    status: status,
-                    clearStatus: status == null,
-                  ),
-                ),
-              ),
-          ],
+      if (cubit.overviewSpace != null)
+        InputChip(
+          label: Text(cubit.overviewSpace!.name),
+          onDeleted: () => cubit.selectOverview(clearSpace: true),
         ),
-      ),
+      if (s.overview.status != null)
+        InputChip(
+          label: Text(admissionStatusLabel(s.overview.status!)),
+          onDeleted: () => cubit.selectOverview(clearStatus: true),
+        ),
     ],
   );
 
@@ -166,18 +134,19 @@ class _AdmissionsScreenState extends State<AdmissionsScreen> {
           s.loading || overview.rosters.values.any((r) => r.loading);
       final more = overview.rosters.values.any((r) => r.next != null);
       final errors = overview.rosters.values.where((r) => r.error != null);
-      final filtered = overview.query.isNotEmpty || overview.status != null;
+      final filterCount = [
+        overview.businessId,
+        overview.spaceId,
+        overview.status,
+      ].where((value) => value != null).length;
+      final filtered = overview.query.isNotEmpty || filterCount > 0;
       final empty =
-          !loading &&
-          s.error == null &&
-          errors.isEmpty &&
-          students.isEmpty &&
-          cubit.overviewSpace != null;
+          !loading && s.error == null && errors.isEmpty && students.isEmpty;
       return AppPage(
         title: 'Plans & Coaching',
         showAppBar: true,
         compactHeader: true,
-        subtitle: 'Choose a pool or court to view enrolled students.',
+        subtitle: 'Manage enrolled students, plans and coaching.',
         back: true,
         scrollId: 'admissions',
         maxWidth: 1240,
@@ -189,10 +158,10 @@ class _AdmissionsScreenState extends State<AdmissionsScreen> {
                       ? 'No students match these filters'
                       : 'No students enrolled yet',
                   message: filtered
-                      ? 'Try another search or status.'
+                      ? 'Try another search or adjust your filters.'
                       : overview.coaching
-                      ? 'Coaching students for this space will appear here.'
-                      : 'Students subscribed to plans for this space will appear here.',
+                      ? 'Students enrolled in coaching will appear here.'
+                      : 'Students enrolled in plans will appear here.',
                 ),
               )
             : null,
@@ -254,6 +223,15 @@ class _AdmissionsScreenState extends State<AdmissionsScreen> {
               ],
         actions: [
           IconButton(
+            tooltip: 'Filter admissions',
+            onPressed: s.loading ? null : filterStudents,
+            icon: Badge(
+              isLabelVisible: filterCount > 0,
+              label: Text('$filterCount'),
+              child: const Icon(Icons.filter_list),
+            ),
+          ),
+          IconButton(
             tooltip: 'Refresh admissions',
             onPressed: s.loading ? null : cubit.loadOverview,
             icon: const Icon(Icons.refresh),
@@ -271,6 +249,8 @@ class _AdmissionsScreenState extends State<AdmissionsScreen> {
               )
             : null,
         children: [
+          searchField(),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: Align(
@@ -288,9 +268,11 @@ class _AdmissionsScreenState extends State<AdmissionsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          selection(s),
-          const SizedBox(height: 20),
+          if (filterCount > 0) ...[
+            const SizedBox(height: 16),
+            appliedFilters(s),
+          ],
+          const SizedBox(height: 24),
           if (s.loading)
             AppLoadingState(
               initial: overview.rosters.isEmpty,
@@ -298,33 +280,23 @@ class _AdmissionsScreenState extends State<AdmissionsScreen> {
             ),
           if (s.error != null)
             AppErrorWidget(message: s.error!, onRetry: cubit.loadOverview),
-          if (!s.loading && s.error == null && cubit.overviewSpace == null)
-            const AppEmptyState(
-              title: 'No spaces available',
-              message:
-                  'An enabled pool or court is needed to view plans and enroll students.',
+          Text(
+            loading && students.isEmpty
+                ? 'Enrolled students'
+                : '${students.length}${more ? '+' : ''} enrolled ${students.length == 1 ? 'student' : 'students'}',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 12),
+          if (!s.loading && loading)
+            AppLoadingState(
+              initial: students.isEmpty,
+              label: 'Loading students…',
             ),
-          if (cubit.overviewSpace != null) ...[
-            filters(s),
-            const SizedBox(height: 24),
-            Text(
-              loading && students.isEmpty
-                  ? 'Enrolled students'
-                  : '${students.length}${more ? '+' : ''} enrolled ${students.length == 1 ? 'student' : 'students'}',
-              style: Theme.of(context).textTheme.titleSmall,
+          if (errors.isNotEmpty)
+            AppErrorWidget(
+              message: errors.first.error!,
+              onRetry: cubit.loadOverview,
             ),
-            const SizedBox(height: 12),
-            if (!s.loading && loading)
-              AppLoadingState(
-                initial: students.isEmpty,
-                label: 'Loading students…',
-              ),
-            if (errors.isNotEmpty)
-              AppErrorWidget(
-                message: errors.first.error!,
-                onRetry: cubit.loadOverview,
-              ),
-          ],
         ],
       );
     },
