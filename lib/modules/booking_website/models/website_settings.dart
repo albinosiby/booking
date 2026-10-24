@@ -12,17 +12,28 @@ class WebsiteSpace extends Equatable {
     this.noticeMinutes,
     this.advanceDays,
     this.rules = '',
+    this.paymentRequired = false,
+    this.paymentPercentages = const [],
   });
   final String id, name, rules;
   final bool visible;
+  final bool paymentRequired;
+  final List<int> paymentPercentages;
   final int? noticeMinutes, advanceDays;
   bool get customised =>
-      !visible || noticeMinutes != null || advanceDays != null || rules != '';
+      !visible ||
+      noticeMinutes != null ||
+      advanceDays != null ||
+      rules != '' ||
+      paymentRequired ||
+      paymentPercentages.isNotEmpty;
   WebsiteSpace copyWith({
     bool? visible,
     int? Function()? noticeMinutes,
     int? Function()? advanceDays,
     String? rules,
+    bool? paymentRequired,
+    List<int>? paymentPercentages,
   }) => WebsiteSpace(
     id: id,
     name: name,
@@ -30,6 +41,10 @@ class WebsiteSpace extends Equatable {
     noticeMinutes: noticeMinutes == null ? this.noticeMinutes : noticeMinutes(),
     advanceDays: advanceDays == null ? this.advanceDays : advanceDays(),
     rules: rules ?? this.rules,
+    paymentRequired: paymentRequired ?? this.paymentRequired,
+    paymentPercentages: List.unmodifiable(
+      paymentPercentages ?? this.paymentPercentages,
+    ),
   );
 
   /// Copies only the booking rules, keeping identity and visibility.
@@ -46,6 +61,8 @@ class WebsiteSpace extends Equatable {
     noticeMinutes,
     advanceDays,
     rules,
+    paymentRequired,
+    paymentPercentages,
   ];
 }
 

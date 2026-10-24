@@ -20,6 +20,7 @@ import type {
   Resource,
 } from "./types";
 type Command = {
+  payment?: { percentage: number; transaction_id: string };
   command_key: string;
   selection: Selection;
   quote_token: string;
@@ -79,6 +80,8 @@ export function useBooking(
     [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [refresh, setRefresh] = useState(0),
     sending = useRef(false);
+  const [paymentPercentage, setPaymentPercentage] = useState(0);
+  const [transactionId, setTransactionId] = useState("");
   const business = site?.businesses.find((b) => b.id === businessId),
     resource = business?.resources.find((r) => r.id === resourceId),
     option = resource?.options.find((o) => o.id === optionId);
@@ -340,7 +343,11 @@ export function useBooking(
     repository
       .quote(selection, abort.signal)
       .then((value) => {
-        if (!abort.signal.aborted) setQuote(value);
+        if (!abort.signal.aborted) {
+          setQuote(value);
+          setPaymentPercentage(0);
+          setTransactionId("");
+        }
       })
       .catch((e) => {
         if (!abort.signal.aborted) setError(message(e));
@@ -373,12 +380,38 @@ export function useBooking(
       (!pending && (site.status !== "published" || !quote || !selection))
     )
       return;
+    if (!pending) {
+      const option = quote?.payment?.options.find(
+        (entry) => entry.percentage === paymentPercentage,
+      );
+      if (quote?.payment?.required && !option) {
+        setError("Choose a payment amount before confirming.");
+        return;
+      }
+      if (
+        paymentPercentage &&
+        (!option || !/^[A-Za-z0-9._-]{6,64}$/.test(transactionId.trim()))
+      ) {
+        setError(
+          "Enter the transaction ID from your UPI app (6–64 letters, numbers, dots, underscores or hyphens).",
+        );
+        return;
+      }
+    }
     const saved: Pending = pending ?? {
       command: {
         command_key: crypto.randomUUID(),
         selection: selection!,
         quote_token: quote!.quote_token,
         customer: { name: name.trim(), phone: phone.trim() },
+        ...(paymentPercentage
+          ? {
+              payment: {
+                percentage: paymentPercentage,
+                transaction_id: transactionId.trim(),
+              },
+            }
+          : {}),
       },
       quote: quote!,
       created: Date.now(),
@@ -413,7 +446,7 @@ export function useBooking(
         try {
           sessionStorage.removeItem(storageKey);
         } catch {}
-        if (e.status === 409) {
+        if (e.status === 409 && !/transaction ID/i.test(e.message)) {
           setQuote(null);
           setMode("slots");
           setStart("");
@@ -454,6 +487,11 @@ export function useBooking(
     pending,
     uncertain,
     confirmation,
+    paymentPercentage:
+      pending?.command.payment?.percentage ?? paymentPercentage,
+    transactionId: pending?.command.payment?.transaction_id ?? transactionId,
+    setPaymentPercentage,
+    setTransactionId,
     repository,
     chooseBusiness,
     chooseResource,

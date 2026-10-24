@@ -32,12 +32,15 @@ import {
   publicCreateSchema,
 } from "./website.validation";
 import { websiteImage, websiteImageSchema } from "./website.images";
+import { paymentSettings, paymentPolicy } from "./website.payments";
 type Row = Record<string, any>;
 type SpaceRules = {
   visible: boolean;
   notice_minutes: number;
   advance_days: number;
   rules: string;
+  payment_required: boolean;
+  payment_percentages: number[];
 };
 const hash = (v: string) => createHash("sha256").update(v).digest("hex");
 
@@ -198,7 +201,7 @@ export class WebsiteService {
   ) {
     return (
       await db.query<Row>(
-        `SELECT business_id,resource_id,visible,notice_minutes,advance_days,rules FROM booking_website_spaces
+        `SELECT business_id,resource_id,visible,notice_minutes,advance_days,rules,payment_required,payment_percentages FROM booking_website_spaces
         WHERE website_id=$1${businessId ? " AND business_id=$2" : ""}`,
         businessId ? [websiteId, businessId] : [websiteId],
       )
@@ -218,6 +221,8 @@ export class WebsiteService {
       notice_minutes: row?.notice_minutes ?? site.notice_minutes,
       advance_days: row?.advance_days ?? site.advance_days,
       rules: row?.rules ?? "",
+      payment_required: row?.payment_required ?? false,
+      payment_percentages: row?.payment_percentages ?? [],
     };
   }
   private async settingsProjection(site: Row) {
@@ -247,6 +252,8 @@ export class WebsiteService {
             notice_minutes: row?.notice_minutes ?? null,
             advance_days: row?.advance_days ?? null,
             rules: row?.rules ?? "",
+            payment_required: row?.payment_required ?? false,
+            payment_percentages: row?.payment_percentages ?? [],
           };
         }),
       })),
@@ -304,13 +311,71 @@ export class WebsiteService {
           "A published website needs an active business with normal booking options.",
         );
       if (v.spaces) {
+        const previousSpaces = await this.spaceRows(db, old.id);
+        const payment = await paymentSettings(db, old.organization_id, true);
+        const savedSpaces = v.spaces.map((space) => {
+          const previous = previousSpaces.find(
+            (row) =>
+              row.business_id === space.business_id &&
+              row.resource_id === space.resource_id,
+          );
+          return {
+            ...space,
+            payment_required:
+              space.payment_required ?? previous?.payment_required ?? false,
+            payment_percentages:
+              space.payment_percentages ?? previous?.payment_percentages ?? [],
+          };
+        });
+        for (const previous of previousSpaces) {
+          if (
+            previous.payment_required &&
+            !savedSpaces.some(
+              (space) =>
+                space.business_id === previous.business_id &&
+                space.resource_id === previous.resource_id,
+            )
+          )
+            savedSpaces.push({
+              ...previous,
+              visible: true,
+              notice_minutes: null,
+              advance_days: null,
+              rules: "",
+            } as (typeof savedSpaces)[number]);
+        }
+        if (
+          savedSpaces.some(
+            (space) =>
+              space.payment_required &&
+              (!space.payment_percentages.length ||
+                !payment.upi_id ||
+                !payment.has_qr),
+          )
+        )
+          throw new BadRequestException(
+            "Add your UPI ID and QR code in Accounts & payments and choose at least one payment percentage first.",
+          );
+        const organization = (
+          await db.query<Row>(
+            "SELECT currency FROM organizations WHERE id=$1",
+            [old.organization_id],
+          )
+        ).rows[0];
+        if (
+          organization.currency !== "INR" &&
+          savedSpaces.some((space) => space.payment_required)
+        )
+          throw new BadRequestException(
+            "UPI checkout is available only for INR bookings.",
+          );
         const all = (
           await db.query<Row>(
             "SELECT * FROM businesses WHERE organization_id=$1",
             [old.organization_id],
           )
         ).rows;
-        for (const space of v.spaces) {
+        for (const space of savedSpaces) {
           const b = all.find((x) => x.id === space.business_id);
           if (
             !b ||
@@ -324,10 +389,10 @@ export class WebsiteService {
           "DELETE FROM booking_website_spaces WHERE website_id=$1",
           [old.id],
         );
-        for (const space of v.spaces)
+        for (const space of savedSpaces)
           await db.query(
-            `INSERT INTO booking_website_spaces(website_id,organization_id,business_id,resource_id,visible,notice_minutes,advance_days,rules)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+            `INSERT INTO booking_website_spaces(website_id,organization_id,business_id,resource_id,visible,notice_minutes,advance_days,rules,payment_required,payment_percentages)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
             [
               old.id,
               old.organization_id,
@@ -337,6 +402,8 @@ export class WebsiteService {
               space.notice_minutes,
               space.advance_days,
               space.rules,
+              space.payment_required,
+              space.payment_percentages,
             ],
           );
       }
@@ -747,6 +814,8 @@ export class WebsiteService {
             notice_minutes: rules.notice_minutes,
             advance_days: rules.advance_days,
             rules: rules.rules,
+            payment_required: rules.payment_required,
+            payment_percentages: rules.payment_percentages,
             images: images
               .filter(
                 (i) =>
@@ -776,6 +845,22 @@ export class WebsiteService {
       advance_days: site.advance_days,
       businesses,
     };
+  }
+  async paymentQr(slug: string, preview?: string, version?: string) {
+    const site = await this.publicSite(slug, preview);
+    const row = (
+      await this.db.query<Row>(
+        "SELECT qr_data,qr_content_type,version FROM website_payment_settings WHERE organization_id=$1",
+        [site.organization_id],
+      )
+    ).rows[0];
+    if (!row?.qr_data)
+      throw new NotFoundException("Payment QR code not found.");
+    if (version !== undefined && String(row.version) !== version)
+      throw new ConflictException(
+        "Payment details changed. Refresh checkout before paying.",
+      );
+    return { data: row.qr_data, content_type: row.qr_content_type };
   }
   async logo(slug: string, preview?: string) {
     const site = await this.publicSite(slug, preview);
@@ -864,6 +949,30 @@ export class WebsiteService {
       currency,
     };
   }
+  private async checkoutQuote(
+    db: Queryable,
+    site: Row,
+    business: Row,
+    quote: ReturnType<typeof buildQuote>,
+    lock = false,
+  ) {
+    const settings = await paymentSettings(db, site.organization_id, lock);
+    const payment = paymentPolicy(
+      business.website_rules.payment_required,
+      business.website_rules.payment_percentages,
+      quote.total_minor,
+      site.currency,
+      settings,
+    );
+    return {
+      ...this.quoteProjection(quote, site.currency),
+      payment,
+      quote_token:
+        settings.version || payment.required
+          ? hash(JSON.stringify([quote.quote_token, payment]))
+          : quote.quote_token,
+    };
+  }
   async availability(slug: string, input: unknown, preview?: string) {
     const v = publicAvailabilitySchema.parse(input),
       site = await this.publicSite(slug, preview);
@@ -895,7 +1004,7 @@ export class WebsiteService {
         q,
         await inventoryAllocations(db, b.id, q.occupied_from, q.occupied_until),
       );
-      return this.quoteProjection(q, site.currency);
+      return this.checkoutQuote(db, site, b, q);
     });
   }
   async book(slug: string, input: unknown, preview?: string) {
@@ -934,10 +1043,14 @@ export class WebsiteService {
         throw new ConflictException(
           "Online bookings are paused. Please contact the venue.",
         );
+      await db.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [
+        site.organization_id,
+      ]);
       const b = await this.business(db, site, v.selection, true),
         q = buildQuote(b, v.selection, b.timezone);
       this.notice(b, q);
-      if (q.quote_token !== v.quote_token)
+      const checkout = await this.checkoutQuote(db, site, b, q, true);
+      if (checkout.quote_token !== v.quote_token)
         throw new ConflictException(
           "Pricing changed. Review the updated price before confirming.",
         );
@@ -946,6 +1059,40 @@ export class WebsiteService {
         await inventoryAllocations(db, b.id, q.occupied_from, q.occupied_until),
       );
       await this.limit(db, site, "confirm", 30, 3600);
+      const option = v.payment
+        ? checkout.payment.options.find(
+            (entry) => entry.percentage === v.payment!.percentage,
+          )
+        : null;
+      if (checkout.payment.required && !v.payment)
+        throw new BadRequestException(
+          "Choose a payment amount and enter the transaction ID.",
+        );
+      if (v.payment && !option)
+        throw new BadRequestException(
+          "Choose one of the payment options offered for this space.",
+        );
+      if (
+        v.payment &&
+        (
+          await db.query(
+            "SELECT 1 FROM bookings WHERE organization_id=$1 AND upper(website_payment_submission->>'transaction_id')=$2 LIMIT 1",
+            [site.organization_id, v.payment.transaction_id],
+          )
+        ).rows.length
+      )
+        throw new ConflictException(
+          "This transaction ID was already submitted. Contact the venue if you need help.",
+        );
+      const submission =
+        v.payment && option
+          ? {
+              ...v.payment,
+              amount_minor: option.amount_minor,
+              upi_id: checkout.payment.upi_id,
+              status: "pending_verification",
+            }
+          : null;
       await this.limit(
         db,
         site,
@@ -968,8 +1115,8 @@ export class WebsiteService {
         [customerId, site.organization_id, customer.name, customer.phone],
       );
       await db.query(
-        `INSERT INTO bookings(id,organization_id,business_id,resource_id,customer_id,reference,starts_at,ends_at,total_minor,selection,price_snapshot,customer_snapshot,people,created_by,booking_source,booking_website_id)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'website',$15)`,
+        `INSERT INTO bookings(id,organization_id,business_id,resource_id,customer_id,reference,starts_at,ends_at,total_minor,selection,price_snapshot,customer_snapshot,people,created_by,booking_source,booking_website_id,website_payment_submission)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'website',$15,$16)`,
         [
           id,
           site.organization_id,
@@ -986,6 +1133,7 @@ export class WebsiteService {
           v.selection.people,
           actor,
           site.id,
+          submission ? JSON.stringify(submission) : null,
         ],
       );
       for (const key of q.inventory_keys)
@@ -997,12 +1145,14 @@ export class WebsiteService {
         source: "website",
         selection: v.selection,
         total_minor: q.total_minor,
+        website_payment_submission: submission,
       });
       const response = {
         reference,
         status: "confirmed",
         payment_status: q.total_minor === 0 ? "paid" : "unpaid",
-        ...this.quoteProjection(q, site.currency),
+        ...checkout,
+        website_payment_submission: submission,
       };
       await db.query(
         "UPDATE booking_commands SET response=$1 WHERE organization_id=$2 AND command_key=$3",

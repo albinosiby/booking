@@ -9,11 +9,70 @@ One organisation has one public website at `https://<organisation-slug>.bookingo
 - Preview links expire after one hour, are read-only and are revoked by settings/publication changes or another preview. Treat them as private capabilities. Redact `preview` query parameters from hosting/access logs; never log request bodies. Next development request logging is disabled.
 - Publish, pause/resume, unpublish, open and copy-link actions. Owners can change the address after publication. The previous address stops resolving to the website after a rename; update shared links and ask visitors with an in-progress booking at the old address to contact the venue before retrying.
 - Normal turf, court, pool and hall bookings. Group offers, coaching, admissions, swimming plans and recurring purchases are excluded by the public server policy as well as the UI.
-- Name/phone checkout, review and confirmation. Pool bookings include participant count and per-person pricing. No online payments, customer login, OTP, public booking lookup, cancellation or rescheduling endpoint is exposed.
-- Booking confirmation is unpaid unless the price is zero. Collections remain in the existing staff flow. Browsing and quotes never hold inventory.
+- Name/phone checkout, review and confirmation. Pool bookings include participant count and per-person pricing. Owner-configured UPI transfers can be declared at checkout with a transaction ID, but no gateway, automatic collection or bank verification is provided. Customer login, OTP, public booking lookup, cancellation and rescheduling endpoints are not exposed.
+- Booking confirmation is unpaid unless the price is zero, even when a customer submits a UPI reference. Collections remain in the existing staff flow after bank verification. Browsing, quotes and transfers made outside the application never hold inventory.
 - Confirmations use the existing business lock, shared allocation checks and slot blocks. Persisted command keys prevent duplicate writes. Uncertain confirmations retain the exact command in session storage for up to 24 hours; retries remain locked to that command and are removed on success/definitive rejection. No customer data goes into browser URLs.
 
 The owner approves public contact/location information when publishing. The existing private organisation logo is public only when explicitly enabled. Guest phone numbers are validated but their ownership is not verified. Guest input never overwrites an existing customer profile based on an unverified phone number.
+
+### UPI checkout and per-space advance collection
+
+**Owner flow:** Profile → Accounts & payments → Website payment details. Upload a static payment QR (PNG/JPEG/WebP up to 1 MB), enter its matching UPI ID, then save. Preview, replacement and removal are supported. Both fields are needed to offer UPI checkout. Use a QR without a fixed amount and verify its beneficiary yourself: uploading an image does not authenticate the QR or prove that it matches the typed ID. Only owners can configure these details; stale versions cannot overwrite another edit.
+
+Profile → Design website → Services & spaces → expand a space → **Collect payment mandatory**. Select Half (50%), Full (100%) and/or one custom whole percentage from 1–99 other than 50. Combinations such as 25% + 50%, 50% + 100%, or all three work. Mandatory collection needs at least one choice. Copy booking rules does not copy payment policies. Disable mandatory collection on all configured spaces before removing the organization's UPI ID or QR.
+
+**Customer flow:** Review checkout shows the QR, copyable UPI ID, amount chips and a transaction ID/UTR field for a selected UPI option. Mandatory spaces cannot submit without a configured choice and a 6–64-character reference. Other spaces retain Pay at venue and may offer Full via UPI. Percentages use the full server-calculated booking total, rounded up to the nearest minor unit. Free bookings need no payment; UPI is only offered for INR. QR requests carry the settings version, preventing a new QR from being paired with an old checkout UPI ID.
+
+References are uppercase-normalized and unique per organization. The booking stores the claimed percentage, server-calculated amount, UPI snapshot and reference as `pending_verification`. Quote tokens cover payment terms, and retries replay the exact command safely. Owner/staff booking details display the reference for reconciliation. This does not create a ledger entry, reduce the balance or confirm receipt of money. After checking the bank, staff record the verified collection using existing payment controls. The submission remains a historical customer claim, not a bank verification status.
+
+**Limitations:** This is manual payment reporting, not a verified payment gateway. False references and mismatching QR images cannot be detected reliably. Browsing and external payment do not hold inventory; the venue must reconcile/refund a transfer if booking subsequently fails. Checkout warns against paying twice after a failed request. Automated verification, payment webhooks, refunds and inventory holds require separate work.
+
+#### API contract
+
+- Owner GET `/v1/accounts/website-payments`: `{version, upi_id, has_qr, qr: {content_type, base64} | null}`.
+- Owner POST the same route: `{version, upi_id, qr?: {content_type, base64} | null}`. Omission preserves the QR; null removes it. Invalid images/IDs fail validation, stale versions return 409, and non-owners are forbidden. No-store applies.
+- Website-settings space fields: `payment_required`, `payment_percentages`. Older clients omitting these fields preserve existing mandatory policies; the new app sends every space explicitly so policies can also be disabled.
+- Public quote adds `payment: {required, upi_id, has_qr, version, options: [{percentage, amount_minor}]}`. Public GET `.../payment-qr?v=<version>` returns raster bytes for an accessible website only.
+- Public booking accepts `payment: {percentage, transaction_id}` when a customer chooses UPI. Mandatory policies require it. Invented percentages, extra amount/status fields, stale terms and reused references are rejected. Replies include `website_payment_submission` or null; ordinary `payment_status` remains unpaid unless the booking is free.
+
+#### Migration and rollout — user applies
+
+No production schema, payment details or bookings were changed. Back up `booking_app` first. Confirm the live project is `scwwkaywewecspsrskft` and earlier migrations through `20261024101355_admin_sarvam_provisioning.sql` are applied. The existing runtime `booking_api` role must exist.
+
+1. Run the complete `supabase/migrations/20261024135923_website_upi_payments.sql` once in that project's SQL editor. It contains BEGIN/COMMIT, the `booking_app` search path, lock timeout and application migration-history entry. Do not apply the backend copy to the same database. The new table has RLS and server-role-only access; no direct anonymous/authenticated access is granted.
+2. Validate before deployment:
+
+If the SQL editor reports `relation "organizations" does not exist`, first run `SELECT to_regclass('booking_app.organizations');` in the selected project. A null result means the required application table is absent in that database: stop and check the project and prerequisite migrations. A non-null result means the table exists; use the complete schema-qualified Supabase migration above, not the local backend copy or a selected fragment. Do not create a replacement empty `public.organizations` table.
+
+```sql
+SELECT name FROM booking_app.schema_migrations
+WHERE name='20261024135923_website_upi_payments.sql';
+SELECT to_regclass('booking_app.website_payment_settings'),
+       to_regclass('booking_app.website_payment_transaction_unique');
+SELECT relrowsecurity FROM pg_class
+WHERE oid='booking_app.website_payment_settings'::regclass;
+SELECT column_name FROM information_schema.columns
+WHERE table_schema='booking_app' AND
+ ((table_name='booking_website_spaces' AND column_name IN ('payment_required','payment_percentages'))
+ OR (table_name='bookings' AND column_name='website_payment_submission'));
+SELECT grantee,privilege_type FROM information_schema.role_table_grants
+WHERE table_schema='booking_app' AND table_name='website_payment_settings';
+```
+
+Expect one migration-history row, both objects, RLS true, all three columns and SELECT/INSERT/UPDATE for the application role `booking_api` (no PUBLIC/anon/authenticated grants). Database owners retain their normal administrative rights. Existing spaces default to optional collection. If a lock timeout or statement fails, the transaction rolls back; investigate before retrying rather than inserting migration history manually.
+
+3. Deploy the updated backend/Edge bundle first, then the public website and Flutter client. Do not publish clients against an old API. Local tests apply only the matching backend migration in isolated in-memory PGlite, never production.
+4. Configure real QR/UPI settings and exercise a test space before broad rollout. Do not make real transfers just to smoke-test this interface without a separately approved test plan.
+
+**Recovery:** Prefer a forward fix. Pause affected public websites before rolling back to an API that cannot enforce mandatory collection. Preserve/export the payment-settings table, per-space columns and booking submission data, which may be needed for reconciliation. Do not drop these during an app rollback. Destructive schema recovery requires a verified backup and a separately approved plan; this feature does not perform refunds or reversals.
+
+#### Local verification
+
+The affected Flutter regression suite passed 57 tests, including QR upload/save/remove, UPI validation, percentage combinations and the new custom field's separate scroll-state key. Flutter static analysis reported no issues. Backend accounts/website regression checks passed 35 tests; the final focused payment and production-migration suite passed seven tests, including legacy-client policy preservation, server-calculated amounts, required references, duplicate detection, idempotent retries, stale terms/QR versions, owner/tenant boundaries, RLS, grants and database constraints. These counts overlap and should not be added together. The public website's existing 16 tests, typecheck and production build passed; backend and Edge typechecks/builds passed.
+
+Read-only HTTP checks against an isolated in-memory fixture verified the production checkout route, QR PNG proxy and stale-version rejection. Interactive browser verification was unavailable because the browser connection could not be opened; no desktop/mobile checkout-click or real bank-transfer verification is claimed. No production migration, deployment or financial transaction was performed.
+
+The Flutter web release build also completed successfully (`flutter build web --release --no-pub --no-wasm-dry-run`). The final public website production rebuild passed after the receipt-copy updates. These builds produce local artifacts only.
 
 ### Browser tab logo
 

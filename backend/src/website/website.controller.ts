@@ -82,6 +82,22 @@ export class WebsiteSettingsController {
 @Controller("public/v1/sites/:slug")
 export class PublicWebsiteController {
   constructor(private readonly service: WebsiteService) {}
+  @Get("payment-qr")
+  async paymentQr(
+    @Param("slug") slug: string,
+    @Query("preview") preview: string | undefined,
+    @Query("v") version: string | undefined,
+    @Res() res: Response,
+  ) {
+    const image = await this.service.paymentQr(slug, preview, version);
+    res
+      .set({
+        "Content-Type": image.content_type,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      })
+      .send(Buffer.from(image.data));
+  }
   @Header("Cache-Control", "private, no-store")
   @Get()
   catalog(@Param("slug") slug: string, @Query("preview") preview?: string) {

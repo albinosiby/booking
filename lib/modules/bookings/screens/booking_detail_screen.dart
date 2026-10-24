@@ -6,6 +6,7 @@ import 'package:eden_booking/design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
 import '../models/booking_detail_model.dart';
+import '../models/booking_models.dart' show bookingMoney;
 import '../cubit/booking_detail_cubit.dart';
 import '../widgets/booking_widgets.dart';
 
@@ -135,6 +136,28 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 currency: s.catalog.currency,
                 onCollect: s.canCollectPending && enabled ? collect : null,
               ),
+              if (b.websitePayment != null)
+                AppCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Website payment · verify before collecting',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      SelectableText(
+                        'Transaction ID: ${b.websitePayment!['transaction_id']}',
+                      ),
+                      Text(
+                        'Submitted: ${b.websitePayment!['percentage']}% · ${bookingMoney(b.websitePayment!['amount_minor'] as int, s.catalog.currency)}',
+                      ),
+                      SelectableText('UPI ID: ${b.websitePayment!['upi_id']}'),
+                      const Text(
+                        'Customer-submitted reference only. Check your bank, then record the verified collection using the normal payment controls. This reference does not change the paid balance.',
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 16),
               AppCard(
                 child: Column(

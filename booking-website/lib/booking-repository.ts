@@ -60,6 +60,7 @@ export class PublicBookingRepository {
     return this.request<Quote>("quote", { selection }, signal);
   }
   book(command: {
+    payment?: { percentage: number; transaction_id: string };
     command_key: string;
     selection: Selection;
     quote_token: string;

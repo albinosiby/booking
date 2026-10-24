@@ -20,6 +20,8 @@ export type BookingOption = {
   tariffs: Tariff[];
 };
 export type Resource = {
+  payment_required?: boolean;
+  payment_percentages?: number[];
   images: string[];
   notice_minutes: number;
   advance_days: number;
@@ -44,12 +46,7 @@ export type Business = {
   resources: Resource[];
 };
 export type SocialNetwork =
-  | "instagram"
-  | "facebook"
-  | "x"
-  | "youtube"
-  | "linkedin"
-  | "whatsapp";
+  "instagram" | "facebook" | "x" | "youtube" | "linkedin" | "whatsapp";
 export type Website = {
   slug: string;
   title: string;
@@ -88,6 +85,20 @@ export type Slot = {
   end_options?: [number, string][];
 };
 export type Quote = {
+  payment?: {
+    required: boolean;
+    upi_id: string;
+    has_qr: boolean;
+    version: number;
+    options: { percentage: number; amount_minor: number }[];
+  };
+  website_payment_submission?: {
+    transaction_id: string;
+    percentage: number;
+    amount_minor: number;
+    upi_id: string;
+    status: string;
+  } | null;
   quote_token: string;
   starts_at: string;
   ends_at: string;

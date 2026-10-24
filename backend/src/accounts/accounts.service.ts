@@ -11,6 +11,8 @@ import { Database, Queryable } from "../common/database";
 import { Actor } from "../common/auth.guard";
 import { WorkspaceService } from "../workspace/workspace.service";
 import { systemAccounts } from "./ledger";
+import { paymentSettings, upiId } from "../website/website.payments";
+import { websiteImage, websiteImageSchema } from "../website/website.images";
 import {
   accountSchema,
   entrySchema,
@@ -25,6 +27,90 @@ export class AccountsService {
     private readonly workspace: WorkspaceService,
   ) {}
   private readDb?: Queryable;
+  async websitePayments(actor: Actor) {
+    const member = await this.workspace.member(actor, true);
+    const row = (
+      await this.db.query<Row>(
+        "SELECT upi_id,version,qr_data,qr_content_type FROM website_payment_settings WHERE organization_id=$1",
+        [member.organization_id],
+      )
+    ).rows[0];
+    return {
+      upi_id: row?.upi_id ?? "",
+      version: row?.version ?? 0,
+      has_qr: !!row?.qr_data,
+      qr: row?.qr_data
+        ? {
+            base64: Buffer.from(row.qr_data).toString("base64"),
+            content_type: row.qr_content_type,
+          }
+        : null,
+    };
+  }
+  async saveWebsitePayments(actor: Actor, input: unknown) {
+    const value = z
+      .object({
+        version: z.number().int().nonnegative(),
+        upi_id: upiId,
+        qr: z
+          .object({
+            base64: websiteImageSchema.shape.base64,
+            content_type: websiteImageSchema.shape.content_type,
+          })
+          .strict()
+          .nullable()
+          .optional(),
+      })
+      .strict()
+      .parse(input);
+    const data = value.qr
+      ? websiteImage({ ...value.qr, version: 1, kind: "logo" })
+      : null;
+    await this.db.transaction(async (db) => {
+      const member = await this.workspace.member(actor, true, db);
+      await this.lock(db, member.organization_id);
+      const previous = await paymentSettings(db, member.organization_id);
+      if (previous.version !== value.version)
+        throw new ConflictException(
+          "Payment details changed. Reload before saving.",
+        );
+      const hasQr = value.qr === undefined ? previous.has_qr : !!data;
+      if (!value.upi_id || !hasQr) {
+        const required = (
+          await db.query(
+            "SELECT 1 FROM booking_website_spaces WHERE organization_id=$1 AND payment_required LIMIT 1",
+            [member.organization_id],
+          )
+        ).rows.length;
+        if (required)
+          throw new BadRequestException(
+            "Turn off mandatory payment for your website spaces before removing payment details.",
+          );
+      }
+      await db.query(
+        `INSERT INTO website_payment_settings(organization_id,upi_id,qr_data,qr_content_type,version)
+        VALUES($1,$2,$3,$4,1) ON CONFLICT(organization_id) DO UPDATE SET
+        upi_id=EXCLUDED.upi_id,qr_data=CASE WHEN $5 THEN EXCLUDED.qr_data ELSE website_payment_settings.qr_data END,
+        qr_content_type=CASE WHEN $5 THEN EXCLUDED.qr_content_type ELSE website_payment_settings.qr_content_type END,
+        version=website_payment_settings.version+1,updated_at=now()`,
+        [
+          member.organization_id,
+          value.upi_id,
+          data,
+          value.qr?.content_type ?? null,
+          value.qr !== undefined,
+        ],
+      );
+      await this.audit(
+        db,
+        member,
+        actor,
+        "website.payment_details_updated",
+        member.organization_id,
+      );
+    });
+    return this.websitePayments(actor);
+  }
   private get store(): Queryable {
     return this.readDb ?? this.db;
   }

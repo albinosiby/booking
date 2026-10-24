@@ -6,6 +6,10 @@ import {
   ReceiptAmount,
 } from "./booking-receipt";
 import type { ReceiptDetails } from "./booking-receipt";
+import {
+  BookingPaymentChoice,
+  type PaymentChoiceProps,
+} from "./booking-payment-choice";
 
 export function BookingReview({
   confirming,
@@ -14,6 +18,7 @@ export function BookingReview({
   disabled,
   onEdit,
   onConfirm,
+  paymentChoice,
   ...details
 }: ReceiptDetails & {
   confirming: boolean;
@@ -22,6 +27,7 @@ export function BookingReview({
   disabled: boolean;
   onEdit: () => void;
   onConfirm: () => void;
+  paymentChoice?: PaymentChoiceProps;
 }) {
   return (
     <div className="confirmation-view review-view">
@@ -40,6 +46,12 @@ export function BookingReview({
         <h1>One last look. Then it’s yours.</h1>
         <p>Check your booking details below before confirming.</p>
       </div>
+      {paymentChoice && (
+        <BookingPaymentChoice
+          key={details.booking.quote_token}
+          {...paymentChoice}
+        />
+      )}
       <BookingReceipt
         {...details}
         aside={

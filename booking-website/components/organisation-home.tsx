@@ -121,7 +121,12 @@ export function OrganisationHome({
             <Icon name="check" /> Book directly with the venue
           </span>
           <span>
-            <Icon name="clock" /> Pay at the venue
+            <Icon name="clock" />{" "}
+            {site.businesses.some((business) =>
+              business.resources.some((resource) => resource.payment_required),
+            )
+              ? "Payment options at checkout"
+              : "Pay at the venue"}
           </span>
         </div>
         <section

@@ -136,19 +136,36 @@ export function ReceiptAmount({
   return (
     <>
       <p className="receipt-amount-label">
-        {paid ? "Booking total" : "Total to pay at venue"}
+        {paid
+          ? "Booking total"
+          : booking.payment?.options.length ||
+              booking.website_payment_submission
+            ? "Booking total"
+            : "Total to pay at venue"}
       </p>
       <p className="receipt-amount">
         {moneyLabel(booking.total_minor, booking.currency)}
       </p>
       <span className="receipt-payment-badge">
         <Icon name={paid ? "check" : "clock"} size={15} />
-        {paid ? "No payment due" : "Pay at the venue"}
+        {paid
+          ? "No payment due"
+          : booking.website_payment_submission
+            ? "Payment verification pending"
+            : booking.payment?.required
+              ? "UPI payment required"
+              : booking.payment?.options.length
+                ? "UPI or pay at venue"
+                : "Pay at the venue"}
       </span>
       <p className="receipt-payment-note">
         {paid
           ? "You’re all set. There’s nothing to pay for this booking."
-          : "Pay directly at the venue when you arrive. No online payment has been collected."}
+          : booking.website_payment_submission
+            ? `Transaction ID: ${booking.website_payment_submission.transaction_id}. Submitted amount: ${moneyLabel(booking.website_payment_submission.amount_minor, booking.currency)}. The venue must verify this payment; it has not been added to your paid balance.`
+            : booking.payment?.required
+              ? "Choose a payment amount and submit the transaction ID below. The venue verifies payment separately."
+              : "Pay at the venue, or choose UPI at checkout if available. No payment has been verified online."}
       </p>
     </>
   );

@@ -42,6 +42,10 @@ class RestWebsiteRepository implements WebsiteRepository {
                   noticeMinutes: r['notice_minutes'] as int?,
                   advanceDays: r['advance_days'] as int?,
                   rules: r['rules'] as String? ?? '',
+                  paymentRequired: r['payment_required'] == true,
+                  paymentPercentages: List<int>.unmodifiable(
+                    (r['payment_percentages'] as List? ?? []).cast<int>(),
+                  ),
                 ),
               ),
             ),
@@ -132,19 +136,19 @@ class RestWebsiteRepository implements WebsiteRepository {
           for (final b in d.businesses)
             if (d.businessIds.contains(b.id)) b.id: b.description.trim(),
         },
-        // Only overrides are stored; untouched spaces follow the website defaults.
         'spaces': [
           for (final b in d.businesses)
             for (final s in b.spaces)
-              if (s.customised)
-                {
-                  'business_id': b.id,
-                  'resource_id': s.id,
-                  'visible': s.visible,
-                  'notice_minutes': s.noticeMinutes,
-                  'advance_days': s.advanceDays,
-                  'rules': s.rules.trim(),
-                },
+              {
+                'business_id': b.id,
+                'resource_id': s.id,
+                'visible': s.visible,
+                'notice_minutes': s.noticeMinutes,
+                'advance_days': s.advanceDays,
+                'rules': s.rules.trim(),
+                'payment_required': s.paymentRequired,
+                'payment_percentages': s.paymentPercentages,
+              },
         ],
         'business_ids': d.businessIds,
       },

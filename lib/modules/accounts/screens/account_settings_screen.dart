@@ -9,6 +9,8 @@ import '../cubit/accounts_cubits.dart';
 import '../models/accounts_models.dart';
 import '../models/accounts_screen_models.dart';
 import '../widgets/accounts_widgets.dart';
+import '../widgets/website_payment_settings_card.dart';
+import '../repositories/website_payment_repository.dart';
 
 class AccountSettingsScreen extends StatefulWidget {
   const AccountSettingsScreen({super.key});
@@ -107,6 +109,13 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                     'Only the owner can manage bank accounts and payment routing.',
               ),
             if (catalog?.canManage == true) ...[
+              if (cubit.repository is WebsitePaymentRepository) ...[
+                WebsitePaymentSettingsCard(
+                  key: ValueKey('website-payment-${cubit.accessScope}'),
+                  repository: cubit.repository as WebsitePaymentRepository,
+                ),
+                const SizedBox(height: 22),
+              ],
               Text(
                 'Your money, organised.',
                 style: theme.textTheme.headlineSmall?.copyWith(
@@ -452,6 +461,13 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 'Only the owner can manage bank accounts and payment routing.',
           ),
         if (catalog != null && manage) ...[
+          if (cubit.repository is WebsitePaymentRepository) ...[
+            WebsitePaymentSettingsCard(
+              key: ValueKey('website-payment-${cubit.accessScope}'),
+              repository: cubit.repository as WebsitePaymentRepository,
+            ),
+            const SizedBox(height: 22),
+          ],
           _desktopStats(catalog, banks),
           const SizedBox(height: 28),
           AppTwoPane(

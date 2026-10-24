@@ -595,6 +595,7 @@ class BookingRecord extends Equatable {
     this.discountMinor = 0,
     this.payments = const [],
     this.history = const [],
+    this.websitePayment,
   });
   final String id,
       reference,
@@ -618,8 +619,14 @@ class BookingRecord extends Equatable {
   final BookingCustomer customer;
   final List<BookingPayment> payments;
   final List<BookingEvent> history;
+  final Map<String, dynamic>? websitePayment;
   bool get checkedIn => history.any((event) => event.action == 'checked_in');
   factory BookingRecord.fromJson(Map<String, dynamic> j) => BookingRecord(
+    websitePayment: j['website_payment_submission'] == null
+        ? null
+        : Map<String, dynamic>.unmodifiable(
+            j['website_payment_submission'] as Map,
+          ),
     admissionId: j['admission_id'],
     admissionAttendance: j['admission_attendance'],
     id: j['id'],
@@ -691,6 +698,7 @@ class BookingRecord extends Equatable {
     discountMinor,
     payments,
     history,
+    websitePayment,
   ];
 }
 

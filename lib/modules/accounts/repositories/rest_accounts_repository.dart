@@ -2,10 +2,42 @@ import '../../workspace/repositories/refreshable_reads.dart';
 import '../../../utils/services/rest_api_service.dart';
 import '../models/accounts_models.dart';
 import 'accounts_repository.dart';
+import 'dart:convert';
+import '../../../utils/services/logo_picker_service.dart';
+import 'website_payment_repository.dart';
 
-class RestAccountsRepository implements AccountsRepository, RefreshableReads {
+class RestAccountsRepository
+    implements AccountsRepository, RefreshableReads, WebsitePaymentRepository {
   RestAccountsRepository(this.api);
   final RestApiService api;
+  @override
+  Future<WebsitePaymentDetails> websitePayments() async =>
+      WebsitePaymentDetails.fromJson(
+        financeMap(await api.request('/accounts/website-payments')),
+      );
+  @override
+  Future<WebsitePaymentDetails> saveWebsitePayments(
+    int version,
+    String upiId,
+    LogoSelection? qr,
+  ) async => WebsitePaymentDetails.fromJson(
+    financeMap(
+      await api.request(
+        '/accounts/website-payments',
+        method: 'POST',
+        data: {
+          'version': version,
+          'upi_id': upiId.trim(),
+          'qr': qr == null
+              ? null
+              : {
+                  'base64': base64Encode(qr.bytes),
+                  'content_type': qr.contentType,
+                },
+        },
+      ),
+    ),
+  );
   @override
   void invalidateReads() => api.invalidateReads(notify: false);
   @override

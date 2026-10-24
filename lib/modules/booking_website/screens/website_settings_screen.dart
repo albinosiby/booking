@@ -204,7 +204,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
         ],
         const SizedBox(height: 8),
         const Text(
-          'Customers can book normal visits using their name and phone number. Payments are collected at the venue.',
+          'Customers book normal visits using their name and phone number. Configure payment collection for each space below; submitted UPI references need bank verification.',
         ),
         const SizedBox(height: 12),
         Wrap(

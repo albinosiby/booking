@@ -2,6 +2,10 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { Queryable } from "../common/database";
 import {
+  paymentPercentages,
+  paymentSubmissionSchema,
+} from "./website.payments";
+import {
   customerSchema,
   selectionSchema,
 } from "../bookings/booking.validation";
@@ -83,6 +87,8 @@ export const websiteSpaceSchema = z
     notice_minutes: z.number().int().min(0).max(10080).nullable(),
     advance_days: z.number().int().min(1).max(365).nullable(),
     rules: z.string().trim().max(1000),
+    payment_required: z.boolean().optional(),
+    payment_percentages: paymentPercentages.optional(),
   })
   .strict();
 export const websiteSettingsSchema = z
@@ -134,6 +140,7 @@ export const publicCreateSchema = z
     selection: publicSelection,
     quote_token: z.string().regex(/^[a-f0-9]{64}$/),
     customer: customerSchema.pick({ name: true, phone: true }).strict(),
+    payment: paymentSubmissionSchema.optional(),
   })
   .strict();
 

@@ -279,6 +279,101 @@ class _SpaceTile extends StatelessWidget {
           onRemove: onRemovePhoto,
         ),
         const SizedBox(height: 18),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Collect payment mandatory'),
+          subtitle: const Text(
+            'Require a payment option and transaction ID at checkout. Amounts are based on the full booking total. Verify the transfer in your bank before recording payment.',
+          ),
+          value: space.paymentRequired,
+          onChanged: busy
+              ? null
+              : (value) => onChanged(
+                  space.copyWith(
+                    paymentRequired: value,
+                    paymentPercentages:
+                        value && space.paymentPercentages.isEmpty
+                        ? [50, 100]
+                        : space.paymentPercentages,
+                  ),
+                ),
+        ),
+        if (space.paymentRequired) ...[
+          const Text('Payment choices shown as chips at checkout'),
+          Wrap(
+            spacing: 12,
+            children: [
+              for (final percentage in [50, 100])
+                FilterChip(
+                  label: Text(percentage == 50 ? 'Half (50%)' : 'Full (100%)'),
+                  selected: space.paymentPercentages.contains(percentage),
+                  onSelected: busy
+                      ? null
+                      : (selected) {
+                          final options = {...space.paymentPercentages};
+                          selected
+                              ? options.add(percentage)
+                              : options.remove(percentage);
+                          onChanged(
+                            space.copyWith(
+                              paymentPercentages: options.toList()..sort(),
+                            ),
+                          );
+                        },
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            key: PageStorageKey('website-payment-percentage-$businessId-${space.id}'),
+            initialValue:
+                space.paymentPercentages
+                    .where((value) => value != 50 && value != 100)
+                    .firstOrNull
+                    ?.toString() ??
+                '',
+            enabled: !busy,
+            keyboardType: TextInputType.number,
+            maxLength: 2,
+            decoration: const InputDecoration(
+              labelText: 'Custom payment percentage',
+              helperText: 'Optional: 1–99%, except 50% (use Half above).',
+              suffixText: '%',
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) {
+              final text = (value ?? '').trim(),
+                  number = int.tryParse((value ?? '').trim());
+              if (text.isNotEmpty &&
+                  (number == null ||
+                      number < 1 ||
+                      number > 99 ||
+                      number == 50)) {
+                return 'Use 1–99%, except 50%.';
+              }
+              if (space.paymentPercentages.isEmpty && text.isEmpty) {
+                return 'Choose at least one payment option.';
+              }
+              return null;
+            },
+            onChanged: (value) {
+              final number = int.tryParse(value.trim());
+              final options = space.paymentPercentages
+                  .where((entry) => entry == 50 || entry == 100)
+                  .toSet();
+              if (number != null &&
+                  number >= 1 &&
+                  number <= 99 &&
+                  number != 50) {
+                options.add(number);
+              }
+              onChanged(
+                space.copyWith(paymentPercentages: options.toList()..sort()),
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+        ],
         Align(
           alignment: Alignment.centerLeft,
           child: Text(

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -23,6 +24,16 @@ export class AccountsController {
   constructor(private readonly service: AccountsService) {}
   @Get("catalog") catalog(@Req() r: AuthRequest) {
     return this.service.catalog(r.actor);
+  }
+  @Header("Cache-Control", "private, no-store")
+  @Get("website-payments")
+  websitePayments(@Req() r: AuthRequest) {
+    return this.service.websitePayments(r.actor);
+  }
+  @Header("Cache-Control", "private, no-store")
+  @Post("website-payments")
+  saveWebsitePayments(@Req() r: AuthRequest, @Body() body: unknown) {
+    return this.service.saveWebsitePayments(r.actor, body);
   }
   @Get("overview") overview(@Req() r: AuthRequest, @Query() q: unknown) {
     return this.service.overview(r.actor, q);

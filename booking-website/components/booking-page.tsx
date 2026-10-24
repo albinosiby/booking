@@ -705,6 +705,20 @@ export function BookingPage({
                   }
                   onEdit={b.back}
                   onConfirm={b.confirm}
+                  paymentChoice={
+                    reviewQuote.payment
+                      ? {
+                          payment: reviewQuote.payment,
+                          currency: reviewQuote.currency,
+                          qrUrl: `${b.repository.url("payment-qr")}${b.repository.preview ? "&" : "?"}v=${reviewQuote.payment.version}`,
+                          percentage: b.paymentPercentage,
+                          transactionId: b.transactionId,
+                          locked: b.confirming || !!b.pending,
+                          onPercentage: b.setPaymentPercentage,
+                          onTransactionId: b.setTransactionId,
+                        }
+                      : undefined
+                  }
                 />
               )}
               {b.mode === "success" && confirmation && (

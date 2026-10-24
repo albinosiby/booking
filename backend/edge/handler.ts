@@ -447,6 +447,12 @@ export function createHandler(
     b.editCustomer(i.actor, i.params.id, i.body),
   );
   add("GET", "/v1/accounts/catalog", (i) => a.catalog(i.actor));
+  add("GET", "/v1/accounts/website-payments", (i) =>
+    a.websitePayments(i.actor),
+  );
+  add("POST", "/v1/accounts/website-payments", (i) =>
+    a.saveWebsitePayments(i.actor, i.body),
+  );
   add("GET", "/v1/accounts/overview", (i) => a.overview(i.actor, i.query));
   add("GET", "/v1/accounts/transactions", (i) =>
     a.transactions(i.actor, i.query),
@@ -648,7 +654,7 @@ export function createHandler(
           })),
         );
       const publicWebsite =
-        /^\/public\/v1\/sites\/([^/]+)(?:\/(catalog|logo|images\/[a-f0-9-]{36}|availability|quote|bookings))?$/.exec(
+        /^\/public\/v1\/sites\/([^/]+)(?:\/(catalog|logo|payment-qr|images\/[a-f0-9-]{36}|availability|quote|bookings))?$/.exec(
           path,
         );
       if (publicWebsite) {
@@ -657,6 +663,15 @@ export function createHandler(
         const preview = url.searchParams.get("preview") ?? undefined;
         if (req.method === "GET" && operation === "catalog")
           return respond(await services.website.catalog(slug, preview));
+        if (req.method === "GET" && operation === "payment-qr") {
+          const image = await services.website.paymentQr(
+            slug,
+            preview,
+            url.searchParams.get("v") ?? undefined,
+          );
+          headers.set("Content-Type", image.content_type);
+          return new Response(new Uint8Array(image.data), { headers });
+        }
         if (req.method === "GET" && operation.startsWith("images/")) {
           const image = await services.website.image(
             slug,

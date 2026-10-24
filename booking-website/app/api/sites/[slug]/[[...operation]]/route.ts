@@ -10,7 +10,7 @@ async function dispatch(request: NextRequest, context: Context) {
     slug.length > 80 ||
     (request.method === "GET"
       ? !(
-          ["", "catalog", "logo"].includes(operation) ||
+          ["", "catalog", "logo", "payment-qr"].includes(operation) ||
           /^images\/[a-f0-9-]{36}$/.test(operation)
         )
       : !["availability", "quote", "bookings"].includes(operation))
@@ -63,7 +63,17 @@ async function dispatch(request: NextRequest, context: Context) {
     body = new TextDecoder().decode(bytes);
   }
   try {
-    const upstream = await fetch(bookingApiUrl(slug, operation, preview), {
+    const upstreamUrl = new URL(bookingApiUrl(slug, operation, preview));
+    const paymentVersion = request.nextUrl.searchParams.get("v");
+    if (operation === "payment-qr" && paymentVersion) {
+      if (!/^[1-9][0-9]{0,9}$/.test(paymentVersion))
+        return Response.json(
+          { message: "Invalid payment version." },
+          { status: 400 },
+        );
+      upstreamUrl.searchParams.set("v", paymentVersion);
+    }
+    const upstream = await fetch(upstreamUrl, {
       method: request.method,
       headers: {
         ...bookingHeaders(),

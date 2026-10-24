@@ -1,5 +1,9 @@
 # Accounts module
 
+## Website UPI details
+
+Profile → Accounts & payments now includes an owner-only Website payment details card, with a UPI ID field and QR upload/preview/replace/remove actions. Explicit saving persists both through the accounts API; only raster images up to 1 MB are accepted. These are public checkout instructions, not bank credentials or verified receipt of money. See [UPI checkout and migration instructions](public-booking-website.md#upi-checkout-and-per-space-advance-collection) before deploying. The new migration is prepared but must be applied by the user; no live schema or payment records were changed.
+
 Payments navigation now opens Accounts. The dashboard shows today's booking collections, selected-period income, expenses, net cash flow, outstanding booking dues, income by payment method, period growth, organization account balances, and recent activity. Business and space filters apply to activity and financial totals. Recorded account balances are always labeled as organization-wide.
 
 ## Entry points
