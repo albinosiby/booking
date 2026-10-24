@@ -144,6 +144,18 @@ export class WorkspaceController {
   ) {
     return this.service.revoke(r.actor, id, true);
   }
+  @Delete("team/:id/permanent") deleteTeamRecord(
+    @Req() r: AuthRequest,
+    @Param("id") id: string,
+  ) {
+    return this.service.deleteTeamRecord(r.actor, id, false);
+  }
+  @Delete("invitations/:id/permanent") deleteInvitationRecord(
+    @Req() r: AuthRequest,
+    @Param("id") id: string,
+  ) {
+    return this.service.deleteTeamRecord(r.actor, id, true);
+  }
   @Delete("team/:id") revoke(
     @Req() r: AuthRequest,
     @Param("id", ParseUUIDPipe) id: string,

@@ -1,3 +1,4 @@
+import '../models/team_deletion_target.dart';
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../workspace/repositories/refreshable_reads.dart';
@@ -101,6 +102,44 @@ class TeamCubit extends Cubit<TeamState> {
           : 'Member removed. History preserved.';
     },
   );
+
+  Future<void> deletePermanently(TeamDeletionTarget target) async {
+    final records = target.invitation ? state.invitations : state.members;
+    final matches = records.where((r) => r['id'] == target.id);
+    if (matches.isEmpty) return;
+    final current = target.invitation
+        ? TeamDeletionTarget.invitation(matches.first)
+        : TeamDeletionTarget.member(matches.first);
+    if (!current.eligible) return;
+    await _mutate(() async {
+      await repository.deletePermanently(
+        current.id,
+        invitation: current.invitation,
+      );
+      if (!isClosed) {
+        emit(
+          TeamState(
+            loading: false,
+            busy: true,
+            members: List.unmodifiable(
+              state.members.where(
+                (m) => current.invitation || m['id'] != current.id,
+              ),
+            ),
+            invitations: List.unmodifiable(
+              state.invitations.where(
+                (i) => current.invitation
+                    ? i['id'] != current.id
+                    : (i['email'] as String? ?? '').toLowerCase() !=
+                          current.email.toLowerCase(),
+              ),
+            ),
+          ),
+        );
+      }
+      return 'Team record deleted permanently. Login account and history kept.';
+    });
+  }
 
   Future<void> resendEmail(String id) => _mutate(() async {
     final result = await repository.resendEmail(id);

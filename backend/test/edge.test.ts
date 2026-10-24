@@ -372,7 +372,7 @@ test("public health exposes a revision for deployment verification without accou
   assert.deepEqual(await response.json(), {
     status: "ok",
     runtime: "supabase-edge",
-    revision: "2026-10-24-staff-removal",
+    revision: "2026-10-24-permanent-team-deletion",
   });
 });
 
@@ -599,4 +599,25 @@ test("Edge device registration verifies user auth; cleanup uses only installatio
     200,
   );
   assert.equal(f.calls.at(-1).method, "revokeInstallation");
+});
+
+test("permanent team routes authenticate and keep invitation/member deletion distinct", async () => {
+  const f = fixture();
+  assert.equal(
+    (await f.request(`/v1/team/${id}/permanent`, "DELETE", undefined, null))
+      .status,
+    401,
+  );
+  assert.equal(f.calls.length, 0);
+  assert.equal(
+    (await f.request(`/v1/team/${id}/permanent`, "DELETE")).status,
+    200,
+  );
+  assert.equal(f.calls.at(-1).method, "deleteTeamRecord");
+  assert.equal(f.calls.at(-1).args[2], false);
+  assert.equal(
+    (await f.request(`/v1/invitations/${id}/permanent`, "DELETE")).status,
+    200,
+  );
+  assert.equal(f.calls.at(-1).args[2], true);
 });

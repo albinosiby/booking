@@ -585,4 +585,202 @@ test("removing a manager clears grants and coaching while preserving their histo
     ).rows.length,
     1,
   );
+  // Keep real admission attendance and support history through permanent deletion.
+  const admissionId = randomUUID(),
+    ticketId = randomUUID();
+  await db.query(
+    "INSERT INTO admissions(id,organization_id,business_id,resource_id,customer_id,reference,plan_id,plan_snapshot,customer_snapshot,timezone,mode,starts_on,expires_on,allowance,total_minor,schedule,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,'{}','{}','UTC','fixed','2030-06-04','2030-07-04',25,50000,'{}',$8)",
+    [
+      admissionId,
+      orgId,
+      id,
+      resource.id,
+      customerId,
+      randomUUID(),
+      randomUUID(),
+      manager.uid,
+    ],
+  );
+  await db.query(
+    "UPDATE bookings SET admission_id=$1,admission_attendance='present' WHERE id=$2",
+    [admissionId, bookingId],
+  );
+  await db.query(
+    "INSERT INTO support_tickets(id,organization_id,membership_id,subject) VALUES($1,$2,$3,'Attendance question')",
+    [ticketId, orgId, memberId],
+  );
+  await db.query(
+    "INSERT INTO support_messages(id,ticket_id,author,author_name,body) VALUES($1,$2,'user','Coach manager','Please check my class.')",
+    [randomUUID(), ticketId],
+  );
+  // A later explicit grant must be cancelled before the old identity is purged.
+  await db.query("UPDATE invitations SET revoked_at=NULL WHERE id=$1", [
+    pendingId,
+  ]);
+  await assert.rejects(() => service.deleteTeamRecord(owner, memberId, false));
+  await db.query("UPDATE invitations SET revoked_at=now() WHERE id=$1", [
+    pendingId,
+  ]);
+  await assert.rejects(() =>
+    service.deleteTeamRecord(manager, memberId, false),
+  );
+  await assert.rejects(() =>
+    service.deleteTeamRecord(other.owner, memberId, false),
+  );
+  await assert.rejects(() =>
+    service.deleteTeamRecord(owner, ownerMembership, false),
+  );
+  const acceptedId = (
+    await db.query<any>(
+      "SELECT id FROM invitations WHERE organization_id=$1 AND email=$2 AND accepted_at IS NOT NULL",
+      [orgId, manager.email],
+    )
+  ).rows[0].id;
+  await assert.rejects(() => service.deleteTeamRecord(owner, acceptedId, true));
+  await service.deleteTeamRecord(owner, memberId, false);
+  assert.equal(
+    (await db.query("SELECT id FROM memberships WHERE id=$1", [memberId])).rows
+      .length,
+    0,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT id FROM invitations WHERE organization_id=$1 AND email=$2",
+        [orgId, manager.email],
+      )
+    ).rows.length,
+    0,
+  );
+  assert.equal(
+    (
+      await db.query<any>(
+        "SELECT created_by,admission_attendance FROM bookings WHERE id=$1",
+        [bookingId],
+      )
+    ).rows[0].admission_attendance,
+    "present",
+  );
+  assert.equal(
+    (
+      await db.query<any>("SELECT created_by FROM admissions WHERE id=$1", [
+        admissionId,
+      ])
+    ).rows[0].created_by,
+    manager.uid,
+  );
+  assert.equal(
+    (
+      await db.query<any>(
+        "SELECT recorded_by FROM booking_payments WHERE id=$1",
+        [paymentId],
+      )
+    ).rows[0].recorded_by,
+    manager.uid,
+  );
+  assert.equal(
+    (
+      await db.query<any>("SELECT actor_id FROM booking_history WHERE id=$1", [
+        historyId,
+      ])
+    ).rows[0].actor_id,
+    manager.uid,
+  );
+  const ticket = (
+    await db.query<any>(
+      "SELECT organization_id,membership_id FROM support_tickets WHERE id=$1",
+      [ticketId],
+    )
+  ).rows[0];
+  assert.equal(ticket.organization_id, orgId);
+  assert.equal(ticket.membership_id, null);
+  assert.equal(
+    (
+      await db.query("SELECT id FROM support_messages WHERE ticket_id=$1", [
+        ticketId,
+      ])
+    ).rows.length,
+    1,
+  );
+  assert.equal((await service.workspace(manager)).membership, null);
+});
+
+test("only cancelled invitations can be permanently deleted by their organization owner", async () => {
+  const f = await fixture(),
+    other = await fixture(),
+    person = actor();
+  const invitation = await service.invite(f.owner, {
+    email: person.email,
+    display_name: "Pending person",
+    role: "staff",
+    permissions: [],
+    assignments: [{ business_id: f.id, resource_ids: [] }],
+  });
+  await assert.rejects(() =>
+    service.deleteTeamRecord(f.owner, invitation.id, true),
+  );
+  await service.revoke(f.owner, invitation.id, true);
+  await assert.rejects(() =>
+    service.deleteTeamRecord(other.owner, invitation.id, true),
+  );
+  await service.deleteTeamRecord(f.owner, invitation.id, true);
+  assert.equal(
+    (await db.query("SELECT id FROM invitations WHERE id=$1", [invitation.id]))
+      .rows.length,
+    0,
+  );
+  const active = (await service.workspace(f.owner)).membership;
+  await assert.rejects(() =>
+    service.deleteTeamRecord(f.owner, active.id, false),
+  );
+});
+
+test("permanent deletion rolls back all cleanup when another protected record references the member", async () => {
+  const f = await fixture(),
+    staff = actor();
+  const grant = await service.invite(f.owner, {
+    email: staff.email,
+    display_name: "Former staff",
+    role: "staff",
+    permissions: [],
+    assignments: [{ business_id: f.id, resource_ids: [] }],
+  });
+  await service.accept(
+    staff,
+    new URL(grant.invitation_url).searchParams.get("token")!,
+  );
+  const snapshot = await service.workspace(staff),
+    memberId = snapshot.membership.id;
+  await service.revoke(f.owner, memberId, false);
+  // Unrelated service records are never cascaded away by team deletion.
+  await db.query(
+    "INSERT INTO agent_call_requests(id,organization_id,membership_id) VALUES($1,$2,$3)",
+    [randomUUID(), snapshot.organization.id, memberId],
+  );
+  await assert.rejects(
+    () => service.deleteTeamRecord(f.owner, memberId, false),
+    /Other protected records/,
+  );
+  assert.equal(
+    (await db.query("SELECT id FROM memberships WHERE id=$1", [memberId])).rows
+      .length,
+    1,
+  );
+  assert.equal(
+    (await db.query("SELECT id FROM invitations WHERE id=$1", [grant.id])).rows
+      .length,
+    1,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT id FROM audit_events WHERE entity_id=$1 AND action='staff.permanently_deleted'",
+        [memberId],
+      )
+    ).rows.length,
+    0,
+  );
+  await assert.rejects(() =>
+    service.deleteTeamRecord(f.owner, "not-a-uuid", false),
+  );
 });

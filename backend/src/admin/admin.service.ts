@@ -246,10 +246,10 @@ export class AdminService {
     const status = ticketStatus.safeParse(query.status);
     const { rows } = await this.db.query(
       `SELECT t.id,t.subject,t.category,t.status,t.created_at,t.updated_at,t.organization_id,
-        o.name AS organization_name,m.email AS user_email,m.display_name AS user_name
+        o.name AS organization_name,COALESCE(m.email,'') AS user_email,COALESCE(m.display_name,'Removed team member') AS user_name
        FROM support_tickets t
        JOIN organizations o ON o.id=t.organization_id
-       JOIN memberships m ON m.id=t.membership_id
+       LEFT JOIN memberships m ON m.id=t.membership_id AND m.organization_id=t.organization_id
        WHERE ($1::text IS NULL OR t.status=$1)
        ORDER BY t.updated_at DESC LIMIT $2`,
       [status.success ? status.data : null, page(query.limit)],
@@ -262,10 +262,10 @@ export class AdminService {
     const tid = id(ticketId);
     const { rows } = await this.db.query(
       `SELECT t.id,t.subject,t.category,t.status,t.created_at,t.updated_at,t.organization_id,
-        o.name AS organization_name,m.email AS user_email,m.display_name AS user_name
+        o.name AS organization_name,COALESCE(m.email,'') AS user_email,COALESCE(m.display_name,'Removed team member') AS user_name
        FROM support_tickets t
        JOIN organizations o ON o.id=t.organization_id
-       JOIN memberships m ON m.id=t.membership_id WHERE t.id=$1`,
+       LEFT JOIN memberships m ON m.id=t.membership_id AND m.organization_id=t.organization_id WHERE t.id=$1`,
       [tid],
     );
     if (!rows[0]) throw new NotFoundException("Ticket not found.");

@@ -797,6 +797,9 @@ export class WorkspaceService {
     const v = invitationSchema.parse(input);
     return this.db.transaction(async (db) => {
       const m = await this.member(actor, true, db);
+      await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `team-email:${v.email.toLowerCase()}`,
+      ]);
       await this.validateAssignments(db, m.organization_id, v.assignments);
       if (
         (
@@ -840,6 +843,9 @@ export class WorkspaceService {
     if (!/^[a-f0-9]{64}$/.test(token))
       throw new BadRequestException("Invalid invitation.");
     return this.db.transaction(async (db) => {
+      await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `team-email:${actor.email.toLowerCase()}`,
+      ]);
       const i = (
         await db.query<Row>(
           "SELECT * FROM invitations WHERE token_hash=$1 AND revoked_at IS NULL AND accepted_at IS NULL AND expires_at>now() FOR UPDATE",
@@ -963,6 +969,98 @@ export class WorkspaceService {
       return { id, released: await releaseCoachPlans(db, m.organization_id) };
     });
   }
+  /** Delete only inactive team identities/cancelled invitations, never Auth or history. */
+  async deleteTeamRecord(actor: Actor, id: string, invitation: boolean) {
+    z.uuid().parse(id);
+    try {
+      return await this.db.transaction(async (db) => {
+        const owner = await this.member(actor, true, db);
+        const table = invitation ? "invitations" : "memberships";
+        const identity = (
+          await db.query<Row>(
+            `SELECT email FROM ${table} WHERE id=$1 AND organization_id=$2`,
+            [id, owner.organization_id],
+          )
+        ).rows[0];
+        if (!identity)
+          throw new NotFoundException(
+            "Team record not found. Refresh your team.",
+          );
+        // Match email-grant/claim lock order before locking a membership row.
+        await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+          `team-email:${identity.email.toLowerCase()}`,
+        ]);
+        const record = (
+          await db.query<Row>(
+            `SELECT * FROM ${table} WHERE id=$1 AND organization_id=$2 FOR UPDATE`,
+            [id, owner.organization_id],
+          )
+        ).rows[0];
+        if (!record)
+          throw new NotFoundException(
+            "Team record not found. Refresh your team.",
+          );
+        if (invitation) {
+          if (!record.revoked_at || record.accepted_at)
+            throw new ConflictException(
+              "Only cancelled, unaccepted invitations can be deleted permanently.",
+            );
+          await db.query(
+            "DELETE FROM invitations WHERE id=$1 AND organization_id=$2",
+            [id, owner.organization_id],
+          );
+        } else {
+          if (
+            record.active ||
+            !["staff", "manager"].includes(record.role) ||
+            record.user_id.startsWith("sarvam:") ||
+            record.id === owner.id
+          )
+            throw new ConflictException(
+              "Only removed staff or managers can be deleted permanently.",
+            );
+          const pending = await db.query(
+            "SELECT id FROM invitations WHERE organization_id=$1 AND lower(email)=$2 AND revoked_at IS NULL AND accepted_at IS NULL",
+            [owner.organization_id, record.email.toLowerCase()],
+          );
+          if (pending.rows.length)
+            throw new ConflictException(
+              "Cancel this person's pending access before deleting their team record.",
+            );
+          await releaseCoachPlans(db, owner.organization_id);
+          await db.query(
+            "DELETE FROM staff_assignments WHERE membership_id=$1 AND organization_id=$2",
+            [id, owner.organization_id],
+          );
+          await db.query(
+            "DELETE FROM invitations WHERE organization_id=$1 AND lower(email)=$2",
+            [owner.organization_id, record.email.toLowerCase()],
+          );
+          await db.query(
+            "DELETE FROM memberships WHERE id=$1 AND organization_id=$2 AND active=false",
+            [id, owner.organization_id],
+          );
+        }
+        await this.audit(
+          db,
+          actor,
+          owner.organization_id,
+          invitation
+            ? "invitation.permanently_deleted"
+            : "staff.permanently_deleted",
+          id,
+        );
+        return { id, deleted: true };
+      });
+    } catch (error) {
+      if ((error as { code?: string })?.code === "23503")
+        throw new ConflictException(
+          "Other protected records still reference this member. No records were deleted. Contact support.",
+        );
+      throw error;
+    }
+  }
+
   async updateMember(actor: Actor, id: string, input: unknown) {
     const v = invitationSchema.parse(input);
     return this.db.transaction(async (db) => {

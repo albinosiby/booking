@@ -1,3 +1,4 @@
+import '../models/team_deletion_target.dart';
 import '../models/team_removal_target.dart';
 import '../widgets/team_removal_dialog.dart';
 import 'package:flutter/material.dart';
@@ -39,6 +40,23 @@ class _TeamScreenState extends State<TeamScreen> {
       await cubit.revoke(target.id);
     }
   }
+
+  Future<void> deletePermanently(TeamDeletionTarget target) async {
+    if (!target.eligible || cubit.state.busy) return;
+    if (await confirmTeamDeletion(context, target) && mounted) {
+      await cubit.deletePermanently(target);
+    }
+  }
+
+  Widget deleteButton(TeamState state, TeamDeletionTarget target) =>
+      TextButton.icon(
+        onPressed: state.busy ? null : () => deletePermanently(target),
+        style: TextButton.styleFrom(
+          foregroundColor: Theme.of(context).colorScheme.error,
+        ),
+        icon: const Icon(Icons.delete_forever_outlined, size: 18),
+        label: const Text('Delete permanently'),
+      );
 
   Future<void> cancelInvitation(Map<String, dynamic> invitation) async {
     if (await confirmAction(
@@ -99,6 +117,8 @@ class _TeamScreenState extends State<TeamScreen> {
             )
           : null,
       actions: [
+        if (TeamDeletionTarget.member(member).eligible)
+          deleteButton(s, TeamDeletionTarget.member(member)),
         if (!owner && active)
           TextButton.icon(
             onPressed: s.busy ? null : () => remove(member),
@@ -177,6 +197,8 @@ class _TeamScreenState extends State<TeamScreen> {
             )
           : null,
       actions: [
+        if (TeamDeletionTarget.invitation(invitation).eligible)
+          deleteButton(s, TeamDeletionTarget.invitation(invitation)),
         if (pending)
           TextButton.icon(
             onPressed: s.busy ? null : () => cancelInvitation(invitation),

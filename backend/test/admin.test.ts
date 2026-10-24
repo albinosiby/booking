@@ -119,3 +119,16 @@ test("admin sees organizations, tickets and agent requests", async () => {
   const audit = (await service.auditLog(admin, {})) as { events: unknown[] };
   assert.equal(audit.events.length, 2);
 });
+
+test("support records without a deleted team identity remain available to admins", async () => {
+  const organization = (await workspace.workspace(owner)).organization;
+  const ticketId = randomUUID();
+  await db.query(
+    "INSERT INTO support_tickets(id,organization_id,membership_id,subject) VALUES($1,$2,NULL,'Former member question')",
+    [ticketId, organization.id],
+  );
+  const listed = await service.tickets(admin, {});
+  assert.ok(listed.tickets.some((t: any) => t.id === ticketId));
+  const detail = await service.ticket(admin, ticketId);
+  assert.equal((detail.ticket as any).user_name, "Removed team member");
+});

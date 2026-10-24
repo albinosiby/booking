@@ -12,7 +12,7 @@ The server rejects removed members immediately. Their open app clears restricted
 
 ## Migration
 
-**No database migration is required.** This uses the existing membership active flag, staff assignments, invitations, coaching configuration and audit tables. Do not delete membership, booking, payment or attendance rows manually.
+**Access removal itself needs no database migration.** The current codebase also includes permanent deletion: apply its [required migration](permanent-team-deletion.md) before deploying the latest API. Access removal uses the existing membership active flag, staff assignments, invitations, coaching configuration and audit tables. Do not delete membership, booking, payment or attendance rows manually.
 
 ## API deployment
 
@@ -29,7 +29,7 @@ npx supabase functions deploy booking-api --project-ref scwwkaywewecspsrskft --u
 curl -i "https://scwwkaywewecspsrskft.supabase.co/functions/v1/booking-api/health"
 ```
 
-Prerequisites: use the existing Node/npm setup, sign the Supabase CLI into the project-owning account, and keep the existing BOOKING_DATABASE_URL/CA secrets. The function already verifies Supabase Auth internally; the existing gateway configuration is unchanged. Health should return revision `2026-10-24-staff-removal`. No APK is built or installed by these steps.
+Prerequisites: use the existing Node/npm setup, sign the Supabase CLI into the project-owning account, and keep the existing BOOKING_DATABASE_URL/CA secrets. The function already verifies Supabase Auth internally; the existing gateway configuration is unchanged. For the latest health revision, see the [permanent deletion deployment guide](permanent-team-deletion.md). No APK is built or installed by these steps.
 
 ## Validate
 

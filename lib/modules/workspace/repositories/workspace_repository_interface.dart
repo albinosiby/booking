@@ -24,6 +24,7 @@ abstract interface class WorkspaceRepository {
   Future<Map<String, dynamic>> resendTeamEmail(String id);
   Future<void> accept(String token);
   Future<void> revoke(String id, {bool invitation = false});
+  Future<void> deleteTeamRecord(String id, {bool invitation = false});
   Future<void> updateMember(String id, Map<String, dynamic> data);
 }
 

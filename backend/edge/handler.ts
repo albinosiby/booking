@@ -344,6 +344,12 @@ export function createHandler(
   add("DELETE", "/v1/invitations/:id", (i) =>
     w.revoke(i.actor, i.params.id, true),
   );
+  add("DELETE", "/v1/team/:id/permanent", (i) =>
+    w.deleteTeamRecord(i.actor, i.params.id, false),
+  );
+  add("DELETE", "/v1/invitations/:id/permanent", (i) =>
+    w.deleteTeamRecord(i.actor, i.params.id, true),
+  );
   add("DELETE", "/v1/team/:id", (i) => w.revoke(i.actor, i.params.id, false));
   add("PUT", "/v1/team/me/coach", (i) => w.ownerCoach(i.actor, i.body));
   add("PATCH", "/v1/businesses/:id/plan-coaches", (i) =>
@@ -592,7 +598,7 @@ export function createHandler(
         return respond({
           status: "ok",
           runtime: "supabase-edge",
-          revision: "2026-10-24-staff-removal",
+          revision: "2026-10-24-permanent-team-deletion",
         });
       }
       if (req.method === "GET" && path === "/v1/catalog")

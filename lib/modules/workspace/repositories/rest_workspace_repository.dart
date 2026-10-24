@@ -181,6 +181,14 @@ class RestWorkspaceRepository
   }
 
   @override
+  Future<void> deleteTeamRecord(String id, {bool invitation = false}) async {
+    await api.request(
+      '${invitation ? ApiPath.invitations : ApiPath.team}/$id/permanent',
+      method: 'DELETE',
+    );
+  }
+
+  @override
   Future<void> updateMember(String id, Map<String, dynamic> data) async {
     await api.request('${ApiPath.team}/$id', method: 'PATCH', data: data);
   }

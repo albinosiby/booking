@@ -12,6 +12,7 @@ abstract interface class TeamRepository {
   Future<void> update(String id, StaffAccessDraft draft);
   Future<void> accept(String token);
   Future<void> revoke(String id, {bool invitation = false});
+  Future<void> deletePermanently(String id, {bool invitation = false});
 }
 
 class LocalApiTeamRepository implements TeamRepository, RetainedReadEvents {
@@ -51,6 +52,9 @@ class LocalApiTeamRepository implements TeamRepository, RetainedReadEvents {
       source.updateMember(id, draft.toJson());
   @override
   Future<void> accept(String token) => source.accept(token);
+  @override
+  Future<void> deletePermanently(String id, {bool invitation = false}) =>
+      source.deleteTeamRecord(id, invitation: invitation);
   @override
   Future<void> revoke(String id, {bool invitation = false}) =>
       source.revoke(id, invitation: invitation);
