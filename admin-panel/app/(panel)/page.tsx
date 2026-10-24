@@ -3,6 +3,7 @@ import { admin } from "../../lib/api";
 import { date } from "../../lib/format";
 import { Icon, type IconName } from "../../components/icon";
 import { EmptyState } from "../../components/ui";
+import { overviewTotals, type OverviewTotals } from "../../lib/overview";
 
 type Organization = {
   id: string;
@@ -14,12 +15,13 @@ type Organization = {
 const number = (value: number) => new Intl.NumberFormat("en-IN").format(value);
 
 export default async function Overview() {
-  const [o, { organizations }] = await Promise.all([
-    admin<Record<string, number>>("/overview"),
+  const [response, { organizations }] = await Promise.all([
+    admin<unknown>("/overview"),
     admin<{ organizations: Organization[] }>("/organizations?limit=5"),
   ]);
+  const o = overviewTotals(response);
   const stats: {
-    key: string;
+    key: keyof OverviewTotals;
     label: string;
     icon: IconName;
     note: string;
@@ -67,7 +69,7 @@ export default async function Overview() {
           <p className="sub">Platform-wide totals, all in one place.</p>
         </div>
         <span className="snapshot">
-          <span /> Current snapshot
+          <span /> Loaded {date(new Date().toISOString())}
         </span>
       </div>
       <div className="metric-grid">
@@ -79,7 +81,7 @@ export default async function Overview() {
                 <Icon name={stat.icon} />
               </span>
             </div>
-            <strong>{number(o[stat.key] ?? 0)}</strong>
+            <strong>{number(o[stat.key])}</strong>
             <p>
               <span className="metric-note-dot" />
               {stat.note}

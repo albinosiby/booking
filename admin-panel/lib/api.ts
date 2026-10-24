@@ -5,21 +5,10 @@ import { SESSION_COOKIE } from "./session-name";
 import { validSession } from "./session-token";
 import { signAdminRequest } from "./request-signature";
 import { adminRedirectUrl } from "./redirect-url";
+import { configuredApiBase } from "./api-origin";
 
 export function apiBase() {
-  const base = new URL(
-    process.env.BOOKING_API_BASE_URL ??
-      "https://scwwkaywewecspsrskft.supabase.co/functions/v1/booking-api",
-  );
-  if (
-    base.protocol !== "https:" &&
-    !(
-      base.protocol === "http:" &&
-      ["localhost", "127.0.0.1"].includes(base.hostname)
-    )
-  )
-    throw new Error("Booking API must use HTTPS");
-  return base.toString().replace(/\/$/, "");
+  return configuredApiBase(process.env.BOOKING_API_BASE_URL);
 }
 
 export class ApiError extends Error {

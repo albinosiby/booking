@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useRef, useState } from "react";
 import { signOut } from "../app/actions";
 import { Brand, Icon, type IconName } from "./icon";
+import { RefreshData } from "./refresh-data";
 
 const links: { href: string; label: string; icon: IconName; group: string }[] =
   [
@@ -73,6 +74,7 @@ export function AdminShell({
                   <Link
                     key={link.href}
                     href={link.href}
+                    prefetch={false}
                     className={`nav-link ${active.href === link.href ? "is-active" : ""}`}
                     aria-current={
                       active.href === link.href ? "page" : undefined
@@ -100,7 +102,7 @@ export function AdminShell({
             </div>
           </div>
           <div className="profile">
-            <span className="avatar">TA</span>
+            <span className="avatar"><Icon name="lock" size={18} /></span>
             <div>
               <b>Platform admin</b>
               <small>{role.replaceAll("_", " ")}</small>
@@ -151,12 +153,13 @@ export function AdminShell({
             <span className="breadcrumb-current">{active.label}</span>
           </div>
           <div className="topbar-right">
+            <RefreshData />
             <a href="/" target="_blank" rel="noreferrer" className="site-link">
               Public website <Icon name="external" size={15} />
             </a>
             <span className="topbar-divider" />
             <span className="topbar-avatar" title="Platform admin">
-              TA
+              <Icon name="lock" size={18} />
             </span>
           </div>
         </header>

@@ -1,0 +1,326 @@
+{
+  "project": "scwwkaywewecspsrskft",
+  "observedAt": "2026-10-24T08:59:44.056Z",
+  "readOnly": true,
+  "totals": {
+    "organizations": 53,
+    "users": 59,
+    "active_users": 54,
+    "businesses": 58,
+    "bookings": 20
+  },
+  "latestOrganizationNames": [
+    "Eden Booking QA",
+    "Eden Booking QA",
+    "Eden Booking QA",
+    "Eden Booking QA",
+    "Eden Booking QA"
+  ],
+  "organizationGroups": [
+    {
+      "name": "Eden’s Area",
+      "organizations": 34,
+      "owner_domains": [
+        "example.com"
+      ],
+      "qa_owner_organizations": 0
+    },
+    {
+      "name": "Eden Booking QA",
+      "organizations": 13,
+      "owner_domains": [
+        "example.com"
+      ],
+      "qa_owner_organizations": 0
+    },
+    {
+      "name": "QA first-module organization",
+      "organizations": 4,
+      "owner_domains": [
+        "example.com"
+      ],
+      "qa_owner_organizations": 4
+    },
+    {
+      "name": "JK Group",
+      "organizations": 1,
+      "owner_domains": [
+        "gmail.com"
+      ],
+      "qa_owner_organizations": 0
+    },
+    {
+      "name": "RK Groups",
+      "organizations": 1,
+      "owner_domains": [
+        "gmail.com"
+      ],
+      "qa_owner_organizations": 0
+    }
+  ],
+  "cleanupPreview": {
+    "organizations": 51,
+    "memberships": 55,
+    "non_fixture_domain_memberships": 0,
+    "businesses": 50,
+    "bookings": 13,
+    "customers": 13
+  },
+  "candidateOrganizations": [
+    {
+      "id": "be9aa31b-385c-4f97-be40-f7bd955e67ce",
+      "name": "QA first-module organization",
+      "created_at": "2026-10-14T04:43:47.779Z"
+    },
+    {
+      "id": "222c1b8f-de69-4f0f-bac8-20b1142d9444",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T05:00:36.088Z"
+    },
+    {
+      "id": "840db572-76bc-4cf5-a2d8-651529931286",
+      "name": "QA first-module organization",
+      "created_at": "2026-10-14T05:15:20.293Z"
+    },
+    {
+      "id": "f9a0cd49-d589-496d-ad14-94334f9b5cc6",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T05:16:06.220Z"
+    },
+    {
+      "id": "1ed0fdac-4b58-46fa-843d-6f369acd284e",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T05:27:52.013Z"
+    },
+    {
+      "id": "314719bd-bfc7-4a71-a225-a7332177837b",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T05:31:18.761Z"
+    },
+    {
+      "id": "fd4a64d0-3fbd-4e12-a833-cc9ce3e8ef6f",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T06:45:18.383Z"
+    },
+    {
+      "id": "5009be0b-f7f8-47c2-b5a5-c1a2ec7b067b",
+      "name": "QA first-module organization",
+      "created_at": "2026-10-14T06:45:36.652Z"
+    },
+    {
+      "id": "33982411-5541-4f76-8931-faf95bb499ca",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T07:40:47.635Z"
+    },
+    {
+      "id": "0561aab6-bad6-43d7-b24c-e59b86b6cf49",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T08:21:19.937Z"
+    },
+    {
+      "id": "18a1d1ec-19ca-4285-bef5-bd1b78570410",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T08:49:32.103Z"
+    },
+    {
+      "id": "c2d6a08e-0c8f-4e07-8004-f0d24b2d3ada",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T09:00:07.489Z"
+    },
+    {
+      "id": "d90dc6a9-def2-4704-bed5-f3c6059653e1",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T09:01:49.866Z"
+    },
+    {
+      "id": "90035c24-21b2-4b43-9b78-b640d7330b27",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T09:43:44.746Z"
+    },
+    {
+      "id": "1019b750-5d15-43b3-990b-204765545e8f",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T09:52:15.047Z"
+    },
+    {
+      "id": "ae52c7a8-aeaa-4b6e-a313-c6490aa528a1",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T10:41:53.590Z"
+    },
+    {
+      "id": "5adf0795-d36d-48cc-8761-0bdf8a5610b0",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T10:43:13.131Z"
+    },
+    {
+      "id": "015e664d-af41-4353-881f-9c22e69c6cfc",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T10:44:25.394Z"
+    },
+    {
+      "id": "3b295e45-4624-4704-a377-9493077854c8",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T10:45:38.953Z"
+    },
+    {
+      "id": "fbbb7e4b-61da-4ccd-ac19-af14201e4334",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T10:47:05.090Z"
+    },
+    {
+      "id": "1cc3f73a-0642-43ea-87e3-b1bacef8dc5f",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T10:48:18.199Z"
+    },
+    {
+      "id": "0ec2a0e4-3391-4b3b-b929-28513eb3253b",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T11:02:17.448Z"
+    },
+    {
+      "id": "642bea81-900b-4245-b245-382fd88e322a",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T11:49:43.293Z"
+    },
+    {
+      "id": "bfee2963-78f5-45b2-ab8f-8ccd15eb7626",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T15:19:48.262Z"
+    },
+    {
+      "id": "94e98304-dd89-4a6c-88d6-86f66f257ec1",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T15:22:04.086Z"
+    },
+    {
+      "id": "d2646090-4505-436f-9c5c-6dd48f15e191",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T15:41:06.266Z"
+    },
+    {
+      "id": "ae03929f-ab0a-4e82-80a6-8b4d5520fdb1",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T15:50:19.954Z"
+    },
+    {
+      "id": "57db911d-d9f8-44b9-bccd-3d34346e66e5",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T17:17:23.456Z"
+    },
+    {
+      "id": "8967923d-e973-4205-a63a-27507131c88c",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T17:21:41.878Z"
+    },
+    {
+      "id": "4f27747c-7237-48c9-b6f5-7e298e98ec6f",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T17:28:50.767Z"
+    },
+    {
+      "id": "ca6dcbb9-492b-4507-878d-d3a5c18135d8",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-14T17:32:42.403Z"
+    },
+    {
+      "id": "230932e7-a037-44b2-baf2-33b67b9d4565",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-15T05:27:29.722Z"
+    },
+    {
+      "id": "9c0ef304-e7cd-4491-ae30-7ba8d27a6c69",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-15T05:55:27.125Z"
+    },
+    {
+      "id": "d6377bee-bd0e-4e92-89a9-74a36b17a4ee",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-15T05:56:57.668Z"
+    },
+    {
+      "id": "234a9daf-0ed0-43ac-a6d8-9756ee237bea",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-15T05:58:36.046Z"
+    },
+    {
+      "id": "e188d5f7-dfc1-4b09-9bf4-a272728bbd3e",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-15T07:01:55.951Z"
+    },
+    {
+      "id": "5a29a514-9afe-4c02-8bfb-84c1d6290e45",
+      "name": "Eden’s Area",
+      "created_at": "2026-10-15T07:05:03.536Z"
+    },
+    {
+      "id": "4f2d4bdb-9951-4138-9cb8-e128284c6da3",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T07:08:05.811Z"
+    },
+    {
+      "id": "045c6ca5-2125-44dc-bc70-98cd89f29846",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T07:15:54.747Z"
+    },
+    {
+      "id": "29d99002-cea3-48b0-a653-1112614f2065",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T07:18:00.280Z"
+    },
+    {
+      "id": "8beb99eb-8cff-4467-8ed9-952fd514f8fc",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T07:20:54.909Z"
+    },
+    {
+      "id": "be8dc796-fdc4-426a-af1f-dfb707cefeaa",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T07:22:03.963Z"
+    },
+    {
+      "id": "2d6f8f67-c15e-4f1f-844c-32f373aac5f1",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T07:23:34.179Z"
+    },
+    {
+      "id": "ce8ad307-f977-494a-851b-427057b28774",
+      "name": "QA first-module organization",
+      "created_at": "2026-10-15T08:03:02.169Z"
+    },
+    {
+      "id": "5367d852-9794-432c-b98e-b0205dfadea5",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T08:07:37.187Z"
+    },
+    {
+      "id": "5c55e05e-665d-429a-b49d-4961d3d85f64",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T11:29:02.699Z"
+    },
+    {
+      "id": "09887d42-eb34-4829-a8a6-9cd7eece392b",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T11:31:52.959Z"
+    },
+    {
+      "id": "72c6165e-d085-4830-9aa2-d12f147202f0",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T11:35:33.056Z"
+    },
+    {
+      "id": "e5b7a1b8-6360-42e0-869d-c4b135fa6a9c",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T11:36:05.447Z"
+    },
+    {
+      "id": "c17262cd-ecfd-4459-85d0-d108caea006d",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T11:37:40.607Z"
+    },
+    {
+      "id": "325ec356-7097-419e-b916-ea9c118fb918",
+      "name": "Eden Booking QA",
+      "created_at": "2026-10-15T11:58:40.975Z"
+    }
+  ]
+}

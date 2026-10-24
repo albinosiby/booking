@@ -65,45 +65,6 @@ export default function Login() {
         <span className="showcase-caption">
           <span /> YOUR PLATFORM. CONNECTED.
         </span>
-        <div className="showcase-art" aria-hidden="true">
-          <div className="showcase-window">
-            <div className="showcase-window-top">
-              <i />
-              <i />
-              <i />
-              <span />
-            </div>
-            <div className="showcase-window-content">
-              <div className="showcase-mini-nav">
-                <b />
-                <i />
-                <i />
-                <i />
-                <i />
-              </div>
-              <div className="showcase-mini-main">
-                <span className="mini-line" />
-                <div className="mini-cards">
-                  <i />
-                  <i />
-                  <i />
-                </div>
-                <div className="mini-table">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="showcase-float">
-            <span>
-              <Icon name="check" size={17} />
-            </span>
-            Everything in one place.
-          </div>
-        </div>
         <h2>
           One space.
           <br />A clearer perspective.

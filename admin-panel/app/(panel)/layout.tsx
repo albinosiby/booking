@@ -1,6 +1,8 @@
 import { admin } from "../../lib/api";
 import { AdminShell } from "../../components/admin-shell";
 
+export const dynamic = "force-dynamic";
+
 export default async function PanelLayout({
   children,
 }: {
