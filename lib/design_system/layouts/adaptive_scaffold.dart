@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../constants/asset_path.dart';
 import '../components/app_bottom_nav_bar.dart';
 import '../tokens/app_theme.dart';
 import 'responsive_builder.dart';
@@ -160,25 +161,14 @@ class _Brand extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final mark = Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.lime, AppColors.forest],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.lime.withValues(alpha: .35),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+    final mark = ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.asset(
+        AssetPath.bookingLogo,
+        width: 40,
+        height: 40,
+        semanticLabel: 'Booking OS',
       ),
-      child: const Icon(Icons.event_available_rounded, color: AppColors.ink),
     );
     if (!extended) return Center(child: mark);
     return Row(

@@ -12,9 +12,31 @@ deployment (`Edens-Sport-19c31e54-78be`). It has not been released or reassigned
 Created the separate agent `RK Groups BookingOS`, ID
 `RK-Groups-B-f5a78251-584d`, draft version 1, through the connected Codex MCP.
 Verified its inbound greeting and English initial language by reading them back.
-It currently has a holding prompt that explains booking setup is pending. It has
-no BookingOS HTTP tools, no committed version and no deployment. Do not publish
-this holding draft as a working booking agent.
+The later setup attempt saved the live-catalog variable, seven HTTP tool
+definitions, the RK Groups booking prompt including the call-only modification
+rule, call goal and voicemail message. The existing silence nudge is present.
+Tools are enabled in draft version 1, but authentication is not configured.
+There is no committed version or deployment. Do not publish this incomplete
+draft as a working booking agent.
+
+Sarvam MCP refuses attaching a workspace secret to this BookingOS backend URL
+because the URL is not in its server-managed allow-list. Its supported
+alternative is selecting the credential in the console. A staged secret named
+`bookingos_rk_9a80ffc3_f5a9` was created, but its generated value was never saved
+as a BookingOS tenant tool key and is not attached to any tool. Replace its
+value with the actual BookingOS-generated tool key before selecting it; simply
+selecting the staged secret would not authenticate to BookingOS.
+
+The console workspace switch was resolved: RK Groups BookingOS is visible in
+Thadevoos's Organisation. Before any further setup, the user explicitly chose
+to handle everything manually. All external setup work stopped. The number and
+old paused deployment remain unchanged; no live database writes, schema
+changes, commits, test calls or bookings were performed.
+
+The call-end tool uses the current Sarvam system variables
+`call_duration_seconds` and `interaction_transcript`. The corresponding local
+provisioning adapter and contract test were corrected. All seven adapter tests,
+backend build, Edge type check and Edge bundle passed.
 
 ## Backend enforcement prepared
 
@@ -50,14 +72,13 @@ old Edens Sports agent ID and no tenant tool key or saved phone/deployment.
    organization/workspace. Use the saved workspace API key without exposing it.
 3. Generate RK Groups' tenant tool key through the admin setup. Store it directly
    as a Sarvam workspace secret; do not commit or paste it into documentation.
-4. Configure `bookingos_spaces` and the six HTTP tools from
+4. Review the already-created `bookingos_spaces` and six HTTP tools from
    `backend/src/sarvam/sarvam-booking-config.ts`, plus the completion event tool
    from `sarvam-provisioning-remote.ts`. Bind caller phone and interaction ID to
    trusted Sarvam system context. Bind tool authentication to the tenant secret.
-5. Replace the holding prompt with the reviewed shared booking prompt, retaining
-   RK Groups identity. Configure call goal, silence nudges and voicemail as
-   supported by the workspace. Read back the prompt and tool definitions and
-   verify tenant scope before committing.
+5. Review the saved RK Groups prompt, goal, silence nudges and voicemail.
+   Read back the prompt and tool definitions, authenticate every HTTP tool with
+   the actual tenant tool key, and verify tenant scope before committing.
 6. Release the old paused deployment's number only when the new configuration is
    ready, retaining its prior configuration for recovery. Create the RK Groups
    inbound deployment using exactly `+918071582699`; record the returned

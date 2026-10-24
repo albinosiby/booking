@@ -76,6 +76,7 @@ COPY --from=booking-build --chown=node:node /build/booking-website/.next/standal
 COPY --from=booking-build --chown=node:node /build/booking-website/.next/static/ ./booking/.next/static/
 COPY --from=admin-build --chown=node:node /build/admin-panel/.next/standalone/ ./admin/
 COPY --from=admin-build --chown=node:node /build/admin-panel/.next/static/ ./admin/.next/static/
+COPY --from=admin-build --chown=node:node /build/admin-panel/public/ ./admin/public/
 COPY --chown=node:node deploy/start.mjs deploy/routing.mjs deploy/check-health.mjs deploy/nginx.conf.template deploy/proxy.conf deploy/security-headers.conf ./deploy/
 USER node
 EXPOSE 8080

@@ -9,6 +9,7 @@ export async function proxy(request: NextRequest) {
   if (
     pathname === "/login" ||
     pathname === "/healthz" ||
+    pathname === "/booking-os-logo.png" ||
     pathname.startsWith("/_next") ||
     (pathname === "/agent-requests/mcp/callback" && request.method === "GET")
   )

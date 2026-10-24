@@ -295,6 +295,20 @@ provider.http = async (url, init) => {
     value = { id: a.name };
   } else if (name === "configure_app_tool") {
     writes++;
+    if (a.connector_config.lifecycle === "on_end") {
+      const supported = new Set([
+        "interaction_id",
+        "user_identifier",
+        "call_duration_seconds",
+        "interaction_transcript",
+      ]);
+      for (const field of a.connector_config.body)
+        if (field.type === "system_variable")
+          assert.ok(
+            supported.has(field.value.variable_name),
+            "Unsupported Sarvam call-end context variable",
+          );
+    }
     assert.ok(!agents[a.agent_id].tools.some((t: Json) => t.name === a.name));
     agents[a.agent_id].tools.push({
       id: randomUUID(),

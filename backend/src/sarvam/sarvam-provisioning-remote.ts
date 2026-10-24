@@ -22,8 +22,8 @@ export function managedToolConfig(
     body: [
       ["interaction_id", "interaction_id"],
       ["caller_phone", "user_identifier"],
-      ["duration_seconds", "call_length"],
-      ["transcript", "call_transcript"],
+      ["duration_seconds", "call_duration_seconds"],
+      ["transcript", "interaction_transcript"],
     ].map(([name, variable_name]) => ({
       name,
       type: "system_variable",

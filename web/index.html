@@ -45,7 +45,7 @@
     }
     #splash .mark {
       width: 56px; height: 56px; border-radius: 16px;
-      background: linear-gradient(135deg, #5DD62C, #337418);
+      display: block; object-fit: contain;
       box-shadow: 0 10px 32px rgba(93, 214, 44, .35);
       animation: pulse 1.4s ease-in-out infinite;
     }
@@ -60,7 +60,7 @@
 </head>
 <body>
   <div id="splash" aria-label="Loading Booking OS">
-    <div class="mark"></div>
+    <img class="mark" src="icons/Icon-192.png" width="56" height="56" alt="" fetchpriority="high">
     <div>Booking OS</div>
     <div class="bar"></div>
   </div>
