@@ -21,6 +21,8 @@ import { AdmissionService } from "./admissions/admission.service";
 import { AdmissionController } from "./admissions/admission.controller";
 import { MessagesService } from "./messages/messages.service";
 import { SarvamService } from "./sarvam/sarvam.service";
+import { AdminSarvamService } from "./admin/admin-sarvam.service";
+import { AdminSarvamController } from "./admin/admin-sarvam.controller";
 import { VoiceService } from "./sarvam/voice.service";
 import {
   SarvamOAuthController,
@@ -61,6 +63,7 @@ import {
     NotificationController,
     NotificationInstallationController,
     AdminController,
+    AdminSarvamController,
     WebsiteSettingsController,
     PublicWebsiteController,
     SlotBlocksController,
@@ -86,6 +89,7 @@ import {
     NotificationService,
     AdminGuard,
     AdminService,
+    AdminSarvamService,
     SupportService,
     AgentCallService,
     WebsiteService,

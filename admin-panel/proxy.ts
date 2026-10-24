@@ -3,10 +3,15 @@ import { SESSION_COOKIE } from "./lib/session-name";
 import { validSession } from "./lib/session-token";
 import { applyRedirectOrigin } from "./lib/redirect-origin";
 
-/** Every page except /login needs a valid signed session cookie. */
+/** OAuth GET is only a no-store return form; its POST requires the admin session. */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (pathname === "/login" || pathname === "/healthz" || pathname.startsWith("/_next"))
+  if (
+    pathname === "/login" ||
+    pathname === "/healthz" ||
+    pathname.startsWith("/_next") ||
+    (pathname === "/agent-requests/mcp/callback" && request.method === "GET")
+  )
     return NextResponse.next();
   if (!(await validSession(request.cookies.get(SESSION_COOKIE)?.value))) {
     const url = request.nextUrl.clone();
@@ -22,4 +27,6 @@ export async function proxy(request: NextRequest) {
   }
   return NextResponse.next();
 }
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+};

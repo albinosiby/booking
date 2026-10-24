@@ -36,6 +36,7 @@ function fixture() {
     hall: service,
     agentCalls: service,
     admin: service,
+    adminSarvam: service,
   } as any;
   const handler = createHandler(
     services,
@@ -710,4 +711,55 @@ test("permanent team routes authenticate and keep invitation/member deletion dis
     200,
   );
   assert.equal(f.calls.at(-1).args[2], true);
+});
+
+test("Edge MCP management and provisioning accept only signed admin requests", async (t) => {
+  const f = fixture();
+  const previous = process.env.ADMIN_SESSION_SECRET;
+  process.env.ADMIN_SESSION_SECRET = "test-only-mcp-signing-secret-0123456789";
+  t.after(() => {
+    if (previous === undefined) delete process.env.ADMIN_SESSION_SECRET;
+    else process.env.ADMIN_SESSION_SECRET = previous;
+  });
+  for (const [path, method, body, target] of [
+    ["/v1/admin/sarvam", "GET", undefined, "status"],
+    ["/v1/admin/sarvam/connect", "POST", undefined, "connect"],
+    [
+      "/v1/admin/sarvam/callback",
+      "POST",
+      { state: "one-time", code: "code" },
+      "callback",
+    ],
+    ["/v1/admin/sarvam/inventory", "GET", undefined, "inventory"],
+    [
+      `/v1/admin/sarvam/jobs/${id}/approve`,
+      "POST",
+      {
+        version: 1,
+        approved_services: ["booking"],
+        connection_id: "conn1",
+        phone_number: "+919999999991",
+      },
+      "approve",
+    ],
+    [`/v1/admin/sarvam/jobs/${id}/resume`, "POST", undefined, "resume"],
+  ] as const) {
+    const before = f.calls.length;
+    assert.equal((await f.request(path, method, body)).status, 401);
+    assert.equal(f.calls.length, before);
+    const raw = body === undefined ? undefined : JSON.stringify(body);
+    const result = await f.handler(
+      new Request(`https://example.com/functions/v1/booking-api${path}`, {
+        method,
+        headers: {
+          "x-bookingos-admin": signAdminRequest(method, path, raw),
+          "content-type": "application/json",
+        },
+        body: raw,
+      }),
+    );
+    assert.ok(result.ok);
+    assert.equal(f.calls.at(-1).method, target);
+    assert.equal(f.calls.at(-1).args[0].uid, "admin-panel");
+  }
 });

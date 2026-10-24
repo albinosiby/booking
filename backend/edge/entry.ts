@@ -2,6 +2,7 @@ import { NotificationService } from "../src/notifications/notification.service";
 import { SupportService } from "../src/support/support.service";
 import { AgentCallService } from "../src/agent-calls/agent-calls.service";
 import { AdminService } from "../src/admin/admin.service";
+import { AdminSarvamService } from "../src/admin/admin-sarvam.service";
 import { WebsiteService } from "../src/website/website.service";
 import { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
 import { AdmissionService } from "../src/admissions/admission.service";
@@ -34,6 +35,7 @@ workspace.publicAppUrl = `${projectUrl}/functions/v1/booking-api`;
 const accounts = new AccountsService(db as never, workspace);
 const bookings = new BookingService(db as never, workspace);
 const sarvam = new SarvamService(db as never, workspace);
+const admin = new AdminService(db as never, sarvam);
 export const services = {
   notifications: new NotificationService(db as never),
   website: new WebsiteService(db as never, workspace),
@@ -45,7 +47,8 @@ export const services = {
   workspace,
   bookings,
   sarvam,
-  admin: new AdminService(db as never, sarvam),
+  admin,
+  adminSarvam: new AdminSarvamService(db as never, admin, sarvam, workspace),
   support: new SupportService(db as never, workspace),
   agentCalls: new AgentCallService(db as never, workspace, sarvam),
   voice: new VoiceService(db as never, bookings),

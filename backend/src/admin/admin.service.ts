@@ -105,7 +105,7 @@ export class AdminService {
     if (!rows[0]) throw new ForbiddenException("Admin access required.");
     return rows[0];
   }
-  private async superAdmin(actor: Actor) {
+  async superAdmin(actor: Actor) {
     const admin = await this.admin(actor);
     if (admin.role !== "super_admin")
       throw new ForbiddenException("Super-admin access required.");
@@ -538,6 +538,10 @@ export class AdminService {
         throw new ConflictException(
           "This phone number or agent is already assigned to another organization.",
         );
+      if (current.setup_state?.mode === "admin_mcp")
+        throw new ConflictException(
+          "This connection is managed automatically. Use its provisioning controls instead of manual configuration.",
+        );
       if (
         current.setup_lease_until &&
         new Date(current.setup_lease_until).getTime() > Date.now()
@@ -641,6 +645,10 @@ export class AdminService {
         )
       ).rows[0];
       if (!s) throw new BadRequestException("Save the connection first.");
+      if (s.setup_state?.mode === "admin_mcp")
+        throw new ConflictException(
+          "This key is managed automatically. Manual rotation would disconnect the agent.",
+        );
       if (
         s.setup_lease_until &&
         new Date(s.setup_lease_until).getTime() > Date.now()

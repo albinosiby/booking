@@ -2,6 +2,7 @@ import type { NotificationService } from "../src/notifications/notification.serv
 import type { SupportService } from "../src/support/support.service";
 import type { AgentCallService } from "../src/agent-calls/agent-calls.service";
 import type { AdminService } from "../src/admin/admin.service";
+import type { AdminSarvamService } from "../src/admin/admin-sarvam.service";
 import { panelActor } from "../src/admin/panel-auth";
 import type { WebsiteService } from "../src/website/website.service";
 import type { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
@@ -35,6 +36,7 @@ import { renderIncomeReport } from "../src/income/income.report";
 type Services = {
   notifications: NotificationService;
   admin: AdminService;
+  adminSarvam: AdminSarvamService;
   support: SupportService;
   agentCalls: AgentCallService;
   website: WebsiteService;
@@ -120,6 +122,19 @@ export function createHandler(
     services.notifications.unregister(i.actor, i.params.id, i.body),
   );
   const ad = services.admin;
+  const sm = services.adminSarvam;
+  add("GET", "/v1/admin/sarvam", (i) => sm.status(i.actor));
+  add("PUT", "/v1/admin/sarvam", (i) => sm.save(i.actor, i.body));
+  add("POST", "/v1/admin/sarvam/connect", (i) => sm.connect(i.actor));
+  add("POST", "/v1/admin/sarvam/callback", (i) => sm.callback(i.actor, i.body));
+  add("GET", "/v1/admin/sarvam/inventory", (i) => sm.inventory(i.actor));
+  add("GET", "/v1/admin/sarvam/jobs/:id", (i) => sm.job(i.actor, i.params.id));
+  add("POST", "/v1/admin/sarvam/jobs/:id/approve", (i) =>
+    sm.approve(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/admin/sarvam/jobs/:id/resume", (i) =>
+    sm.resume(i.actor, i.params.id),
+  );
   add("GET", "/v1/admin/me", (i) => ad.me(i.actor));
   add("GET", "/v1/admin/overview", (i) => ad.overview(i.actor));
   add("GET", "/v1/admin/organizations", (i) =>

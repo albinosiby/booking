@@ -45,6 +45,9 @@ export default async function AgentRequests({
         title="Call service requests"
         description="Choose a request to review its details and configure the call service."
       />
+      <p>
+        <Link href="/agent-requests/mcp">Connect or reconnect Sarvam →</Link>
+      </p>
       <Tabs base="/agent-requests" current={status} items={statuses} />
       <div className="request-list-heading">
         <p>{status ? label(status) : "All requests"}</p>

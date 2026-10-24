@@ -5,10 +5,16 @@ import {
 
 export const MCP = "https://mcp.sarvam.ai/voice-agents";
 type Json = Record<string, any>;
+export class SarvamAuthorizationExpired extends BadRequestException {
+  constructor() {
+    super("Sarvam authorization expired. Reconnect Sarvam, then resume setup.");
+  }
+}
 
 /** Supported Sarvam OAuth + Streamable HTTP MCP interface; no dashboard cookies. */
 export class SarvamAuthoring {
   private deadline = Date.now() + 14000;
+  private sessionPromise?: Promise<string | undefined>;
   constructor(
     private http: typeof fetch,
     private token = "",
@@ -30,7 +36,8 @@ export class SarvamAuthoring {
         "Sarvam did not respond. Retry setup to resume.",
       );
     }
-    if (response.status === 401 || response.status === 403)
+    if (response.status === 401) throw new SarvamAuthorizationExpired();
+    if (response.status === 403)
       throw new BadRequestException(
         "Sarvam authorization expired or lacks permission. Connect again to authorize.",
       );
@@ -155,7 +162,10 @@ export class SarvamAuthoring {
       session: response.headers.get("mcp-session-id") ?? session,
     };
   }
-  private async session() {
+  private session() {
+    return (this.sessionPromise ??= this.initializeSession());
+  }
+  private async initializeSession() {
     const initialized = await this.rpc("initialize", {
       protocolVersion: "2025-03-26",
       capabilities: {},
@@ -181,8 +191,21 @@ export class SarvamAuthoring {
   }
   async capabilities() {
     const session = await this.session();
-    const { result } = await this.rpc("tools/list", {}, session);
-    return result.tools as Json[];
+    const tools: Json[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const { result } = await this.rpc(
+        "tools/list",
+        cursor ? { cursor } : {},
+        session,
+      );
+      tools.push(...result.tools);
+      cursor = result.nextCursor;
+      if (!cursor) return tools;
+    }
+    throw new BadRequestException(
+      "Too many MCP capabilities to inspect safely.",
+    );
   }
   async call(name: string, args: Json): Promise<Json> {
     const session = await this.session();

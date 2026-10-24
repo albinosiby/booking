@@ -20,7 +20,71 @@ Services are checked in the voice service and again inside the booking transacti
 
 One provider agent and one phone number can be assigned to only one organization. This keeps provider analytics, tools and numbers isolated. New resources do not inherit voice access.
 
-## Super-admin setup
+## Automatic setup through MCP
+
+Open **Call service requests → Connect or reconnect Sarvam**. This connection belongs to the platform, not to a client.
+
+1. After applying the new migration below, deploy the API and admin panel. Set the API secret `SARVAM_ADMIN_REDIRECT_URI` to your exact admin web URL ending `/admin/agent-requests/mcp/callback`. Keep the existing `BOOKING_SECRETS_KEY`. The API public HTTPS URL must point to the API, including `/functions/v1/booking-api` when hosted on Supabase. The Edge entry sets that URL automatically.
+2. Enter your Sarvam organization/workspace IDs and workspace API key once, then save. Click **Connect Sarvam**, sign in to the matching workspace, approve access and click **Continue to admin panel** on return. Custom OAuth callbacks may need Sarvam allow-list approval. If Sarvam provides a registered client, set `SARVAM_OAUTH_CLIENT_ID` on the API. The panel displays the exact callback URL.
+3. Select a single-state Sarvam template agent with your desired voice/language/model settings and **no tools**. Create this basic template in Sarvam once if necessary. Save it on the connection page. Client agent IDs are generated automatically.
+4. Open a client request, review the service checkboxes, choose a free number from the authenticated workspace inventory and click **Approve and create agent**. Existing manually configured clients continue using their connection. Automatic approval is for requests without an assigned agent.
+5. Keep the page open while setup runs. It reserves the number, clones a separate agent with a unique saved name and records its generated ID, installs a tenant-specific secret plus six booking tools and the on-end logging tool, writes the managed instructions, reads the configuration back, commits it, creates the inbound deployment, verifies its number/agent and analytics credentials, and changes the client status to Connected. The client switch remains off; the client selects spaces and enables it.
+6. If setup stops, return to the request and click **Resume setup**. Progress, unique agent name, generated agent identity and number reservation are durable. A lost create/deployment response is recovered by reading provider state before writing again. The browser advances one bounded API step at a time; there is no background queue continuing after the page closes.
+
+**Reconnecting:** Sarvam currently documents a 24-hour OAuth lifetime with no refresh token. The panel displays expiration and a Reconnect button. Click **Reconnect Sarvam**, sign in, click **Continue to admin panel**, then reopen the client request and **Resume setup**. Reauthorization preserves deployed agents, tool keys, numbers and space controls. Existing calls use their configured tool key; analytics uses the workspace API key, so normal calls do not depend on the MCP sign-in remaining valid. A provider 401 also marks the connection as needing reconnect.
+
+Only numbers already onboarded in Sarvam can be selected. This flow does not purchase numbers, perform KYC or place test calls. Numbers used by any existing deployment (including paused deployments) or reserved by another BookingOS client are unavailable. A single MCP connection manages one workspace. Switching workspace IDs is blocked after managed agents exist. Updating the workspace API key updates automatic clients in that same workspace without rotating their booking tool keys.
+
+Capabilities are discovered from authenticated MCP `tools/list`; unsupported operations, required fields, absent native-clone/secret/HTTP-tool/deployment capabilities or incomplete inventories stop setup with an admin-visible error. Both `create_http_tool` and the legacy `configure_app_tool` are supported when their schemas match the implemented connector contract. Enterprise code-tool-only workspaces are not silently treated as HTTP-tool workspaces. Remote agent/tool readbacks and deployment verification must pass before activation. The authenticated workspace’s real schemas, voice settings and number routing still require a controlled staging acceptance run; fixture tests cannot certify them.
+
+References: [Sarvam MCP](https://docs.sarvam.ai/voice-agents/mcp), [API tool lifecycle and trusted context](https://docs.sarvam.ai/voice-agents/build/tools/https-tool), [inbound deployment creation](https://docs.sarvam.ai/voice-agents/api/deployments/create). Deployment creation can begin answering calls immediately; approval explicitly authorizes assigning the selected number. Booking writes remain disabled until the client turns them on.
+
+### Architecture and security
+
+Signed Next.js server actions → super-admin-only `/v1/admin/sarvam` → encrypted singleton `booking_app.sarvam_admin_connection` → Sarvam OAuth/MCP. Existing per-organization integration rows store the reserved phone, generated agent ID, encrypted tenant tool key, and resumable job state. A database lease prevents concurrent step execution. Optimistic versions protect approval/settings, unique phone/agent/deployment indexes prevent cross-client assignments, and a final request-state check prevents paused/rejected jobs becoming Connected. Operational logs and audit records exclude OAuth codes, access tokens, API keys and transcript bodies.
+
+OAuth uses PKCE S256, a random hashed one-use state with ten-minute expiry, fixed server-configured callback URI and authenticated signed completion. The existing admin session stays SameSite=Strict. The callback displays a same-origin Continue POST so returning from Sarvam can restore that session without relaxing its cookie policy. Callback responses disable caching, referrers, external assets and embedding. Browser/server actions receive only safe status, inventory and progress; authorization and workspace API secrets stay encrypted on the API.
+
+| Method | Admin API path | Purpose |
+|---|---|---|
+| GET / PUT | `/v1/admin/sarvam` | Read safe status / save workspace settings with version |
+| POST | `/v1/admin/sarvam/connect` | Start or restart browser authorization |
+| POST | `/v1/admin/sarvam/callback` | Signed, one-time OAuth completion |
+| GET | `/v1/admin/sarvam/inventory` | Safe agent/template and phone inventory |
+| GET | `/v1/admin/sarvam/jobs/:organizationId` | Safe progress |
+| POST | `/v1/admin/sarvam/jobs/:organizationId/approve` | `{version,approved_services,connection_id,phone_number}` |
+| POST | `/v1/admin/sarvam/jobs/:organizationId/resume` | Advance one durable setup step |
+
+### Additional migration — applied by the owner
+
+The earlier managed-call-service migration you already applied is retained. Automatic provisioning requires **one additional migration**: `supabase/migrations/20261024101355_admin_sarvam_provisioning.sql`. Do not reapply the earlier migration. The backend copy is for disposable tests only. This new migration creates a private singleton credentials table and a unique deployment-assignment index; it does not alter existing client enablement or credentials.
+
+Before applying, back up the database and verify the prior managed migration exists and no duplicate nonempty deployment assignments are present:
+
+```sql
+SELECT name FROM booking_app.schema_migrations
+WHERE name IN ('20261024075411_managed_call_service.sql','20261024101355_admin_sarvam_provisioning.sql');
+SELECT sarvam_org_id,workspace_id,deployment_id,count(*)
+FROM booking_app.sarvam_integrations WHERE deployment_id<>''
+GROUP BY sarvam_org_id,workspace_id,deployment_id HAVING count(*)>1;
+```
+
+Resolve duplicate assignments before applying. Run the entire new Supabase SQL file once in SQL Editor; it includes BEGIN/COMMIT and schema-migration registration. Validate:
+
+```sql
+SELECT id,version,api_key_ciphertext IS NULL AS no_api_key,authoring_ciphertext IS NULL AS no_oauth
+FROM booking_app.sarvam_admin_connection;
+SELECT grantee,privilege_type FROM information_schema.role_table_grants
+WHERE table_schema='booking_app' AND table_name='sarvam_admin_connection';
+SELECT indexname FROM pg_indexes WHERE schemaname='booking_app'
+AND indexname='call_service_deployment_unique';
+```
+
+Expect one row, both credentials initially absent, no public/anon/authenticated grants, booking_api SELECT/INSERT/UPDATE, and the deployment index. If SQL fails, ROLLBACK and fix prerequisites before retrying the full file. For an application rollback leave the additive table/index in place, stop provisioning, and restore the earlier API/admin binaries. Do not remove client agents or numbers automatically: they may already be deployed. Before resuming a failed job after a provider timeout, use Resume so it reconciles the existing agent/deployment. Manual key rotation and manual connection replacement are blocked for automatic clients. Full backup restoration has not been rehearsed by code tests.
+
+The connected Sarvam MCP contract was inspected read-only during implementation. It creates agents by omitting `agent_id` and passing `clone_from`, `clone_version` and a unique `name`, writes prompt text only through the `prompt` parameter, lists onboarded numbers through `telephony.list_endpoints`, and returns deployment IDs under `id`. The backend follows these contracts and recovers a lost clone response by its saved name. No existing agent configuration was inspected or mutated during that check.
+
+## Manual super-admin setup
 
 1. Open **Call service requests**, review the requested services and update progress/client-visible messages.
 2. Open **Manage connection**. Enter the Sarvam workspace API key, provider organization ID, workspace ID, agent App ID, inbound deployment ID, and the phone number in E.164 form (`+` and country code). Select the requested services to approve and save.
@@ -30,7 +94,7 @@ One provider agent and one phone number can be assigned to only one organization
 6. Check **I configured and reviewed...**, then **Verify connection**. The backend checks analytics credentials and reads the deployment to verify its agent ID, deployment ID, inbound direction, active status and phone-number association. It does not place a test call, inspect every remote tool definition, or create a booking. The checkbox records the admin's tool/configuration review. [Sarvam deployment read API](https://docs.sarvam.ai/voice-agents/api/deployments/get).
 7. Set the request to **Connected**. The client selects spaces and enables the service. Perform an authorized test call using a controlled slot before advertising the number. Test each approved service and at least one forbidden action.
 
-The first version deliberately uses the existing admin-managed provider configuration path. The old automatic OAuth authoring implementation remains internal for compatibility, but clients have no connection/configuration endpoint. This flow does not require the old custom OAuth callback allow-list prerequisite. It requires an existing configured Sarvam agent and inbound deployment.
+Manual setup remains available for existing configured agents and deployments. It does not require MCP authorization. Clients have no provider connection/configuration endpoint. The earlier owner-based automatic authoring code remains internal for compatibility; platform provisioning uses the separate admin OAuth connection described above.
 
 ### Voice tools
 
@@ -146,6 +210,8 @@ Checks from the repository:
 ```bash
 # Run in backend/
 node --import tsx --test --test-concurrency=2 test/*.test.ts
+# Focused automatic setup checks:
+node --import tsx --test test/admin-sarvam.test.ts test/sarvam-authoring.test.ts test/edge.test.ts
 npm run build
 npm run edge:check
 npm run edge:build

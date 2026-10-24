@@ -23,7 +23,7 @@ export class ApiError extends Error {
 /** A valid password session permits signed, server-only admin API calls. */
 export async function admin<T = any>(
   path: string,
-  init: { method?: string; body?: unknown } = {},
+  init: { method?: string; body?: unknown; timeoutMs?: number } = {},
 ): Promise<T> {
   if (!(await validSession((await cookies()).get(SESSION_COOKIE)?.value)))
     redirect(await adminRedirectUrl("/login"));
@@ -46,7 +46,9 @@ export async function admin<T = any>(
     },
     body,
     cache: "no-store",
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(
+      Math.min(45000, Math.max(1000, init.timeoutMs ?? 20000)),
+    ),
   });
   if (!response.ok) {
     let message = "Request failed.";
