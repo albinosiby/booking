@@ -948,6 +948,17 @@ export class WorkspaceService {
       );
       if (!result.rows.length)
         throw new NotFoundException("Staff access or invitation not found.");
+      if (!invitation) {
+        // Revoke pending grants too, so the next sign-in cannot restore access.
+        await db.query(
+          "UPDATE invitations SET revoked_at=now() WHERE organization_id=$1 AND lower(email)=(SELECT lower(email) FROM memberships WHERE id=$2) AND accepted_at IS NULL AND revoked_at IS NULL",
+          [m.organization_id, id],
+        );
+        await db.query(
+          "DELETE FROM staff_assignments WHERE membership_id=$1 AND organization_id=$2",
+          [id, m.organization_id],
+        );
+      }
       await this.audit(db, actor, m.organization_id, "staff.revoked", id);
       return { id, released: await releaseCoachPlans(db, m.organization_id) };
     });
@@ -958,7 +969,7 @@ export class WorkspaceService {
       const m = await this.member(actor, true, db);
       const member = (
         await db.query<Row>(
-          "SELECT * FROM memberships WHERE id=$1 AND organization_id=$2 AND role!='owner' AND user_id NOT LIKE 'sarvam:%' FOR UPDATE",
+          "SELECT * FROM memberships WHERE id=$1 AND organization_id=$2 AND active=true AND role!='owner' AND user_id NOT LIKE 'sarvam:%' FOR UPDATE",
           [id, m.organization_id],
         )
       ).rows[0];

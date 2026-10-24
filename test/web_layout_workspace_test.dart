@@ -315,7 +315,8 @@ void main() {
     expect(find.byType(TeamPersonTile), findsNWidgets(5));
     expect(find.text('Manager'), findsWidgets);
     expect(find.byTooltip('Edit staff for Priya Nair'), findsOneWidget);
-    expect(find.text('Remove access'), findsNWidgets(2));
+    expect(find.text('Remove manager'), findsOneWidget);
+    expect(find.text('Remove staff'), findsOneWidget);
     final alex = tester.getCenter(find.text('Alex Thomas'));
     final priya = tester.getCenter(find.text('Priya Nair'));
     expect(alex.dy, priya.dy, reason: 'members share a grid row');

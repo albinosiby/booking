@@ -1,3 +1,5 @@
+import '../models/team_removal_target.dart';
+import '../../../utils/exceptions/app_exception.dart';
 import 'dart:convert';
 import '../../../core/state/workspace_screen_cubit.dart';
 import '../../workspace/repositories/workspace_session.dart';
@@ -13,7 +15,10 @@ class StaffAssignmentCubit
     WorkspaceSession session,
     this.repository, {
     Map<String, dynamic>? member,
-  }) : super(session, StaffAssignmentScreenModel.fromSnapshot) {
+  }) : removalTarget = member == null
+           ? null
+           : TeamRemovalTarget.fromMember(member),
+       super(session, StaffAssignmentScreenModel.fromSnapshot) {
     if (member != null) {
       final businesses = <String>{}, restricted = <String>{};
       final resources = <String, Set<String>>{};
@@ -56,6 +61,45 @@ class StaffAssignmentCubit
   });
   bool get coachingAccessChanged => _coachingScope != _savedCoachingScope;
   final TeamRepository repository;
+  final TeamRemovalTarget? removalTarget;
+  bool get canRemove =>
+      state.data.isOwner &&
+      removalTarget?.removable == true &&
+      removalTarget!.id != state.data.membership?['id'] &&
+      !state.removed;
+
+  Future<bool> remove() async {
+    if (isClosed || !canRemove || state.busy) return false;
+    final organization = state.data.organization?.id;
+    final actor = state.data.membership?['id'];
+    emit(state.copyWith(removing: true, clearRemovalError: true));
+    try {
+      await repository.revoke(removalTarget!.id);
+      if (isClosed ||
+          state.data.organization?.id != organization ||
+          state.data.membership?['id'] != actor ||
+          !state.data.isOwner) {
+        return false;
+      }
+      emit(
+        state.copyWith(removing: false, removed: true, clearRemovalError: true),
+      );
+      return true;
+    } catch (e) {
+      if (!isClosed) {
+        emit(
+          state.copyWith(
+            removing: false,
+            removalError: e is AppException
+                ? e.message
+                : 'Could not remove this member. Please try again.',
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
   @override
   StaffAssignmentScreenModel mapSnapshot(WorkspaceState snapshot) =>
       state.copyWith(snapshot: snapshot);

@@ -160,18 +160,25 @@ class _CoachClassesScreenState extends State<CoachClassesScreen> {
           icon: const Icon(Icons.refresh),
         ),
       ],
+      fillRemaining: !s.loading && s.error == null && s.classes.isEmpty
+          ? const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppEmptyState(
+                  showCard: false,
+                  title: 'No classes on this day',
+                  message:
+                      'Classes appear here once students book the coaching plans you teach.',
+                ),
+              ],
+            )
+          : null,
       children: [
         dateBar(s),
         const SizedBox(height: 12),
         if (s.loading) const AppLoadingState(),
         if (s.error != null)
           AppErrorWidget(message: s.error!, onRetry: cubit.load),
-        if (!s.loading && s.error == null && s.classes.isEmpty)
-          const AppEmptyState(
-            title: 'No classes on this day',
-            message:
-                'Classes appear here once students book the coaching plans you teach.',
-          ),
         for (final c in s.classes) ...[
           classCard(s, c),
           const SizedBox(height: 12),

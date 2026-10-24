@@ -1,3 +1,4 @@
+import '../widgets/team_removal_dialog.dart';
 import '../widgets/staff_coaching_section.dart';
 import '../models/staff_access_draft.dart';
 import '../cubit/staff_assignment_cubit.dart';
@@ -46,6 +47,16 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
     email.dispose();
     if (widget.member?['role'] != 'owner') cubit.close();
     super.dispose();
+  }
+
+  Future<void> remove() async {
+    if (!cubit.canRemove || cubit.state.busy) return;
+    final target = cubit.removalTarget!;
+    if (!await confirmTeamRemoval(context, target) || !mounted) return;
+    final removed = await cubit.remove();
+    if (!mounted || !removed) return;
+    showMessage(context, '${target.name} removed. History has been preserved.');
+    Navigator.pop(context, true);
   }
 
   Future<void> save() async {
@@ -253,9 +264,40 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
     AppButton(
       label: widget.member == null ? 'Add team member' : 'Save staff access',
       icon: Icons.check,
-      busy: s.busy,
-      onPressed: s.data.isOwner ? save : null,
+      busy: s.busy && !s.removing,
+      onPressed: s.data.isOwner && !s.busy && !s.removed ? save : null,
     ),
+  ];
+
+  List<Widget> removal(StaffAssignmentScreenModel s) => [
+    if (cubit.canRemove) ...[
+      const SizedBox(height: 24),
+      if (s.removalError != null) ...[
+        AppErrorWidget(message: s.removalError!),
+        const SizedBox(height: 12),
+      ],
+      SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: s.busy ? null : remove,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.error,
+          ),
+          icon: s.removing
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.person_remove_outlined),
+          label: Text(cubit.removalTarget!.label),
+        ),
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        'Removes organization access. Bookings, payments and attendance history are kept.',
+      ),
+    ],
   ];
 
   // Wide windows: person and businesses on the left, permissions and the
@@ -311,6 +353,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
               const SizedBox(height: 20),
               coaching(s),
             ],
+            ...removal(s),
           ],
         ),
       ),
@@ -375,6 +418,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
                             const SizedBox(height: 20),
                             coaching(s),
                           ],
+                          ...removal(s),
                         ],
                       ),
                     ),

@@ -1,3 +1,5 @@
+import '../models/team_removal_target.dart';
+import '../widgets/team_removal_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -31,13 +33,10 @@ class _TeamScreenState extends State<TeamScreen> {
   }
 
   Future<void> remove(Map<String, dynamic> m) async {
-    if (await confirmAction(
-          context,
-          'Remove staff access?',
-          '${m['display_name']} (${m['email']}) will lose organization access immediately. Coaching plans they teach become Unassigned.',
-        ) &&
-        mounted) {
-      await cubit.revoke(m['id']);
+    final target = TeamRemovalTarget.fromMember(m);
+    if (!target.removable || cubit.state.busy) return;
+    if (await confirmTeamRemoval(context, target) && mounted) {
+      await cubit.revoke(target.id);
     }
   }
 
@@ -105,7 +104,7 @@ class _TeamScreenState extends State<TeamScreen> {
             onPressed: s.busy ? null : () => remove(member),
             style: TextButton.styleFrom(foregroundColor: colors.error),
             icon: const Icon(Icons.person_remove_outlined, size: 18),
-            label: const Text('Remove access'),
+            label: Text(TeamRemovalTarget.fromMember(member).label),
           ),
       ],
     );

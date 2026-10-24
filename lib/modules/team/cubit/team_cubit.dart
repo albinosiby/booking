@@ -75,7 +75,30 @@ class TeamCubit extends Cubit<TeamState> {
   Future<void> revoke(String id, {bool invitation = false}) => _mutate(
     () async {
       await repository.revoke(id, invitation: invitation);
-      return invitation ? 'Pending access cancelled.' : 'Staff access removed.';
+      if (!invitation && !isClosed) {
+        // Keep the confirmed removal visible even if the follow-up read fails.
+        emit(
+          TeamState(
+            loading: false,
+            busy: true,
+            invitations: state.invitations,
+            members: List.unmodifiable([
+              for (final member in state.members)
+                if (member['id'] == id)
+                  Map<String, dynamic>.unmodifiable({
+                    ...member,
+                    'active': false,
+                    'assignments': <Object>[],
+                  })
+                else
+                  member,
+            ]),
+          ),
+        );
+      }
+      return invitation
+          ? 'Pending access cancelled.'
+          : 'Member removed. History preserved.';
     },
   );
 

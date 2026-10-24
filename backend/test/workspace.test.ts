@@ -439,3 +439,150 @@ test("workspace batches resource reads across businesses while preserving the pu
         "name",
       ]);
 });
+
+test("removing a manager clears grants and coaching while preserving their history", async () => {
+  const { owner, id } = await fixture("pool");
+  const resource = await service.addResource(owner, id, {
+    name: "Pool A",
+    capacity: 20,
+  });
+  const manager = actor();
+  const invitation = await service.invite(owner, {
+    email: manager.email,
+    display_name: "Coach manager",
+    role: "manager",
+    permissions: ["coach", "mark_attendance", "view_bookings"],
+    assignments: [{ business_id: id, resource_ids: [resource.id] }],
+  });
+  await service.accept(
+    manager,
+    new URL(invitation.invitation_url).searchParams.get("token")!,
+  );
+  const snapshot = await service.workspace(manager);
+  const memberId = snapshot.membership.id,
+    orgId = snapshot.organization.id;
+  await db.query("UPDATE businesses SET configuration=$1 WHERE id=$2", [
+    JSON.stringify({
+      kind: "pool_v1",
+      plans: [
+        {
+          id: randomUUID(),
+          name: "Coaching",
+          kind: "coaching",
+          coach_id: memberId,
+          pool_ids: [resource.id],
+        },
+      ],
+    }),
+    id,
+  ]);
+  const pendingId = randomUUID();
+  await db.query(
+    "INSERT INTO invitations(id,organization_id,email,display_name,role,permissions,assignments,token_hash,expires_at) VALUES($1,$2,$3,'Coach manager','manager','[]','[]',$4,now()+interval '7 days')",
+    [pendingId, orgId, manager.email, randomUUID()],
+  );
+  const customerId = randomUUID(),
+    bookingId = randomUUID(),
+    paymentId = randomUUID(),
+    historyId = randomUUID();
+  await db.query(
+    "INSERT INTO customers(id,organization_id,name,phone) VALUES($1,$2,'Student','9876543210')",
+    [customerId, orgId],
+  );
+  await db.query(
+    "INSERT INTO bookings(id,organization_id,business_id,resource_id,customer_id,reference,starts_at,ends_at,total_minor,selection,price_snapshot,customer_snapshot,people,created_by) VALUES($1,$2,$3,$4,$5,$6,'2030-06-04T06:00Z','2030-06-04T07:00Z',50000,'{}','{}','{}',1,$7)",
+    [bookingId, orgId, id, resource.id, customerId, randomUUID(), manager.uid],
+  );
+  await db.query(
+    "INSERT INTO booking_payments(id,organization_id,booking_id,kind,method,amount_minor,received_at,recorded_by) VALUES($1,$2,$3,'collection','cash',10000,now(),$4)",
+    [paymentId, orgId, bookingId, manager.uid],
+  );
+  await db.query(
+    "INSERT INTO booking_history(id,booking_id,actor_id,action,details) VALUES($1,$2,$3,'attendance','{\"attendance\":\"present\"}')",
+    [historyId, bookingId, manager.uid],
+  );
+  await assert.rejects(() => service.revoke(manager, memberId, false));
+  const other = await fixture();
+  await assert.rejects(() => service.revoke(other.owner, memberId, false));
+  const ownerMembership = (await service.workspace(owner)).membership.id;
+  await assert.rejects(() => service.revoke(owner, ownerMembership, false));
+  const result = await service.revoke(owner, memberId, false);
+  assert.equal(result.released, 1);
+  // A stale edit form must not recreate assignments after removal.
+  await assert.rejects(() =>
+    service.updateMember(owner, memberId, {
+      display_name: "Coach manager",
+      email: manager.email,
+      role: "manager",
+      permissions: ["coach", "mark_attendance"],
+      assignments: [{ business_id: id, resource_ids: [resource.id] }],
+    }),
+  );
+  await assert.rejects(() => service.workspace(manager));
+  assert.equal(
+    (
+      await db.query("SELECT * FROM staff_assignments WHERE membership_id=$1", [
+        memberId,
+      ])
+    ).rows.length,
+    0,
+  );
+  assert.equal(
+    (
+      await db.query<any>("SELECT active FROM memberships WHERE id=$1", [
+        memberId,
+      ])
+    ).rows[0].active,
+    false,
+  );
+  assert.ok(
+    (
+      await db.query<any>("SELECT revoked_at FROM invitations WHERE id=$1", [
+        pendingId,
+      ])
+    ).rows[0].revoked_at,
+  );
+  assert.equal(
+    (
+      await db.query<any>("SELECT configuration FROM businesses WHERE id=$1", [
+        id,
+      ])
+    ).rows[0].configuration.plans[0].coach_id,
+    null,
+  );
+  assert.equal(
+    (
+      await db.query<any>("SELECT created_by FROM bookings WHERE id=$1", [
+        bookingId,
+      ])
+    ).rows[0].created_by,
+    manager.uid,
+  );
+  assert.equal(
+    (
+      await db.query<any>(
+        "SELECT recorded_by,amount_minor FROM booking_payments WHERE id=$1",
+        [paymentId],
+      )
+    ).rows[0].amount_minor,
+    10000,
+  );
+  assert.equal(
+    (
+      await db.query<any>(
+        "SELECT actor_id,details FROM booking_history WHERE id=$1",
+        [historyId],
+      )
+    ).rows[0].details.attendance,
+    "present",
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT id FROM audit_events WHERE action='staff.revoked' AND entity_id=$1",
+        [memberId],
+      )
+    ).rows.length,
+    1,
+  );
+});
