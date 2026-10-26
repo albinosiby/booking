@@ -165,6 +165,7 @@ export function createHandler(
   );
   add("GET", "/v1/admin/audit", (i) => ad.auditLog(i.actor, i.query));
   add("GET", "/v1/booking-website", (i) => services.website.settings(i.actor));
+  add("GET", "/v1/booking-website/link", (i) => services.website.link(i.actor));
   add("PUT", "/v1/booking-website", (i) =>
     services.website.save(i.actor, i.body),
   );

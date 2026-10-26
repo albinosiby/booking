@@ -372,6 +372,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   ) => section(1, 'The title, logo and hero appear at the top of your homepage.', [
     WebsitePhotoSlot(
       title: 'Website logo',
+      sectionId: 'logo',
       help: 'A square logo works best. It appears in the header of every page.',
       image: d.image('logo'),
       settings: d,
@@ -434,6 +435,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     ),
     WebsitePhotoSlot(
       title: 'Hero image',
+      sectionId: 'hero',
       help:
           'Use a wide photo of your venue. The heading and description are placed over it.',
       image: d.image('hero'),

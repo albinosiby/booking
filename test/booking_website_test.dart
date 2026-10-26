@@ -753,9 +753,13 @@ void main() {
           of: find.text('Website logo'),
           matching: find.byType(WebsitePhotoSlot),
         );
+        expect(find.text('Upload photo').hitTestable(), findsNothing);
+        await tester.ensureVisible(find.text('Website logo'));
+        await tester.tap(find.text('Website logo'));
+        await tester.pumpAndSettle();
         final upload = find.descendant(
           of: slot,
-          matching: find.widgetWithText(OutlinedButton, 'Upload photo'),
+          matching: find.text('Upload photo'),
         );
         await tester.ensureVisible(upload);
         await tester.tap(upload);
@@ -764,6 +768,14 @@ void main() {
         expect(repo.saves, 0);
         expect(repo.uploads, 0);
         expect(repo.value.images, isEmpty);
+        expect(find.text('Not saved yet'), findsOneWidget);
+        await tester.ensureVisible(find.text('Website logo'));
+        await tester.tap(find.text('Website logo'));
+        await tester.pumpAndSettle();
+        expect(find.text('Not saved yet').hitTestable(), findsNothing);
+        expect(find.text('1 photo · Unsaved changes'), findsOneWidget);
+        await tester.tap(find.text('Website logo'));
+        await tester.pumpAndSettle();
         expect(find.text('Not saved yet'), findsOneWidget);
         expect(find.text('You have unsaved changes'), findsOneWidget);
         final save = find.widgetWithText(AppButton, 'Save changes');
@@ -854,7 +866,17 @@ void main() {
         await tester.ensureVisible(find.text('Court 1'));
         await tester.tap(find.text('Court 1'));
         await tester.pumpAndSettle();
-        final upload = find.text('Add space photo ($existingPhotos/4)').first;
+        final galleryTitle = find.descendant(
+          of: find.byKey(
+            const PageStorageKey('website-photo-panel-space-business-court-1'),
+          ),
+          matching: find.text('Booking page photos'),
+        );
+        final upload = find.text('Add space photo ($existingPhotos/4)');
+        expect(upload.hitTestable(), findsNothing);
+        await tester.ensureVisible(galleryTitle);
+        await tester.tap(galleryTitle);
+        await tester.pumpAndSettle();
         await tester.ensureVisible(upload);
         await tester.tap(upload);
         await tester.pumpAndSettle();
@@ -902,6 +924,17 @@ void main() {
           matching: find.byType(Image),
         );
         expect(displayedImage, findsOneWidget);
+        await tester.ensureVisible(galleryTitle);
+        await tester.tap(galleryTitle);
+        await tester.pumpAndSettle();
+        expect(find.text('Not saved yet').hitTestable(), findsNothing);
+        expect(
+          find.text('${existingPhotos + 1}/4 photos · Unsaved changes'),
+          findsOneWidget,
+        );
+        await tester.tap(galleryTitle);
+        await tester.pumpAndSettle();
+        expect(find.text('Not saved yet'), findsOneWidget);
         expect(
           tester
               .widget<AppButton>(find.widgetWithText(AppButton, 'Save changes'))

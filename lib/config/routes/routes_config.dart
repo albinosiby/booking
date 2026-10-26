@@ -7,6 +7,7 @@ import '../../modules/admissions/screens/admissions_screen.dart';
 import '../../modules/admissions/screens/admission_form_screen.dart';
 import '../../modules/admissions/screens/admission_detail_screen.dart';
 import '../../modules/admissions/repositories/admission_repository.dart';
+import '../../modules/booking_website/repositories/booking_website_link_repository.dart';
 import '../../di/injection.dart';
 import '../../modules/messages/screens/templates_screen.dart';
 import '../../modules/messages/screens/template_editor_screen.dart';
@@ -225,6 +226,7 @@ GoRouter createRouter(
                 builder: (c, s) {
                   final admissions = getIt<AdmissionRepository>();
                   return HomeScreen(
+                    websiteLinks: () => getIt<BookingWebsiteLinkRepository>(),
                     memberships: admissions is MembershipActions
                         ? admissions as MembershipActions
                         : null,

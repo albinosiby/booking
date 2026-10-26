@@ -134,6 +134,23 @@ export class WebsiteService {
     private readonly db: Database,
     private readonly workspace: WorkspaceService,
   ) {}
+  async link(actor: Actor) {
+    const member = await this.workspace.member(actor);
+    const site = (
+      await this.db.query<Row>(
+        "SELECT slug,status FROM booking_websites WHERE organization_id=$1",
+        [member.organization_id],
+      )
+    ).rows[0];
+    return {
+      status: site?.status ?? "unconfigured",
+      url:
+        site && ["published", "paused"].includes(site.status)
+          ? this.siteUrl(site.slug)
+          : null,
+      can_manage: member.role === "owner",
+    };
+  }
   private async ownerSite(actor: Actor, db: Queryable = this.db, lock = false) {
     const m = await this.workspace.member(actor, true, db);
     const org = (

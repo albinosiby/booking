@@ -63,6 +63,21 @@ test("public website routes dispatch without granting access to authenticated bo
   assert.equal((await f.request("/v1/bookings")).status, 401);
   assert.equal((await f.request("/v1/booking-website")).status, 401);
 });
+test("Home website link authenticates and is never cached", async () => {
+  const f = fixture();
+  assert.equal((await f.request("/v1/booking-website/link")).status, 401);
+  assert.equal(f.calls.length, 0);
+  const response = await f.request(
+    "/v1/booking-website/link",
+    "GET",
+    undefined,
+    "valid",
+  );
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("Cache-Control")!, /no-store/);
+  assert.equal(f.calls.at(-1)?.method, "link");
+  assert.equal((f.calls.at(-1)?.args[0] as { uid: string }).uid, "owner");
+});
 test("owner website routes authenticate, and preview capability is limited to the public service", async () => {
   const f = fixture(),
     token = "a".repeat(64);

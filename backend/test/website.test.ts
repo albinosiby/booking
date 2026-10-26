@@ -94,6 +94,82 @@ test("onboarding creates a private draft; only owner can configure it", async ()
     /Only the owner/,
   );
 });
+test("Home link reads current organization publication without creating drafts or exposing settings", async () => {
+  const other = await seedWebsite(
+    db,
+    `link-${randomUUID().slice(0, 8)}`,
+    false,
+  );
+  assert.deepEqual(await f.website.link(f.owner), {
+    status: "published",
+    url: `http://localhost:3000/${f.slug}`,
+    can_manage: true,
+  });
+  for (const status of ["draft", "published", "paused", "unpublished"]) {
+    await db.query(
+      "UPDATE booking_websites SET status=$1 WHERE organization_id=$2",
+      [status, other.orgId],
+    );
+    assert.deepEqual(await other.website.link(other.owner), {
+      status,
+      url: ["published", "paused"].includes(status)
+        ? `http://localhost:3000/${other.slug}`
+        : null,
+      can_manage: true,
+    });
+  }
+  await db.query(
+    "DELETE FROM booking_website_spaces WHERE organization_id=$1",
+    [other.orgId],
+  );
+  await db.query(
+    "DELETE FROM booking_website_businesses WHERE organization_id=$1",
+    [other.orgId],
+  );
+  await db.query("DELETE FROM booking_websites WHERE organization_id=$1", [
+    other.orgId,
+  ]);
+  assert.deepEqual(await other.website.link(other.owner), {
+    status: "unconfigured",
+    url: null,
+    can_manage: true,
+  });
+  assert.equal(
+    (
+      await db.query(
+        "SELECT id FROM booking_websites WHERE organization_id=$1",
+        [other.orgId],
+      )
+    ).rows.length,
+    0,
+  );
+});
+test("active staff can read their public website link, revoked members cannot", async () => {
+  const other = await seedWebsite(
+    db,
+    `staff-link-${randomUUID().slice(0, 8)}`,
+    false,
+  );
+  await db.query("UPDATE memberships SET role='staff' WHERE user_id=$1", [
+    other.owner.uid,
+  ]);
+  assert.deepEqual(await other.website.link(other.owner), {
+    status: "published",
+    url: `http://localhost:3000/${other.slug}`,
+    can_manage: false,
+  });
+  await assert.rejects(
+    () => other.website.settings(other.owner),
+    /Only the owner/,
+  );
+  await db.query("UPDATE memberships SET active=false WHERE user_id=$1", [
+    other.owner.uid,
+  ]);
+  await assert.rejects(
+    () => other.website.link(other.owner),
+    /No active organization membership/,
+  );
+});
 test("guest booking uses existing inventory and creates no payment entries", async () => {
   const { selection } = await choice(),
     quote = await f.website.quote(f.slug, { selection }),

@@ -87,9 +87,13 @@ import '../modules/team/cubit/staff_assignment_cubit.dart';
 import '../modules/team/cubit/invitation_cubit.dart';
 import '../modules/profile/cubit/profile_cubit.dart';
 import '../modules/dashboard/cubit/home_cubit.dart';
+import '../modules/booking_website/repositories/booking_website_link_repository.dart';
 
 /// Composition root: swap persistence implementations here, never in screens.
 void registerFeatureDependencies(GetIt di) {
+  di.registerFactory<BookingWebsiteLinkRepository>(
+    () => RestBookingWebsiteLinkRepository(di()),
+  );
   di.registerFactory<WebsiteRepository>(() => RestWebsiteRepository(di()));
   di.registerFactoryParam<WebsiteSettingsCubit, WorkspaceSession, void>(
     (s, _) => WebsiteSettingsCubit(s, di()),

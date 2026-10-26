@@ -20,6 +20,11 @@ type AuthRequest = Request & { actor: Actor };
 export class WebsiteSettingsController {
   constructor(private readonly service: WebsiteService) {}
   @Header("Cache-Control", "private, no-store")
+  @Get("link")
+  link(@Req() r: AuthRequest) {
+    return this.service.link(r.actor);
+  }
+  @Header("Cache-Control", "private, no-store")
   @Get()
   settings(@Req() r: AuthRequest) {
     return this.service.settings(r.actor);

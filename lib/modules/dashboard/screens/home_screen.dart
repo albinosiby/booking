@@ -21,10 +21,13 @@ import '../../coaching/widgets/today_students_section.dart';
 import '../../admissions/widgets/expired_members_section.dart';
 import '../../admissions/repositories/admission_repository.dart';
 import '../../workspace/models/workspace_access.dart';
+import '../../booking_website/repositories/booking_website_link_repository.dart';
+import '../../booking_website/widgets/booking_website_link_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.memberships});
+  const HomeScreen({super.key, this.memberships, this.websiteLinks});
   final MembershipActions? memberships;
+  final BookingWebsiteLinkRepository Function()? websiteLinks;
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -65,6 +68,23 @@ class _HomeScreenState extends State<HomeScreen> {
             : null,
         children: [
           if (s.status == LoadStatus.loading) const AppLoadingState(),
+          if (widget.websiteLinks != null &&
+              workspace.organization != null) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const ValueKey('home-booking-website'),
+                onPressed: () => showBookingWebsiteLink(
+                  context,
+                  context.read<WorkspaceCubit>(),
+                  widget.websiteLinks!(),
+                ),
+                icon: const Icon(Icons.language_outlined),
+                label: const Text('Booking website'),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           if (s.needsAccountSetup)
             Material(
               color: Theme.of(context).colorScheme.surfaceContainerLow,

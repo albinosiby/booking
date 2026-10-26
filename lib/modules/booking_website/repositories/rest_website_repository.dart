@@ -1,9 +1,8 @@
 import 'dart:convert';
-import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'website_photo_encoder.dart';
 import '../../../utils/services/logo_picker_service.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'website_link_actions.dart';
 import '../../../utils/exceptions/app_exception.dart';
 import '../../../utils/services/rest_api_service.dart';
 import '../models/website_settings.dart';
@@ -213,20 +212,9 @@ class RestWebsiteRepository implements WebsiteRepository {
           as String;
   @override
   Future<void> open(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null ||
-        !(uri.scheme == 'https' ||
-            (uri.scheme == 'http' &&
-                ['localhost', '127.0.0.1'].contains(uri.host)))) {
-      throw const AppException('The website address is invalid.');
-    }
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw const AppException(
-        'Could not open the website. Copy the link instead.',
-      );
-    }
+    await openWebsiteLink(url);
   }
 
   @override
-  Future<void> copy(String url) => Clipboard.setData(ClipboardData(text: url));
+  Future<void> copy(String url) => copyWebsiteLink(url);
 }

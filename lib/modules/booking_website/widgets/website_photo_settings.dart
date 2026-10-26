@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../models/website_settings.dart';
+import 'website_photo_upload_tile.dart';
 
 class WebsitePhotoTile extends StatelessWidget {
   const WebsitePhotoTile({
@@ -69,6 +70,7 @@ class WebsitePhotoSlot extends StatelessWidget {
   const WebsitePhotoSlot({
     super.key,
     required this.title,
+    required this.sectionId,
     required this.help,
     required this.image,
     required this.settings,
@@ -78,7 +80,7 @@ class WebsitePhotoSlot extends StatelessWidget {
     this.wide = false,
     this.height,
   });
-  final String title, help;
+  final String title, help, sectionId;
   final WebsiteImage? image;
   final WebsiteSettings settings;
   final bool disabled, wide;
@@ -90,65 +92,66 @@ class WebsitePhotoSlot extends StatelessWidget {
     final t = Theme.of(context), c = t.colorScheme;
     final limitReached =
         image == null && settings.images.length >= websitePhotoLimit;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: c.surfaceContainerHighest.withValues(alpha: .4),
-        border: Border.all(color: c.outlineVariant),
+    return Material(
+      color: c.surfaceContainerHighest.withValues(alpha: .4),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: c.outlineVariant),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: t.textTheme.titleSmall),
-          const SizedBox(height: 6),
-          Text(
-            help,
-            style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: ExpansionTile(
+          key: PageStorageKey('website-photo-panel-$sectionId'),
+          maintainState: true,
+          expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(top: 12),
+          leading: const Icon(Icons.photo_library_outlined),
+          title: Text(title, style: t.textTheme.titleSmall),
+          subtitle: Text(
+            image == null
+                ? 'No photo selected'
+                : image!.pending
+                ? '1 photo · Unsaved changes'
+                : '1 photo',
           ),
-          const SizedBox(height: 6),
-          const Text(
-            'JPG, PNG or WebP up to ${websitePhotoSourceMaxBytes ~/ (1024 * 1024)} MB. Photos are optimized for the website.',
-          ),
-          const SizedBox(height: 16),
-          if (image != null)
-            WebsitePhotoTile(
-              image: image!,
-              disabled: disabled,
-              onRemove: onRemove,
-              wide: wide,
-              height: height,
-            )
-          else
-            Container(
-              width: double.infinity,
-              height: height ?? (wide ? 130 : 76),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: c.surface,
-              ),
-              child: Icon(
-                Icons.add_photo_alternate_outlined,
-                size: 30,
-                color: c.onSurfaceVariant,
-              ),
-            ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: disabled || limitReached ? null : onUpload,
-            icon: const Icon(Icons.add_photo_alternate_outlined),
-            label: Text(image == null ? 'Upload photo' : 'Replace photo'),
-          ),
-          if (limitReached) ...[
-            const SizedBox(height: 8),
+          children: [
             Text(
-              'Photo limit reached. Remove a photo to add another.',
-              style: t.textTheme.bodySmall,
+              help,
+              style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
             ),
+            const SizedBox(height: 6),
+            const Text(
+              'JPG, PNG or WebP up to ${websitePhotoSourceMaxBytes ~/ (1024 * 1024)} MB. Photos are optimized for the website.',
+            ),
+            const SizedBox(height: 16),
+            if (image != null) ...[
+              WebsitePhotoTile(
+                image: image!,
+                disabled: disabled,
+                onRemove: onRemove,
+                wide: wide,
+                height: height,
+              ),
+              const SizedBox(height: 12),
+            ],
+            Align(
+              alignment: Alignment.centerLeft,
+              child: WebsitePhotoUploadTile(
+                label: image == null ? 'Upload photo' : 'Replace photo',
+                onPressed: disabled || limitReached ? null : onUpload,
+              ),
+            ),
+            if (limitReached) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Photo limit reached. Remove a photo to add another.',
+                style: t.textTheme.bodySmall,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -180,14 +183,21 @@ class WebsiteSpaceGallery extends StatelessWidget {
               i.resourceId == spaceId,
         )
         .toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return ExpansionTile(
+      key: PageStorageKey('website-photo-panel-space-$businessId-$spaceId'),
+      maintainState: true,
+      expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(top: 12, bottom: 12),
+      leading: const Icon(Icons.photo_library_outlined),
+      title: Text(
+        'Booking page photos',
+        style: Theme.of(context).textTheme.titleSmall,
+      ),
+      subtitle: Text(
+        '${images.length}/$websiteSpacePhotoLimit photos${images.any((image) => image.pending) ? ' · Unsaved changes' : ''}',
+      ),
       children: [
-        Text(
-          'Booking page photos',
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
-        const SizedBox(height: 4),
         Text(
           'Shown in the gallery when visitors book this space. The first photo is the cover.',
           style: Theme.of(context).textTheme.bodySmall,
@@ -197,30 +207,27 @@ class WebsiteSpaceGallery extends StatelessWidget {
           'JPG, PNG or WebP up to ${websitePhotoSourceMaxBytes ~/ (1024 * 1024)} MB. Photos are optimized for the website.',
         ),
         const SizedBox(height: 10),
-        if (images.isNotEmpty)
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              for (final image in images)
-                WebsitePhotoTile(
-                  image: image,
-                  disabled: disabled,
-                  onRemove: onRemove,
-                ),
-            ],
-          ),
-        OutlinedButton.icon(
-          onPressed:
-              disabled ||
-                  images.length >= websiteSpacePhotoLimit ||
-                  settings.images.length >= websitePhotoLimit
-              ? null
-              : onUpload,
-          icon: const Icon(Icons.add_photo_alternate_outlined),
-          label: Text(
-            'Add space photo (${images.length}/$websiteSpacePhotoLimit)',
-          ),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final image in images)
+              WebsitePhotoTile(
+                image: image,
+                disabled: disabled,
+                onRemove: onRemove,
+              ),
+            WebsitePhotoUploadTile(
+              label:
+                  'Add space photo (${images.length}/$websiteSpacePhotoLimit)',
+              onPressed:
+                  disabled ||
+                      images.length >= websiteSpacePhotoLimit ||
+                      settings.images.length >= websitePhotoLimit
+                  ? null
+                  : onUpload,
+            ),
+          ],
         ),
       ],
     );

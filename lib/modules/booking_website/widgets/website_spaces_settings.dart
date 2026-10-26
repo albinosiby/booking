@@ -139,6 +139,7 @@ class _BusinessTile extends StatelessWidget {
                 const SizedBox(height: 10),
                 WebsitePhotoSlot(
                   title: 'Card photo',
+                  sectionId: 'card-${business.id}',
                   help:
                       'Shown on this service’s card on the homepage. Without one, the first space photo is used.',
                   image: settings.image('card', businessId: business.id),
