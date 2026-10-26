@@ -166,8 +166,29 @@ their existing accounting path.
 
 ### User-applied membership migration
 
-No live schema change or deployment has been performed. Apply this migration
-before deploying the updated API, then release the updated Flutter client.
+Production status, 26 October 2026: after explicit user approval overriding the
+earlier no-live-migrations restriction for this file only,
+`20261026042821_membership_only_plans.sql` was applied to project
+**scwwkaywewecspsrskft** through the existing terminal database credentials over
+certificate-verified TLS. All existing records were unchanged, the migration
+marker is present, the expiry index is valid and private view/runtime grants
+passed validation. No API or client deployment was performed.
+
+A private logical snapshot of the nine affected admissions, customer, booking
+and finance tables, pre-change schema definitions and grants, migration hash and
+verification receipts is stored under
+`.local/releases/membership-only-2026-10-26T05-40-51.076Z/`. This is an affected-data
+snapshot, not a full project/Auth backup. The directory is owner-only (0700), its
+files are owner-only (0600), and it is ignored by Git. The runner
+`backend/scripts/apply-membership-only-migration.mjs` defaults to a read-only
+preflight or verification; `--apply` requires explicit production authorization.
+It backs up before mutation, validates inside the transaction and checks the
+committed state again. Repeated execution detects the existing migration marker.
+
+The steps below document application to an environment where this migration is
+still absent. Do not reapply it to the confirmed production project. Deploy the
+updated API next, then release the updated Flutter client through the separately
+authorized release process.
 
 If SQL Editor reports `relation "admissions" does not exist`, check whether the
 local backend copy was pasted: that copy uses unqualified names supplied by its
@@ -272,11 +293,15 @@ expiry-feed refresh/access revocation.
 Verified locally on 26 October 2026: all 56 focused backend tests and all seven
 new membership tests passed. The seven Home/router regression tests also passed.
 Flutter analysis reported no issues; the backend build, Edge type check and
-generated Edge builds succeeded. No live migration or deployment was performed.
+generated Edge builds succeeded. These checks used isolated data and preceded
+the separately approved production migration recorded above. No API or client
+deployment was performed.
 
 ## Original admissions production migration
 
-**Do not deploy the new API before applying this migration. No live migration has been applied by Codex.**
+**This is the original prerequisite migration. Its marker was confirmed in the
+live database on 26 October 2026. Do not reapply it there; the instructions below
+are for an environment where the original admissions schema is absent.**
 
 ### Prerequisites
 
