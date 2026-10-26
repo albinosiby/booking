@@ -159,46 +159,41 @@ void main() {
     },
   );
 
-  testWidgets('website link panel shows loading, failure and retry recovery', (
-    tester,
-  ) async {
-    final workspace = WorkspaceCubit(BookingSource());
-    await workspace.load();
-    final gate = Completer<BookingWebsiteLink>();
-    final repo = LinkRepository()..pending = gate;
-    final cubit = BookingWebsiteLinkCubit(workspace, repo);
-    addTearDown(() async {
-      await tester.pumpWidget(const SizedBox());
-      await cubit.close();
-      await workspace.close();
-    });
-    await tester.pumpWidget(
-      BlocProvider.value(
-        value: cubit,
-        child: MaterialApp(
-          home: Scaffold(body: BookingWebsiteLinkSheet(onConfigure: () {})),
+  testWidgets(
+    'website link panel shows loading and errors without retry actions',
+    (tester) async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final gate = Completer<BookingWebsiteLink>();
+      final repo = LinkRepository()..pending = gate;
+      final cubit = BookingWebsiteLinkCubit(workspace, repo);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await cubit.close();
+        await workspace.close();
+      });
+      await tester.pumpWidget(
+        BlocProvider.value(
+          value: cubit,
+          child: MaterialApp(
+            home: Scaffold(body: BookingWebsiteLinkSheet(onConfigure: () {})),
+          ),
         ),
-      ),
-    );
-    final loading = cubit.load();
-    await tester.pump();
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
-    expect(find.text('Copy link'), findsNothing);
-    gate.completeError(const AppException('Could not reach the server.'));
-    await loading;
-    await tester.pumpAndSettle();
-    expect(find.text('Could not reach the server.'), findsOneWidget);
-    repo.pending = null;
-    await tester.tap(find.text('Try again'));
-    await tester.pumpAndSettle();
-    expect(repo.reads, 2);
-    expect(find.text('Could not reach the server.'), findsNothing);
-    expect(
-      find.byKey(const ValueKey('home-booking-website-url')),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-  });
+      );
+      final loading = cubit.load();
+      await tester.pump();
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(find.text('Copy link'), findsNothing);
+      gate.completeError(const AppException('Could not reach the server.'));
+      await loading;
+      await tester.pumpAndSettle();
+      expect(find.text('Could not reach the server.'), findsOneWidget);
+      expect(find.text('Try again'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+      expect(repo.reads, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final (width, status, canManage) in [
     (320.0, 'published', true),

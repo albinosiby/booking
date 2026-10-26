@@ -94,11 +94,7 @@ class _ExpiredMembersSectionState extends State<ExpiredMembersSection>
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: LinearProgressIndicator(),
                 ),
-              if (state.error != null)
-                AppErrorWidget(
-                  message: state.error!,
-                  onRetry: () => cubit.load(),
-                ),
+              if (state.error != null) AppErrorWidget(message: state.error!),
               for (final admission in state.items)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),

@@ -236,8 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ...pending.map((b) => _business(context, b, workspace.isOwner)),
           ],
 
-          if (s.error != null)
-            AppErrorWidget(message: s.error!, onRetry: cubit.reload),
+          if (s.error != null) AppErrorWidget(message: s.error!),
         ],
       );
     },
@@ -263,11 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
             initial: s.dashboard == null,
             label: s.dashboard == null ? 'Loading bookings…' : null,
           ),
-        if (s.bookingError != null)
-          AppErrorWidget(
-            message: s.bookingError!,
-            onRetry: cubit.loadDashboard,
-          ),
+        if (s.bookingError != null) AppErrorWidget(message: s.bookingError!),
         if (s.dashboard != null && s.bookingError == null && bookings.isEmpty)
           const AppEmptyState(
             showCard: false,
@@ -319,8 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
             initial: s.dueTotal == null,
             label: s.dueTotal == null ? 'Loading balances…' : null,
           ),
-        if (s.dueError != null)
-          AppErrorWidget(message: s.dueError!, onRetry: () => cubit.loadDue()),
+        if (s.dueError != null) AppErrorWidget(message: s.dueError!),
         if (s.dueTotal != null &&
             s.dueError == null &&
             s.dueBookings.isEmpty &&

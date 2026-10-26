@@ -109,18 +109,14 @@ class _TodayStudentsSectionState extends State<TodayStudentsSection>
           const SizedBox(height: 12),
           if (state.loading)
             const AppLoadingState(label: 'Loading today’s students…'),
-          if (state.error != null)
-            AppErrorWidget(
-              message: state.error!,
-              onRetry: () => cubit.refreshToday(force: true),
-            ),
+          if (state.error != null) AppErrorWidget(message: state.error!),
           if (state.pendingCheckIn)
             TextButton.icon(
               onPressed: state.busy || state.loading
                   ? null
                   : cubit.retryCheckIn,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry attendance save'),
+              icon: const Icon(Icons.cloud_upload_outlined),
+              label: const Text('Finish attendance save'),
             ),
           if (state.notice != null)
             Semantics(liveRegion: true, child: Text(state.notice!)),

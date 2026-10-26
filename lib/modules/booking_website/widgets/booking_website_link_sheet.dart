@@ -123,12 +123,7 @@ class BookingWebsiteLinkSheet extends StatelessWidget {
                     if (state.error != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 16),
-                        child: AppErrorWidget(
-                          message: state.error!,
-                          onRetry: cubit.authorized && !state.working
-                              ? cubit.load
-                              : null,
-                        ),
+                        child: AppErrorWidget(message: state.error!),
                       ),
                   ],
                 ),

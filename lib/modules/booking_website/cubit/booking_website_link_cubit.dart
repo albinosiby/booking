@@ -45,7 +45,7 @@ class BookingWebsiteLinkCubit extends Cubit<BookingWebsiteLinkState> {
       scope == workspaceAccessScope(session.state.data);
   String failure(Object error) => error is AppException
       ? error.message
-      : 'Could not load or open the website link. Please retry.';
+      : 'Could not load or open the website link.';
   Future<void> load() async {
     if (!authorized || state.working) return;
     final request = ++generation;

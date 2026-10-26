@@ -9,7 +9,7 @@ Each tile shows the student, plan, space/business, remaining attendance days, cl
 - The server records the actual attendance timestamp separately from the scheduled class interval. Both are displayed in the business's time zone.
 - Marked flexible students have one tile, rather than appearing again as a duplicate scheduled student. Past class history is retained.
 - When a plan/space is unavailable, attendance permission is missing, a class is full or a conflicting reservation exists, the roster shows the reason. Writes recheck these rules inside the business-locked transaction.
-- A response lost after saving leaves **Retry attendance save**. Retry reuses the original command key, admission version and start intent. Other attendance writes stay disabled until that request is resolved; it cannot create another class or deduct another day.
+- A response lost after saving leaves **Finish attendance save** on Home and **Retry attendance save** in My classes. Both reuse the original command key, admission version and start intent. Other attendance writes stay disabled until that request is resolved; it cannot create another class or deduct another day.
 
 Existing allowance rules remain: flexible usage counts distinct business-local class dates, not button presses. Existing expiry, operating days/hours, coach overlap, pool capacity, court reservations and slot-block rules apply. Coaches require both current plan/resource assignment and attendance permission. Only owners correct recorded attendance with a reason.
 
