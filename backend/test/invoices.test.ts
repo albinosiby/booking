@@ -164,7 +164,7 @@ const book = async (who: Actor, hour: string, paid: number) => {
 const generate = (who: Actor, id: string, key = randomUUID()) =>
   invoices.generate(who, id, { command_key: key });
 test("invoices are on by default and only the owner can switch them off", async () => {
-  assert.deepEqual(await invoices.settings(owner), { enabled: true });
+  assert.equal((await invoices.settings(owner)).enabled, true);
   const inv = await w.invite(owner, {
     email: "staff@example.com",
     display_name: "Desk staff",
@@ -182,12 +182,13 @@ test("invoices are on by default and only the owner can switch them off", async 
   await assert.rejects(() =>
     invoices.saveSettings(owner, { enabled: "no", extra: 1 }),
   );
-  assert.deepEqual(await invoices.settings(staff), { enabled: true });
+  assert.equal((await invoices.settings(staff)).enabled, true);
   const booking = await book(owner, "07:00", 0);
-  assert.deepEqual(await invoices.saveSettings(owner, { enabled: false }), {
-    enabled: false,
-  });
-  assert.deepEqual(await invoices.settings(staff), { enabled: false });
+  assert.equal(
+    (await invoices.saveSettings(owner, { enabled: false })).enabled,
+    false,
+  );
+  assert.equal((await invoices.settings(staff)).enabled, false);
   await assert.rejects(() => generate(owner, booking.id), /turned off/);
   await invoices.saveSettings(owner, { enabled: true });
   assert.equal(
@@ -304,4 +305,54 @@ test("invoices are scoped to the organization and booking access", async () => {
   await assert.rejects(() => generate(other, booking.id));
   await assert.rejects(() => invoices.pdf(other, made.id));
   await assert.rejects(() => invoices.list(other, booking.id));
+});
+
+test("owner picks an invoice design, previews samples, and old invoices keep theirs", async () => {
+  await invoices.saveSettings(owner, { enabled: true, template: "classic" });
+  const first = await generate(owner, (await book(owner, "14:00", 0)).id);
+  const settings = await invoices.settings(owner);
+  assert.equal(settings.template, "classic");
+  assert.deepEqual(
+    settings.templates.map((t) => t.id),
+    ["classic", "modern", "minimal"],
+  );
+  for (const t of ["classic", "modern", "minimal"]) {
+    const sample = await invoices.preview(owner, t);
+    assert.equal(sample.bytes.subarray(0, 5).toString(), "%PDF-");
+  }
+  await assert.rejects(() => invoices.preview(owner, "fancy"));
+  await assert.rejects(() =>
+    invoices.saveSettings(owner, { template: "fancy" }),
+  );
+  await assert.rejects(() => invoices.saveSettings(owner, {}));
+  const staff = (
+    await db.query<{ user_id: string }>(
+      "SELECT user_id FROM memberships WHERE role='staff' LIMIT 1",
+    )
+  ).rows[0];
+  await assert.rejects(
+    () =>
+      invoices.saveSettings(
+        { ...actor(), uid: staff.user_id },
+        { template: "modern" },
+      ),
+    /owner/i,
+  );
+  const saved = await invoices.saveSettings(owner, { template: "modern" });
+  assert.deepEqual([saved.template, saved.enabled], ["modern", true]);
+  const booking = await book(owner, "15:00", 0);
+  const modern = await generate(owner, booking.id);
+  const snap = async (id: string) =>
+    (
+      await db.query<any>("SELECT snapshot FROM booking_invoices WHERE id=$1", [
+        id,
+      ])
+    ).rows[0].snapshot.template;
+  assert.equal(await snap(first.id), "classic");
+  assert.equal(await snap(modern.id), "modern");
+  assert.equal(
+    (await invoices.pdf(owner, modern.id)).bytes.subarray(0, 5).toString(),
+    "%PDF-",
+  );
+  await invoices.saveSettings(owner, { template: "classic" });
 });

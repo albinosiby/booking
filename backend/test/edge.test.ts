@@ -778,6 +778,10 @@ test("Edge routes invoice settings, generation and PDF with actor and booking ID
   assert.equal(f.calls.at(-1).args[1], id);
   await f.request(`/v1/invoices/bookings/${id}`);
   assert.equal(f.calls.at(-1).method, "list");
+  const sample = await f.request("/v1/invoices/templates/modern/preview");
+  assert.equal(f.calls.at(-1).method, "preview");
+  assert.equal(f.calls.at(-1).args[1], "modern");
+  assert.equal(sample.headers.get("content-type"), "application/pdf");
   const pdf = await f.request(`/v1/invoices/${id}/pdf`);
   assert.equal(f.calls.at(-1).method, "pdf");
   assert.equal(pdf.headers.get("content-type"), "application/pdf");

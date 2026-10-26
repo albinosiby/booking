@@ -7,18 +7,27 @@ class RestInvoiceRepository implements IInvoiceRepository {
   RestInvoiceRepository(this.api);
   final RestApiService api;
   @override
-  Future<bool> settings() async =>
-      financeMap(await api.request('/invoices/settings'))['enabled'] as bool;
+  Future<InvoiceSettings> settings() async => InvoiceSettings.fromJson(
+    financeMap(await api.request('/invoices/settings')),
+  );
   @override
-  Future<bool> saveSettings(bool enabled) async =>
-      financeMap(
-            await api.request(
-              '/invoices/settings',
-              method: 'PUT',
-              data: {'enabled': enabled},
-            ),
-          )['enabled']
-          as bool;
+  Future<InvoiceSettings> saveSettings({
+    bool? enabled,
+    String? template,
+  }) async => InvoiceSettings.fromJson(
+    financeMap(
+      await api.request(
+        '/invoices/settings',
+        method: 'PUT',
+        data: {'enabled': ?enabled, 'template': ?template},
+      ),
+    ),
+  );
+  @override
+  Future<List<int>> previewTemplate(String template) => api.bytes(
+    '/invoices/templates/$template/preview',
+    errorMessage: 'Could not load the sample invoice. Please try again.',
+  );
   // Invoices are never cached: the history must always be what the server holds.
   @override
   Future<BookingInvoiceList> list(String bookingId) async {

@@ -11,45 +11,66 @@ String invoiceError(Object e) => e is AppException
 class InvoiceSettingsCubit extends Cubit<InvoiceSettingsModel> {
   InvoiceSettingsCubit(this.repository) : super(const InvoiceSettingsModel());
   final IInvoiceRepository repository;
+  InvoiceSettingsModel _from(
+    InvoiceSettings s, {
+    bool saving = false,
+    String? error,
+  }) => InvoiceSettingsModel(
+    enabled: s.enabled,
+    template: s.template,
+    templates: s.templates,
+    loaded: true,
+    saving: saving,
+    error: error,
+  );
+  InvoiceSettingsModel _keep({bool loading = false, String? error}) =>
+      InvoiceSettingsModel(
+        enabled: state.enabled,
+        template: state.template,
+        templates: state.templates,
+        loaded: state.loaded,
+        loading: loading,
+        error: error,
+      );
   Future<void> load() async {
     if (isClosed || state.busy) return;
-    emit(InvoiceSettingsModel(enabled: state.enabled, loading: true));
+    emit(_keep(loading: true));
     try {
-      final enabled = await repository.settings();
-      if (!isClosed) {
-        emit(InvoiceSettingsModel(enabled: enabled, loaded: true));
-      }
+      final settings = await repository.settings();
+      if (!isClosed) emit(_from(settings));
     } catch (e) {
-      if (!isClosed) {
-        emit(
-          InvoiceSettingsModel(enabled: state.enabled, error: invoiceError(e)),
-        );
-      }
+      if (!isClosed) emit(_keep(error: invoiceError(e)));
     }
   }
 
-  Future<void> toggle(bool enabled) async {
-    if (isClosed || state.busy || !state.loaded || enabled == state.enabled) {
-      return;
-    }
+  Future<void> _save({bool? enabled, String? template}) async {
+    if (isClosed || state.busy || !state.loaded) return;
     emit(
-      InvoiceSettingsModel(enabled: state.enabled, loaded: true, saving: true),
+      InvoiceSettingsModel(
+        enabled: state.enabled,
+        template: state.template,
+        templates: state.templates,
+        loaded: true,
+        saving: true,
+      ),
     );
     try {
-      final saved = await repository.saveSettings(enabled);
-      if (!isClosed) emit(InvoiceSettingsModel(enabled: saved, loaded: true));
+      final saved = await repository.saveSettings(
+        enabled: enabled,
+        template: template,
+      );
+      if (!isClosed) emit(_from(saved));
     } catch (e) {
-      if (!isClosed) {
-        emit(
-          InvoiceSettingsModel(
-            enabled: state.enabled,
-            loaded: true,
-            error: invoiceError(e),
-          ),
-        );
-      }
+      if (!isClosed) emit(_keep(error: invoiceError(e)));
     }
   }
+
+  Future<void> toggle(bool enabled) =>
+      enabled == state.enabled ? Future.value() : _save(enabled: enabled);
+  Future<void> chooseTemplate(String template) =>
+      template == state.template ? Future.value() : _save(template: template);
+  Future<List<int>> preview(String template) =>
+      repository.previewTemplate(template);
 }
 
 class BookingInvoicesCubit extends Cubit<BookingInvoicesModel> {

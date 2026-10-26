@@ -7,8 +7,11 @@ bool invoicesAvailable(GetIt di) =>
     di.isRegistered<IInvoiceRepository>() && di.isRegistered<RestApiService>();
 
 abstract interface class IInvoiceRepository {
-  Future<bool> settings();
-  Future<bool> saveSettings(bool enabled);
+  Future<InvoiceSettings> settings();
+  Future<InvoiceSettings> saveSettings({bool? enabled, String? template});
+
+  /// A sample invoice PDF in the given design, filled with this organization's details.
+  Future<List<int>> previewTemplate(String template);
   Future<BookingInvoiceList> list(String bookingId);
 
   /// Creates the invoice for the booking's current data, or returns the latest

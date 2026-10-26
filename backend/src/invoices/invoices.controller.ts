@@ -29,6 +29,18 @@ export class InvoicesController {
   saveSettings(@Req() r: AuthRequest, @Body() b: unknown) {
     return this.service.saveSettings(r.actor, b);
   }
+  @Get("templates/:template/preview")
+  async preview(
+    @Req() r: AuthRequest,
+    @Param("template") template: string,
+    @Res() res: Response,
+  ) {
+    const { bytes, filename } = await this.service.preview(r.actor, template);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(bytes);
+  }
   @Header("Cache-Control", "private, no-store")
   @Get("bookings/:bookingId")
   list(

@@ -23,12 +23,30 @@ BookingInvoice invoice(String id, String number, {int due = 4500}) =>
 
 class FakeInvoices implements IInvoiceRepository {
   bool enabled = true, failGenerate = false;
+  String template = 'classic';
+  final previews = <String>[];
   final stored = <BookingInvoice>[invoice('old', 'INV-000001')];
   final generated = <String>[];
+  InvoiceSettings get current =>
+      InvoiceSettings(enabled: enabled, template: template);
   @override
-  Future<bool> settings() async => enabled;
+  Future<InvoiceSettings> settings() async => current;
   @override
-  Future<bool> saveSettings(bool value) async => enabled = value;
+  Future<InvoiceSettings> saveSettings({
+    bool? enabled,
+    String? template,
+  }) async {
+    this.enabled = enabled ?? this.enabled;
+    this.template = template ?? this.template;
+    return current;
+  }
+
+  @override
+  Future<List<int>> previewTemplate(String template) async {
+    previews.add(template);
+    return [37, 80, 68, 70, 45];
+  }
+
   @override
   Future<BookingInvoiceList> list(String bookingId) async =>
       BookingInvoiceList(enabled: enabled, invoices: [...stored.reversed]);
@@ -74,6 +92,25 @@ void main() {
     await cubit.toggle(false);
     expect(repo.enabled, isFalse);
     expect(cubit.state.enabled, isFalse);
+    await cubit.close();
+  });
+
+  test('choosing a design saves it and keeps the on/off setting', () async {
+    final repo = FakeInvoices();
+    final cubit = InvoiceSettingsCubit(repo);
+    await cubit.load();
+    expect(cubit.state.template, 'classic');
+    expect(cubit.state.templates.map((t) => t.id), [
+      'classic',
+      'modern',
+      'minimal',
+    ]);
+    await cubit.chooseTemplate('modern');
+    expect(repo.template, 'modern');
+    expect(repo.enabled, isTrue);
+    expect(cubit.state.selected.name, 'Modern');
+    expect(await cubit.preview('minimal'), isNotEmpty);
+    expect(repo.previews, ['minimal']);
     await cubit.close();
   });
 
@@ -201,10 +238,42 @@ void main() {
     expect(repo.enabled, isFalse);
     expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
   });
+
+  testWidgets('design picker lists the designs, previews and selects one', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repo = FakeInvoices();
+    await tester.pumpWidget(
+      host(InvoiceSettingsSection(create: () => InvoiceSettingsCubit(repo))),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Classic'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('invoice-template-open')));
+    await tester.pumpAndSettle();
+    for (final id in ['classic', 'modern', 'minimal']) {
+      expect(find.byKey(ValueKey('invoice-template-$id')), findsOneWidget);
+      expect(find.byKey(ValueKey('invoice-preview-$id')), findsOneWidget);
+    }
+    expect(find.text('Selected'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('invoice-use-minimal')),
+    );
+    await tester.tap(find.byKey(const ValueKey('invoice-use-minimal')));
+    await tester.pumpAndSettle();
+    expect(repo.template, 'minimal');
+    expect(find.byKey(const ValueKey('invoice-use-minimal')), findsNothing);
+    expect(find.byKey(const ValueKey('invoice-use-modern')), findsOneWidget);
+  });
 }
 
 class _Rejecting extends FakeInvoices {
   @override
-  Future<bool> saveSettings(bool value) async =>
+  Future<InvoiceSettings> saveSettings({
+    bool? enabled,
+    String? template,
+  }) async =>
       throw const AppException('Only the owner can manage organization setup.');
 }

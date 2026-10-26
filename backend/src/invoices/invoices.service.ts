@@ -12,9 +12,26 @@ import { Actor } from "../common/auth.guard";
 import { WorkspaceService } from "../workspace/workspace.service";
 import { BookingService } from "../bookings/booking.service";
 import { localStamp } from "../bookings/booking.inventory";
-import { renderInvoice } from "./invoices.pdf";
+import {
+  INVOICE_TEMPLATES,
+  InvoiceTemplate,
+  renderInvoice,
+  sampleInvoice,
+} from "./invoices.pdf";
 type Row = Record<string, any>;
-const settingsSchema = z.object({ enabled: z.boolean() }).strict();
+const templateIds = INVOICE_TEMPLATES.map((t) => t.id) as [
+  InvoiceTemplate,
+  ...InvoiceTemplate[],
+];
+const settingsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    template: z.enum(templateIds).optional(),
+  })
+  .strict()
+  .refine((v) => v.enabled !== undefined || v.template !== undefined, {
+    message: "Choose a setting to change.",
+  });
 const generateSchema = z.object({ command_key: z.uuid() }).strict();
 const COLUMNS =
   "id,booking_id,invoice_number,total_minor,paid_minor,balance_minor,currency,generated_by_name,generated_at";
@@ -43,37 +60,102 @@ export class InvoicesService {
       reused,
     };
   }
-  private async enabled(db: Queryable, org: string) {
+  private async prefs(db: Queryable, org: string) {
     const row = (
       await db.query<Row>(
-        "SELECT enabled FROM booking_invoice_settings WHERE organization_id=$1",
+        "SELECT enabled,template FROM booking_invoice_settings WHERE organization_id=$1",
         [org],
       )
     ).rows[0];
-    return row ? row.enabled === true : true; // invoices are ON until the owner turns them off
+    // Invoices are ON, and Classic, until the owner changes them.
+    return {
+      enabled: row ? row.enabled === true : true,
+      template: (row?.template ?? "classic") as InvoiceTemplate,
+    };
+  }
+  private async enabled(db: Queryable, org: string) {
+    return (await this.prefs(db, org)).enabled;
   }
   async settings(actor: Actor) {
     const m = await this.workspace.member(actor);
-    return { enabled: await this.enabled(this.db, m.organization_id) };
+    return {
+      ...(await this.prefs(this.db, m.organization_id)),
+      templates: INVOICE_TEMPLATES,
+    };
   }
   async saveSettings(actor: Actor, input: unknown) {
     const v = settingsSchema.parse(input);
     await this.db.transaction(async (db) => {
       const m = await this.workspace.member(actor, true, db);
+      const now = await this.prefs(db, m.organization_id);
+      const next = {
+        enabled: v.enabled ?? now.enabled,
+        template: v.template ?? now.template,
+      };
       await db.query(
-        `INSERT INTO booking_invoice_settings(organization_id,enabled,updated_by) VALUES($1,$2,$3)
-         ON CONFLICT(organization_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_by=EXCLUDED.updated_by,updated_at=now()`,
-        [m.organization_id, v.enabled, actor.uid],
+        `INSERT INTO booking_invoice_settings(organization_id,enabled,template,updated_by) VALUES($1,$2,$3,$4)
+         ON CONFLICT(organization_id) DO UPDATE SET enabled=EXCLUDED.enabled,template=EXCLUDED.template,updated_by=EXCLUDED.updated_by,updated_at=now()`,
+        [m.organization_id, next.enabled, next.template, actor.uid],
       );
-      await this.workspace.audit(
-        db,
-        actor,
-        m.organization_id,
-        v.enabled ? "invoices.enabled" : "invoices.disabled",
-        m.organization_id,
-      );
+      if (next.enabled !== now.enabled)
+        await this.workspace.audit(
+          db,
+          actor,
+          m.organization_id,
+          next.enabled ? "invoices.enabled" : "invoices.disabled",
+          m.organization_id,
+        );
+      if (next.template !== now.template)
+        await this.workspace.audit(
+          db,
+          actor,
+          m.organization_id,
+          "invoices.template_changed",
+          m.organization_id,
+        );
     });
     return this.settings(actor);
+  }
+  // A sample invoice in the given design, using the organization's own name, phone, address and logo.
+  async preview(actor: Actor, template: string) {
+    const id = z.enum(templateIds).parse(template);
+    const m = await this.workspace.member(actor);
+    const org = (
+      await this.db.query<Row>(
+        "SELECT name,contact_phone,currency FROM organizations WHERE id=$1",
+        [m.organization_id],
+      )
+    ).rows[0];
+    const loc = (
+      await this.db.query<Row>(
+        "SELECT * FROM locations WHERE organization_id=$1 ORDER BY id LIMIT 1",
+        [m.organization_id],
+      )
+    ).rows[0];
+    const logo = (
+      await this.db.query<Row>(
+        "SELECT content_type,data FROM logo_assets WHERE organization_id=$1",
+        [m.organization_id],
+      )
+    ).rows[0];
+    const sample = sampleInvoice(id, {
+      name: org.name,
+      phone: org.contact_phone,
+      currency: org.currency,
+      address_lines: [
+        loc?.name,
+        [loc?.address_line_1, loc?.address_line_2].filter(Boolean).join(", "),
+        [loc?.city, loc?.postal_code].filter(Boolean).join(" "),
+      ].filter(Boolean),
+    });
+    return {
+      bytes: await renderInvoice(
+        sample,
+        image(logo?.data, logo?.content_type),
+        null,
+      ),
+      filename: `invoice-${id}-sample.pdf`,
+    };
   }
   // Everything printed on the invoice, captured at generation time.
   private async build(actor: Actor, bookingId: string) {
@@ -125,6 +207,7 @@ export class InvoicesService {
       cancelled = b.status === "cancelled";
     const discount = snap.selection?.discount;
     const snapshot = {
+      template: (await this.prefs(db, b.organization_id)).template,
       currency: org.currency,
       generated_local: localStamp(Date.now(), snap.timezone),
       organization: {

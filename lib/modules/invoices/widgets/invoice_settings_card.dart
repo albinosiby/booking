@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../design_system/design_system.dart';
 import '../cubit/invoice_cubits.dart';
 import '../models/invoice_models.dart';
+import 'invoice_template_picker.dart';
 
 /// Owner switch on the payment settings page. Invoice generation is on by default.
 class InvoiceSettingsCard extends StatelessWidget {
@@ -30,6 +31,15 @@ class InvoiceSettingsCard extends StatelessWidget {
             value: s.enabled,
             onChanged: s.loaded && !s.busy ? cubit.toggle : null,
           ),
+          if (s.enabled && s.loaded)
+            ListTile(
+              key: const ValueKey('invoice-template-open'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Invoice design'),
+              subtitle: Text(s.selected.name),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => showInvoiceTemplatePicker(context, cubit),
+            ),
           if (s.busy) const LinearProgressIndicator(),
           if (s.error != null)
             AppErrorWidget(

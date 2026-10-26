@@ -472,6 +472,15 @@ export function createHandler(
   const inv = services.invoices;
   add("GET", "/v1/invoices/settings", (i) => inv.settings(i.actor));
   add("PUT", "/v1/invoices/settings", (i) => inv.saveSettings(i.actor, i.body));
+  add("GET", "/v1/invoices/templates/:template/preview", async (i) => {
+    const { bytes, filename } = await inv.preview(i.actor, i.params.template);
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${filename}"`,
+      },
+    });
+  });
   add("GET", "/v1/invoices/bookings/:bookingId", (i) =>
     inv.list(i.actor, i.params.bookingId),
   );
@@ -843,7 +852,7 @@ export function createHandler(
         );
       bursts.set(actor.uid, burst);
       for (const [key, value] of Object.entries(params))
-        if (key !== "format") z.uuid().parse(value);
+        if (key !== "format" && key !== "template") z.uuid().parse(value);
       const result = await match.run({
         actor,
         params,
