@@ -550,9 +550,11 @@ class BookingEvent extends Equatable {
     this.date,
     this.reason,
     this.before,
-    this.after,
-  );
+    this.after, {
+    this.source = '',
+  });
   final String action, actor, date, reason;
+  final String source;
   final String? before, after;
   factory BookingEvent.fromJson(Map<String, dynamic> j) => BookingEvent(
     j['action'],
@@ -561,9 +563,18 @@ class BookingEvent extends Equatable {
     j['details']['reason'] ?? '',
     j['previous_local'] ?? j['details']['previous']?['starts_at'],
     j['current_local'] ?? j['details']['current']?['starts_at'],
+    source: j['details']['source'] ?? '',
   );
   @override
-  List<Object?> get props => [action, actor, date, reason, before, after];
+  List<Object?> get props => [
+    action,
+    actor,
+    date,
+    reason,
+    before,
+    after,
+    source,
+  ];
 }
 
 class BookingRecord extends Equatable {
@@ -621,6 +632,10 @@ class BookingRecord extends Equatable {
   final List<BookingEvent> history;
   final Map<String, dynamic>? websitePayment;
   bool get checkedIn => history.any((event) => event.action == 'checked_in');
+  bool get automaticallyCheckedIn => history.any(
+    (event) =>
+        event.action == 'checked_in' && event.source == 'automatic_end_of_day',
+  );
   factory BookingRecord.fromJson(Map<String, dynamic> j) => BookingRecord(
     websitePayment: j['website_payment_submission'] == null
         ? null

@@ -183,9 +183,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       children: [
                         Chip(label: Text(paymentLabel(b.status))),
                         if (b.checkedIn)
-                          const Chip(
-                            avatar: Icon(Icons.how_to_reg_outlined, size: 18),
-                            label: Text('Checked in'),
+                          Chip(
+                            avatar: const Icon(
+                              Icons.how_to_reg_outlined,
+                              size: 18,
+                            ),
+                            label: Text(
+                              b.automaticallyCheckedIn
+                                  ? 'Auto checked in'
+                                  : 'Checked in',
+                            ),
                           ),
                       ],
                     ),

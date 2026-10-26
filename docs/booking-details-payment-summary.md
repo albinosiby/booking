@@ -15,6 +15,11 @@ keeps space, schedule, customer, notes and informational cleanup time.
 
 ## Check-in
 
+For the approved end-of-day fallback, its distinct automatic label, scheduler,
+activation migration and verification/recovery instructions, see
+[End-of-day booking check-in](booking-end-of-day-checkins.md). This applies to
+regular bookings only and preserves payment dues.
+
 The previous Mark completed button is replaced by Check in for managers of a
 confirmed booking which has not been checked in. It opens a confirmation section
 with an optional arrival note. An empty note records "Customer checked in".

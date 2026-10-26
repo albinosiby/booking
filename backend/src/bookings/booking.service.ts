@@ -766,7 +766,7 @@ export class BookingService {
       ).rows;
       const history = (
         await db.query<Row>(
-          "SELECT h.*,CASE WHEN h.actor_id LIKE 'website:%' THEN 'Booking website' ELSE COALESCE(m.display_name,h.actor_id) END AS actor_name FROM booking_history h LEFT JOIN memberships m ON m.user_id=h.actor_id WHERE booking_id=$1 ORDER BY created_at,id",
+          "SELECT h.*,CASE WHEN h.actor_id='system:booking_end_of_day' THEN 'Booking OS automation' WHEN h.actor_id LIKE 'website:%' THEN 'Booking website' ELSE COALESCE(m.display_name,h.actor_id) END AS actor_name FROM booking_history h LEFT JOIN memberships m ON m.user_id=h.actor_id WHERE booking_id=$1 ORDER BY created_at,id",
           [id],
         )
       ).rows;
