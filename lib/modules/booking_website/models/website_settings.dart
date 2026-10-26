@@ -52,6 +52,8 @@ class WebsiteSpace extends Equatable {
     noticeMinutes: () => source.noticeMinutes,
     advanceDays: () => source.advanceDays,
     rules: source.rules,
+    paymentRequired: source.paymentRequired,
+    paymentPercentages: source.paymentPercentages,
   );
   @override
   List<Object?> get props => [

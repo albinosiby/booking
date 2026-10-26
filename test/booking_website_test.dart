@@ -785,7 +785,7 @@ void main() {
     );
   }
   test(
-    'one space\'s booking rules can be copied to every space and saved',
+    'one space\'s booking and payment rules copy to every space and persist after reload',
     () async {
       final workspace = WorkspaceCubit(BookingSource());
       await workspace.load();
@@ -796,6 +796,8 @@ void main() {
         noticeMinutes: () => 60,
         advanceDays: () => 7,
         rules: 'Non-marking shoes only.',
+        paymentRequired: true,
+        paymentPercentages: [25, 50],
       );
       cubit.updateSpace('business', source);
       cubit.updateSpace(
@@ -816,10 +818,68 @@ void main() {
         spaces.map((s) => s.rules),
         everyElement('Non-marking shoes only.'),
       );
+      expect(spaces.map((s) => s.paymentRequired), everyElement(isTrue));
+      for (final space in spaces) {
+        expect(space.paymentPercentages, [25, 50]);
+      }
       // Visibility is a per-space choice and is not copied.
       expect(spaces.where((s) => !s.visible).map((s) => s.id), ['court-2']);
       await cubit.save();
       expect(repo.value.businesses.last.spaces.single.advanceDays, 7);
+      await cubit.load();
+      for (final business in cubit.state.draft!.businesses) {
+        for (final space in business.spaces) {
+          expect(space.paymentRequired, isTrue);
+          expect(space.paymentPercentages, [25, 50]);
+        }
+      }
+      expect(cubit.state.dirty, isFalse);
+      await cubit.close();
+      await workspace.close();
+    },
+  );
+  test(
+    'copying optional payment clears mandatory payment and choices across all spaces',
+    () async {
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repo = TestWebsiteRepository();
+      repo.value = repo.value.copyWith(
+        businesses: [
+          for (final business in repo.value.businesses)
+            business.copyWith(
+              spaces: [
+                for (final space in business.spaces)
+                  space.copyWith(
+                    paymentRequired: true,
+                    paymentPercentages: [50, 100],
+                  ),
+              ],
+            ),
+        ],
+      );
+      final cubit = WebsiteSettingsCubit(workspace, repo);
+      await cubit.load();
+      final source = cubit.state.draft!.businesses.first.spaces.first.copyWith(
+        paymentRequired: false,
+        paymentPercentages: [],
+      );
+      cubit.updateSpace('business', source);
+      cubit.copyRulesToAll(source);
+      for (final business in cubit.state.draft!.businesses) {
+        for (final space in business.spaces) {
+          expect(space.paymentRequired, isFalse);
+          expect(space.paymentPercentages, isEmpty);
+        }
+      }
+      await cubit.save();
+      await cubit.load();
+      for (final business in cubit.state.draft!.businesses) {
+        for (final space in business.spaces) {
+          expect(space.paymentRequired, isFalse);
+          expect(space.paymentPercentages, isEmpty);
+        }
+      }
       expect(cubit.state.dirty, isFalse);
       await cubit.close();
       await workspace.close();

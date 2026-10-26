@@ -425,11 +425,18 @@ For the shared Railway service, deploy the host-aware gateway and set `BOOKING_R
 
 - **Address:** a fixed `https://` prefix, editable website name and fixed `.bookingos.online` suffix (the configured domain is used). The fixed domain wraps below the input on narrow screens with enlarged text. **Save** updates only the address while preserving other unsaved design changes, and the saved URL appears in the summary above **Website address**. Validation and address conflicts appear beside the name; failed saves keep the existing saved link. The address remains editable after publication.
 - **Brand & homepage:** website logo (square, header of every page; falls back to the organisation profile logo when that switch is on), website title, hero heading (empty keeps the default), description, contact phone, hero image.
-- **Spaces on your website:** per service — show on website, homepage card photo (falls back to the first space photo) and card description (falls back to the standard text). Per space — show/hide (hidden spaces disappear from the catalog, cannot be quoted or booked, and their photos are not served), up to 4 booking page photos, minimum notice, advance window and visitor rules. Empty rule fields use the website defaults. **Copy these rules to all spaces** copies notice, window and rules (not visibility) to every space; save to apply.
+- **Spaces on your website:** per service — show on website, homepage card photo (falls back to the first space photo) and card description (falls back to the standard text). Per space — show/hide (hidden spaces disappear from the catalog, cannot be quoted or booked, and their photos are not served), up to 4 booking page photos, minimum notice, advance window and visitor rules. Empty rule fields use the website defaults. **Copy these rules to all spaces** copies notice, window, visitor rules, the mandatory-payment toggle and every selected payment percentage to every space. It keeps each space's identity, photos and visibility. Save to apply; copied payment settings persist after reloading.
 - **Social media:** Instagram, Facebook, X, YouTube, LinkedIn, WhatsApp. Only full `https://` links are accepted; the app adds `https://` to pasted addresses such as `instagram.com/venue`.
 - **Default booking rules & policies:** the defaults every space inherits, venue instructions and cancellation policy.
 
 Photo selections and removals stay in the page draft until **Save changes** (or an explicit publication action); pending text edits are preserved and do not block photo selection. Per-space rules are enforced by the API for availability, quotes and confirmations, not only in the browser. Older app versions that do not send the new fields keep the saved design values.
+
+The payment-rule copy fix also gives each space input its own stored scroll state,
+so refreshing open editors after copying cannot read an expansion flag as a text
+field scroll offset. Regression checks cover copying enabled and disabled payment
+collection, custom percentage choices, the actual copy button, target input values,
+and persistence after saving and reloading. This fix requires the updated Flutter
+client; no API or database migration is needed.
 
 ### Hosting prerequisites (one-time)
 

@@ -215,6 +215,7 @@ class _SpaceTile extends StatelessWidget {
   }
 
   Widget number({
+    required String fieldKey,
     required String label,
     required int? value,
     required int fallback,
@@ -222,6 +223,7 @@ class _SpaceTile extends StatelessWidget {
     required int max,
     required ValueChanged<int?> onChanged,
   }) => TextFormField(
+    key: PageStorageKey('website-$fieldKey-$businessId-${space.id}'),
     initialValue: value?.toString() ?? '',
     enabled: !busy,
     keyboardType: TextInputType.number,
@@ -325,7 +327,9 @@ class _SpaceTile extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           TextFormField(
-            key: PageStorageKey('website-payment-percentage-$businessId-${space.id}'),
+            key: PageStorageKey(
+              'website-payment-percentage-$businessId-${space.id}',
+            ),
             initialValue:
                 space.paymentPercentages
                     .where((value) => value != 50 && value != 100)
@@ -385,6 +389,7 @@ class _SpaceTile extends StatelessWidget {
         LayoutBuilder(
           builder: (context, c) {
             final notice = number(
+              fieldKey: 'notice-minutes',
               label: 'Minimum notice (minutes)',
               value: space.noticeMinutes,
               fallback: settings.noticeMinutes,
@@ -394,6 +399,7 @@ class _SpaceTile extends StatelessWidget {
                   onChanged(space.copyWith(noticeMinutes: () => n)),
             );
             final window = number(
+              fieldKey: 'advance-days',
               label: 'Advance booking window (days)',
               value: space.advanceDays,
               fallback: settings.advanceDays,
@@ -415,6 +421,7 @@ class _SpaceTile extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         TextFormField(
+          key: PageStorageKey('website-space-rules-$businessId-${space.id}'),
           initialValue: space.rules,
           enabled: !busy,
           maxLines: 3,

@@ -7,11 +7,15 @@ import 'package:eden_booking/modules/accounts/repositories/website_payment_repos
 import 'package:eden_booking/modules/accounts/widgets/website_payment_settings_card.dart';
 import 'package:eden_booking/modules/booking_website/widgets/website_spaces_settings.dart';
 import 'package:eden_booking/modules/booking_website/models/website_settings.dart';
+import 'package:eden_booking/modules/booking_website/cubit/website_settings_cubit.dart';
+import 'package:eden_booking/modules/booking_website/cubit/website_settings_state.dart';
+import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/utils/services/logo_picker_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'booking_website_test.dart' show TestWebsiteRepository;
+import 'booking_module_test.dart' show BookingSource;
 
 class PaymentRepository implements WebsitePaymentRepository {
   WebsitePaymentDetails value = const WebsitePaymentDetails(
@@ -115,35 +119,34 @@ void main() {
     },
   );
   testWidgets(
-    'space payment toggle supports half, full and a custom percentage',
+    'space payment toggle and percentage choices copy to all spaces and save',
     (tester) async {
-      var settings = TestWebsiteRepository().value;
+      final workspace = WorkspaceCubit(BookingSource());
+      await workspace.load();
+      final repository = TestWebsiteRepository();
+      final cubit = WebsiteSettingsCubit(workspace, repository);
+      await cubit.load();
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await cubit.close();
+        await workspace.close();
+      });
       await mount(
         tester,
-        StatefulBuilder(
-          builder: (context, update) => WebsiteSpacesSettings(
-            settings: settings,
-            busy: false,
-            onToggleBusiness: (_, _) {},
-            onBusiness: (_, _) {},
-            onCopyRules: (_) {},
-            onUpload: (_, _, _) {},
-            onRemovePhoto: (_) {},
-            onSpace: (businessId, space) => update(() {
-              settings = settings.copyWith(
-                businesses: [
-                  for (final business in settings.businesses)
-                    business.id == businessId
-                        ? business.copyWith(
-                            spaces: [
-                              for (final current in business.spaces)
-                                current.id == space.id ? space : current,
-                            ],
-                          )
-                        : business,
-                ],
-              );
-            }),
+        BlocBuilder<WebsiteSettingsCubit, WebsiteSettingsState>(
+          bloc: cubit,
+          builder: (context, state) => KeyedSubtree(
+            key: ValueKey(state.revision),
+            child: WebsiteSpacesSettings(
+              settings: state.draft!,
+              busy: false,
+              onToggleBusiness: (_, _) {},
+              onBusiness: (_, _) {},
+              onCopyRules: cubit.copyRulesToAll,
+              onUpload: (_, _, _) {},
+              onRemovePhoto: (_) {},
+              onSpace: cubit.updateSpace,
+            ),
           ),
         ),
       );
@@ -154,7 +157,7 @@ void main() {
       await tester.ensureVisible(find.text('Collect payment mandatory').first);
       await tester.tap(find.text('Collect payment mandatory').first);
       await tester.pumpAndSettle();
-      WebsiteSpace space() => settings.businesses.first.spaces.first;
+      WebsiteSpace space() => cubit.state.draft!.businesses.first.spaces.first;
       expect(space().paymentRequired, true);
       expect(space().paymentPercentages, [50, 100]);
       await tester.ensureVisible(find.text('Full (100%)').first);
@@ -166,6 +169,55 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(space().paymentPercentages, [25, 50]);
+      final copy = find.text('Copy these rules to all spaces').first;
+      await tester.ensureVisible(copy);
+      await tester.tap(copy);
+      await tester.pumpAndSettle();
+      for (final business in cubit.state.draft!.businesses) {
+        for (final space in business.spaces) {
+          expect(space.paymentRequired, isTrue);
+          expect(space.paymentPercentages, [25, 50]);
+        }
+      }
+      await tester.ensureVisible(find.text('Court 2'));
+      await tester.tap(find.text('Court 2'));
+      await tester.pumpAndSettle();
+      final target = find.byKey(
+        const PageStorageKey('website-space-expansion-business-court-2'),
+      );
+      final toggle = find.descendant(
+        of: target,
+        matching: find.widgetWithText(
+          SwitchListTile,
+          'Collect payment mandatory',
+        ),
+      );
+      expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+      final percentage = find.byKey(
+        const PageStorageKey('website-payment-percentage-business-court-2'),
+      );
+      expect(
+        tester
+            .widget<EditableText>(
+              find.descendant(
+                of: percentage,
+                matching: find.byType(EditableText),
+              ),
+            )
+            .controller
+            .text,
+        '25',
+      );
+      await cubit.save();
+      await cubit.load();
+      await tester.pumpAndSettle();
+      expect(repository.saves, 1);
+      for (final business in repository.value.businesses) {
+        for (final space in business.spaces) {
+          expect(space.paymentRequired, isTrue);
+          expect(space.paymentPercentages, [25, 50]);
+        }
+      }
       expect(tester.takeException(), isNull);
     },
   );
