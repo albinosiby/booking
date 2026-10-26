@@ -515,8 +515,9 @@ class FinanceEntryCubit extends FinanceCubit<FinanceEntryModel> {
       state.lines.fold(0, (n, l) => n + (Validation.priceMinor(l.amount) ?? 0));
   Future<void> save() async {
     if (state.busy || !authorized || state.catalog == null) return;
+    final transfer = state.kind == 'transfer';
     if (state.reason.trim().length < 2 ||
-        state.category.trim().length < 2 ||
+        (!transfer && state.category.trim().length < 2) ||
         state.lines.any(
           (l) =>
               l.accountId == null ||
@@ -524,8 +525,9 @@ class FinanceEntryCubit extends FinanceCubit<FinanceEntryModel> {
         )) {
       emit(
         state.copyWith(
-          error:
-              'Enter a reason, category, positive amount and an account for each payment.',
+          error: transfer
+              ? 'Enter a reason, positive amount and a source account.'
+              : 'Enter a reason, category, positive amount and an account for each payment.',
         ),
       );
       return;
@@ -541,7 +543,8 @@ class FinanceEntryCubit extends FinanceCubit<FinanceEntryModel> {
       'kind': state.kind,
       'business_id': state.kind == 'transfer' ? null : state.businessId,
       'resource_id': state.kind == 'transfer' ? null : state.spaceId,
-      'category': state.category.trim(),
+      // Keep existing APIs compatible without asking users to categorize transfers.
+      'category': transfer ? 'Transfer' : state.category.trim(),
       if (state.kind == 'income' && state.incomeCategoryId != null)
         'income_category_id': state.incomeCategoryId,
       'reason': state.reason.trim(),

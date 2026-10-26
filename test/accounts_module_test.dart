@@ -212,26 +212,25 @@ void main() {
     },
   );
   test(
-    'transfer rejects identical accounts and submits a balanced transfer command',
+    'transfer needs no category, rejects identical accounts and submits a balanced command',
     () async {
       final w = await session(),
           r = FakeAccountsRepository(),
           c = FinanceEntryCubit(w, r, 'transfer');
       await c.load();
-      c.fields(
-        category: 'Cash deposit',
-        reason: 'Deposit daily collection',
-        toAccountId: 'cash',
-      );
+      c.fields(reason: 'Deposit daily collection', toAccountId: 'cash');
       c.line(0, const FinanceDraftLine(accountId: 'cash', amount: '500'));
       await c.save();
       expect(r.writes, isEmpty);
-      expect(c.state.error, isNotNull);
+      expect(c.state.category, isEmpty);
+      expect(c.state.error, 'Choose two different accounts.');
       c.fields(toAccountId: 'bank');
       await c.save();
       expect(r.writes.single['kind'], 'transfer');
+      expect(r.writes.single['category'], 'Transfer');
       expect(r.writes.single['business_id'], null);
       expect(r.writes.single['to_account_id'], 'bank');
+      expect(c.state.saved, isTrue);
       await c.close();
       await w.close();
     },
@@ -421,6 +420,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      if (screen == 'transfer') {
+        expect(find.text('Category'), findsNothing);
+        expect(find.text('Reason for transfer'), findsOneWidget);
+      }
       if (screen == 'settings') {
         final scroll = find.byType(Scrollable).first;
         final menu = find.byTooltip('Manage HDFC Business');

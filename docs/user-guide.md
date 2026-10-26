@@ -66,7 +66,7 @@ Start in Profile → Account settings. Add each bank with its opening balance an
 
 Use Add entry → Expense or Extra income. Choose shared organization, business or space, enter category/reason/date, and select the accounts used. Split the amount when multiple methods/accounts are involved. Record payments against existing bookings through the booking itself, avoiding duplicate extra income.
 
-Use Transfer money for cash deposits, withdrawals, bank-to-bank movements or historical unassigned bank receipts. Choose source, destination and amount. A transfer changes balances without adding income or expenses. Reversing a mistaken manual entry preserves its original history and requires an owner reason.
+Use Transfer money for cash deposits, withdrawals, bank-to-bank movements or historical unassigned bank receipts. Choose source, destination and amount, and enter the reason. No category selection is needed; transfers are labelled automatically. A transfer changes balances without adding income or expenses. Reversing a mistaken manual entry preserves its original history and requires an owner reason.
 
 Open Reports from the Accounts app bar. Select a month, year or custom dates and download PDF or Excel through the device Save dialog. Reports include summary totals and per-booking received amounts with payment-method breakdowns. Receipt dates determine collections; booking tariffs and amounts received through the cutoff are separate. Transfers and opening balances are not income. Use a shorter period if an export exceeds 20,000 records. See [Accounts module](accounts-module.md).
 

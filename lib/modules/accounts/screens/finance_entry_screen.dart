@@ -84,7 +84,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            if (s.incomeCategories.isNotEmpty) ...[
+            if (!transfer && s.incomeCategories.isNotEmpty) ...[
               AppPicker(
                 label: 'Category',
                 value: s.incomeCategoryId,
@@ -96,7 +96,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 onChanged: cubit.incomeCategory,
               ),
               const SizedBox(height: 16),
-            ] else
+            ] else if (!transfer)
               _text(
                 'Category',
                 s.category,

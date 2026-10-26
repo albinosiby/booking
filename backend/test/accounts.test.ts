@@ -280,6 +280,7 @@ test("cash deposit and withdrawal conserve balances and do not count as income",
   const before = await s.overview(owner, filter);
   const t = {
     ...entry("transfer", 5000, cash),
+    category: "Transfer",
     business_id: null,
     resource_id: null,
     to_account_id: bank,
