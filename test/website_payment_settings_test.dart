@@ -1,4 +1,7 @@
-import 'dart:convert';
+import 'package:image/image.dart' as image_data;
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:eden_booking/modules/accounts/cubit/website_payment_settings_cubit.dart';
+import 'package:eden_booking/modules/accounts/models/website_payment_settings_model.dart';
 import 'dart:typed_data';
 import 'package:eden_booking/modules/accounts/repositories/website_payment_repository.dart';
 import 'package:eden_booking/modules/accounts/widgets/website_payment_settings_card.dart';
@@ -48,9 +51,7 @@ void main() {
       final repository = PaymentRepository();
       final qr = LogoSelection(
         Uint8List.fromList(
-          base64Decode(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jXioAAAAASUVORK5CYII=',
-          ),
+          image_data.encodePng(image_data.Image(width: 8, height: 8)),
         ),
         'image/png',
       );
@@ -63,16 +64,41 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField), 'invalid');
+      await tester.pump();
       await tester.ensureVisible(find.text('Save payment details'));
       await tester.tap(find.text('Save payment details'));
       await tester.pumpAndSettle();
       expect(find.text('Enter a valid UPI ID.'), findsOneWidget);
       expect(repository.saves, 0);
       await tester.enterText(find.byType(TextFormField), 'venue@bank');
+      await tester.pump();
       await tester.ensureVisible(find.text('Upload QR code'));
-      await tester.tap(find.text('Upload QR code'));
+      await tester.runAsync(() async {
+        final view = tester
+            .widget<
+              BlocConsumer<
+                WebsitePaymentSettingsCubit,
+                WebsitePaymentSettingsModel
+              >
+            >(
+              find.byWidgetPredicate(
+                (w) =>
+                    w
+                        is BlocConsumer<
+                          WebsitePaymentSettingsCubit,
+                          WebsitePaymentSettingsModel
+                        >,
+              ),
+            );
+        final picked = view.bloc!.stream
+            .firstWhere((s) => !s.picking)
+            .timeout(const Duration(seconds: 5));
+        await tester.tap(find.text('Upload QR code'));
+        await picked;
+      });
       await tester.pumpAndSettle();
       expect(find.byType(Image), findsOneWidget);
+      expect(find.byKey(const ValueKey('payment-qr-preview')), findsOneWidget);
       await tester.ensureVisible(find.text('Save payment details'));
       await tester.tap(find.text('Save payment details'));
       await tester.pumpAndSettle();

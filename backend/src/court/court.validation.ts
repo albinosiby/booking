@@ -81,7 +81,8 @@ const plan = z
     name,
     kind: z.enum(["play", "coaching"]),
     court_ids: z.array(id).max(50),
-    allowance: z.number().int().min(1).max(10000),
+    allowance: z.number().int().min(0).max(10000),
+    track_attendance: z.boolean().optional(),
     expiry_mode: z.enum([
       "after_start",
       "after_months",
@@ -136,6 +137,8 @@ export const courtConfigurationSchema = z
     const known = (ids: string[]) =>
       unique(ids) && ids.every((id) => v.courts.some((p) => p.id === id));
     for (const p of plans) {
+      if (p.track_attendance !== false && p.allowance < 1)
+        issue("Tracked plans need at least one class or play day.");
       const amounts = [
         p.expiry_days,
         p.expiry_months ?? null,
@@ -156,19 +159,21 @@ export const courtConfigurationSchema = z
       if (!known(p.court_ids))
         issue("Use existing, distinct courts for plans.");
       if (
-        p.kind === "coaching"
+        p.kind === "coaching" && p.track_attendance !== false
           ? p.class_duration_minutes === null || p.class_seats === null
           : p.class_duration_minutes !== null ||
             p.class_seats !== null ||
-            p.coach_id !== null
+            (p.kind !== "coaching" && p.coach_id !== null)
       )
         issue("Class duration, seats and coach belong only to coaching plans.");
       if (!p.enabled) continue;
       for (const c of v.courts.filter((c) => p.court_ids.includes(c.id)))
         if (
           !c.enabled ||
-          !within(p.availability, c.operating) ||
-          (!p.availability.all_day &&
+          (p.track_attendance !== false &&
+            !within(p.availability, c.operating)) ||
+          (p.track_attendance !== false &&
+            !p.availability.all_day &&
             (p.class_duration_minutes ?? c.default_duration_minutes) >
               span(p.availability))
         )

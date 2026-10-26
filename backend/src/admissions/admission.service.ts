@@ -71,6 +71,7 @@ export class AdmissionService {
     admission: Row,
     configuration: Row | undefined,
   ) {
+    if (admission.mode === "membership" || admission.deleted_at) return false;
     if (!this.allowed(m, "mark_attendance")) return false;
     if (m.role === "owner" || !isCoach(m)) return true;
     return (
@@ -426,7 +427,7 @@ export class AdmissionService {
         until = new Date(zonedTime(addDate(v.date, 1), "00:00", b.timezone));
       const rows = (
         await this.db.query<Row>(
-          "SELECT s.id visit_id,s.version,s.starts_at,s.ends_at,s.resource_id,s.admission_attendance,a.id admission_id,a.reference,a.mode,a.customer_snapshot,a.plan_id FROM bookings s JOIN admission_balances a ON a.id=s.admission_id WHERE s.business_id=$1 AND s.status<>'cancelled' AND NOT a.cancelled AND a.plan_id::text=ANY($2::text[]) AND s.starts_at>=$3 AND s.starts_at<$4 ORDER BY s.starts_at,s.resource_id,a.customer_snapshot->>'name',s.id",
+          "SELECT s.id visit_id,s.version,s.starts_at,s.ends_at,s.resource_id,s.admission_attendance,a.id admission_id,a.reference,a.mode,a.customer_snapshot,a.plan_id FROM bookings s JOIN admission_balances a ON a.id=s.admission_id WHERE s.business_id=$1 AND s.status<>'cancelled' AND NOT a.cancelled AND a.deleted_at IS NULL AND a.plan_id::text=ANY($2::text[]) AND s.starts_at>=$3 AND s.starts_at<$4 ORDER BY s.starts_at,s.resource_id,a.customer_snapshot->>'name',s.id",
           [b.id, plans.map((p) => p.id), from, until],
         )
       ).rows;
@@ -516,7 +517,7 @@ export class AdmissionService {
   ) {
     const admissions = (
       await this.db.query<Row>(
-        "SELECT * FROM admission_balances WHERE organization_id=$1 AND business_id=$2 AND mode='flexible' AND plan_snapshot->>'kind'='coaching' AND NOT cancelled AND plan_id::text=ANY($3::text[]) AND starts_on<=$4 AND expires_on>=$4 ORDER BY customer_snapshot->>'name',id",
+        "SELECT * FROM admission_balances WHERE organization_id=$1 AND business_id=$2 AND mode='flexible' AND plan_snapshot->>'kind'='coaching' AND NOT cancelled AND deleted_at IS NULL AND plan_id::text=ANY($3::text[]) AND starts_on<=$4 AND expires_on>=$4 ORDER BY customer_snapshot->>'name',id",
         [m.organization_id, b.id, plans.map((p) => p.id), date],
       )
     ).rows.filter(
@@ -725,6 +726,14 @@ export class AdmissionService {
       throw new BadRequestException(
         "Choose an enabled space and plan with a price.",
       );
+    if ((plan.track_attendance !== false) !== (v.mode !== "membership"))
+      throw new BadRequestException(
+        "Use the tracking mode configured for this plan. Reload the plan before enrolling.",
+      );
+    if (v.mode === "membership" && v.weekdays.length)
+      throw new BadRequestException(
+        "Membership-only plans do not have scheduled weekdays.",
+      );
     const today = localStamp(Date.now(), b.timezone).slice(0, 10);
     const expires = expiryFrom(plan, v.starts_on);
     if (v.starts_on < today || !expires || expires < v.starts_on)
@@ -812,6 +821,8 @@ export class AdmissionService {
     }
     const snapshot = {
       ...plan,
+      allowance: v.mode === "membership" ? 0 : plan.allowance,
+      track_attendance: v.mode !== "membership",
       coach_name: coachName(
         await this.coachNames(db, b.organization_id),
         plan.coach_id ?? null,
@@ -1083,7 +1094,7 @@ export class AdmissionService {
             v.mode,
             v.starts_on,
             q.expires_on,
-            q.plan.allowance,
+            v.mode === "membership" ? 0 : q.plan.allowance,
             q.total_minor,
             JSON.stringify({
               weekdays: v.weekdays,
@@ -1119,12 +1130,20 @@ export class AdmissionService {
         q: z.string().trim().max(100).optional(),
         kind: z.enum(["swimming", "play", "coaching"]).optional(),
         status: z
-          .enum(["active", "upcoming", "completed", "expired", "cancelled"])
+          .enum([
+            "active",
+            "upcoming",
+            "completed",
+            "expired",
+            "cancelled",
+            "deleted",
+          ])
           .optional(),
         business_id: z.uuid().optional(),
         resource_id: z.uuid().optional(),
         plan_id: z.uuid().optional(),
         previous_plans: z.enum(["true", "false"]).optional(),
+        needs_renewal: z.enum(["true", "false"]).optional(),
         cursor: z.coerce.number().int().min(0).max(100000).default(0),
       })
       .strict()
@@ -1132,6 +1151,10 @@ export class AdmissionService {
     const m = await this.member(actor);
     const values: unknown[] = [m.organization_id];
     let where = "a.organization_id=$1";
+    if (v.status !== "deleted") where += " AND a.deleted_at IS NULL";
+    if (v.needs_renewal === "true")
+      where +=
+        " AND (now() AT TIME ZONE a.timezone)::date>a.expires_on AND NOT a.cancelled AND NOT EXISTS(SELECT 1 FROM admissions renewed WHERE renewed.renewed_from=a.id)";
     const add = (sql: string, value: unknown) => {
       values.push(value);
       where += " AND " + sql.replaceAll("?", `$${values.length}`);
@@ -1157,7 +1180,7 @@ export class AdmissionService {
     values.push(v.cursor);
     const rows = (
       await this.db.query<Row>(
-        `SELECT a.*,b.name business_name,b.configuration business_configuration,r.name space_name,COALESCE((SELECT sum(CASE WHEN p.kind='collection' THEN p.amount_minor ELSE -p.amount_minor END) FROM admission_payments p WHERE p.admission_id=a.id),0)::integer net FROM admission_balances a JOIN businesses b ON b.id=a.business_id JOIN resources r ON r.id=a.resource_id WHERE ${where} ORDER BY a.created_at DESC,a.id LIMIT 51 OFFSET $${values.length}`,
+        `SELECT a.*,b.name business_name,b.configuration business_configuration,r.name space_name,COALESCE((SELECT sum(CASE WHEN p.kind='collection' THEN p.amount_minor ELSE -p.amount_minor END) FROM admission_payments p WHERE p.admission_id=a.id),0)::integer net FROM admission_balances a JOIN businesses b ON b.id=a.business_id JOIN resources r ON r.id=a.resource_id WHERE ${where} ORDER BY ${v.needs_renewal === "true" ? "a.expires_on,a.id" : "a.created_at DESC,a.id"} LIMIT 51 OFFSET $${values.length}`,
         values,
       )
     ).rows;
@@ -1169,6 +1192,92 @@ export class AdmissionService {
       })),
       next_cursor: rows.length > 50 ? v.cursor + 50 : null,
     };
+  }
+  async expired(actor: Actor, input: unknown) {
+    const query = z
+      .object({ cursor: z.coerce.number().int().min(0).max(100000).default(0) })
+      .strict()
+      .parse(input);
+    const member = await this.member(actor);
+    const page = await this.list(actor, {
+      needs_renewal: "true",
+      cursor: query.cursor,
+    });
+    if (
+      this.allowed(member, "view_finance") ||
+      this.allowed(member, "collect_payments")
+    )
+      return page;
+    return {
+      ...page,
+      items: page.items.map((admission) => ({
+        ...admission,
+        net: 0,
+        net_paid_minor: 0,
+        balance_minor: 0,
+        refund_due_minor: 0,
+        payment_status: "hidden",
+      })),
+    };
+  }
+  async deleteMembership(actor: Actor, id: string, input: unknown) {
+    const value = z
+      .object({
+        command_key: z.uuid(),
+        version: z.number().int().positive(),
+        reason: reasonSchema,
+      })
+      .strict()
+      .parse(input);
+    const original = await this.find(await this.member(actor), id);
+    return this.command(
+      actor,
+      original.business_id,
+      original.resource_id,
+      value.command_key,
+      "admission_delete",
+      { id, ...value },
+      "manage_subscriptions",
+      async (db, member) => {
+        const admission = await this.find(member, id, db);
+        if (admission.version !== value.version)
+          throw new ConflictException(
+            "Membership changed. Refresh before deleting.",
+          );
+        if (admission.deleted_at)
+          throw new BadRequestException("This membership was already deleted.");
+        if (
+          (
+            await db.query(
+              "SELECT id FROM bookings WHERE admission_id=$1 AND status<>'cancelled' AND starts_at<=now() AND ends_at>now() LIMIT 1",
+              [id],
+            )
+          ).rows.length
+        )
+          throw new ConflictException(
+            "A session is running. Delete the membership after it ends.",
+          );
+        await db.query(
+          "UPDATE admissions SET deleted_at=now(),deleted_by=$2,deletion_reason=$3,version=version+1 WHERE id=$1",
+          [id, actor.uid, value.reason],
+        );
+        await db.query(
+          "DELETE FROM booking_allocations WHERE booking_id IN (SELECT id FROM bookings WHERE admission_id=$1 AND starts_at>now())",
+          [id],
+        );
+        const cancelled = await db.query<{ id: string }>(
+          "UPDATE bookings SET status='cancelled',version=version+1 WHERE admission_id=$1 AND starts_at>now() AND status<>'cancelled' RETURNING id",
+          [id],
+        );
+        await this.audit(db, member, actor, id, "deleted", {
+          reason: value.reason,
+          previous_status: admission.status,
+          total_minor: admission.total_minor,
+          cancelled_session_ids: cancelled.rows.map((session) => session.id),
+        });
+        return { id };
+      },
+    );
   }
   async detail(actor: Actor, id: string) {
     const m = await this.member(actor),
@@ -1187,7 +1296,7 @@ export class AdmissionService {
     ).rows;
     const history = (
       await this.db.query<Row>(
-        "SELECT action,details,actor_id,created_at FROM admission_history WHERE admission_id=$1 ORDER BY created_at,id",
+        "SELECT history.action,history.details,history.actor_id,history.created_at,COALESCE(member.display_name,history.actor_id) AS actor_name FROM admission_history history LEFT JOIN memberships member ON member.user_id=history.actor_id AND member.organization_id=history.organization_id WHERE history.admission_id=$1 ORDER BY history.created_at,history.id",
         [id],
       )
     ).rows;
@@ -1596,7 +1705,7 @@ export class AdmissionService {
               [visitId, id],
             )
           ).rows[0];
-        if (!session || a.mode !== "fixed" || a.cancelled)
+        if (!session || a.mode !== "fixed" || a.cancelled || a.deleted_at)
           throw new BadRequestException(
             "Choose a fixed session on an available admission.",
           );

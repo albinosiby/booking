@@ -427,13 +427,20 @@ class _PlanSummaryCard extends StatelessWidget {
             const SizedBox(height: 14),
             row(
               'Allowance',
-              '${p.allowance} ${p.kind == 'coaching' ? 'classes' : 'days'}',
+              p.trackAttendance
+                  ? '${p.allowance} ${p.kind == 'coaching' ? 'classes' : 'days'}'
+                  : 'Membership-only',
             ),
             row('Validity', p.validityLabel),
-            if (p.kind == 'coaching') row('Coach', p.coach),
+            if (p.kind == 'coaching' && p.trackAttendance)
+              row('Coach', p.coach),
             row(
               'Attendance',
-              d.mode == 'fixed' ? 'Fixed weekly schedule' : 'Flexible',
+              d.mode == 'membership'
+                  ? 'No sessions or attendance'
+                  : d.mode == 'fixed'
+                  ? 'Fixed weekly schedule'
+                  : 'Flexible',
             ),
             row('Starts', d.start),
             row('Expires', s.expiry ?? 'Calculated at review'),

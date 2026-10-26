@@ -95,7 +95,8 @@ const plan = z
     name,
     kind: z.enum(["swimming", "coaching"]),
     pool_ids: z.array(id).max(30),
-    allowance: z.number().int().min(1).max(10000),
+    allowance: z.number().int().min(0).max(10000),
+    track_attendance: z.boolean().optional(),
     expiry_mode: z.enum([
       "after_start",
       "after_months",
@@ -227,6 +228,8 @@ export const poolConfigurationSchema = z
         o.duration_minutes,
       );
     for (const p of v.plans) {
+      if (p.track_attendance !== false && p.allowance < 1)
+        issue("Tracked plans need at least one class or attendance day.");
       const amounts = [
         p.expiry_days,
         p.expiry_months ?? null,
@@ -251,6 +254,7 @@ export const poolConfigurationSchema = z
         );
       if (
         (p.kind === "coaching" &&
+          p.track_attendance !== false &&
           (p.class_duration_minutes === null || p.class_seats === null)) ||
         (p.kind === "swimming" &&
           (p.class_duration_minutes !== null ||
@@ -258,6 +262,18 @@ export const poolConfigurationSchema = z
             p.coach_id !== null))
       )
         issue("Coaching class fields belong only to coaching plans.");
+      if (p.track_attendance === false) {
+        if (
+          !unique(p.pool_ids) ||
+          p.pool_ids.some((id) => !v.pools.some((pool) => pool.id === id)) ||
+          (p.enabled &&
+            p.pool_ids.some(
+              (id) => !v.pools.some((pool) => pool.id === id && pool.enabled),
+            ))
+        )
+          issue("Choose existing enabled pools for membership-only plans.");
+        continue;
+      }
       eligibility(
         p.pool_ids,
         p.availability,

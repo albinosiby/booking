@@ -23,6 +23,19 @@ export class AdmissionController {
   @Get("catalog") catalog(@Req() r: AuthRequest) {
     return this.service.catalog(r.actor);
   }
+  @Get("expired") expired(
+    @Req() request: AuthRequest,
+    @Query() query: unknown,
+  ) {
+    return this.service.expired(request.actor, query);
+  }
+  @Post(":id/delete") deleteMembership(
+    @Req() request: AuthRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.deleteMembership(request.actor, id, body);
+  }
   @Post("preview") preview(@Req() r: AuthRequest, @Body() v: unknown) {
     return this.service.preview(r.actor, v);
   }

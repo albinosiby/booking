@@ -41,7 +41,7 @@ class PoolPlansScreen extends StatelessWidget {
               (p) => (
                 p.id,
                 p.name,
-                '${p.allowance} ${coaching ? 'classes' : 'attendance days'} · ${p.validityLabel} · ${model.currency} ${p.price.isEmpty ? 'not set' : p.price}${p.enabled ? '' : ' · disabled'}',
+                '${p.trackAttendance ? '${p.allowance} ${coaching ? 'classes' : 'attendance days'}' : 'Membership-only'} · ${p.validityLabel} · ${model.currency} ${p.price.isEmpty ? 'not set' : p.price}${p.enabled ? '' : ' · disabled'}',
               ),
             )
             .toList(),
@@ -79,37 +79,57 @@ class PoolPlansScreen extends StatelessWidget {
           onChanged: (ids) => update((p) => p.copyWith(poolIds: ids)),
         ),
         const SizedBox(height: 16),
-        if (!coaching) ...[
-          Text(
-            'Attendance allowance',
-            style: Theme.of(context).textTheme.titleMedium,
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Track sessions & attendance'),
+          subtitle: const Text(
+            'Off: list members, validity, fees and renewals only. No classes or pool reservations. Applies to new enrollments and renewals; existing memberships keep their mode.',
           ),
-          const SizedBox(height: 10),
-          ActionChip(
-            label: const Text('Use 25 attendance days'),
-            onPressed: disabled
-                ? null
-                : () => update((p) => p.copyWith(allowance: '25')),
+          value: p.trackAttendance,
+          onChanged: disabled
+              ? null
+              : (value) => update(
+                  (plan) => plan.copyWith(
+                    trackAttendance: value,
+                    allowance: int.tryParse(plan.allowance) == 0
+                        ? '25'
+                        : plan.allowance,
+                  ),
+                ),
+        ),
+        if (p.trackAttendance) ...[
+          if (!coaching) ...[
+            Text(
+              'Attendance allowance',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 10),
+            ActionChip(
+              label: const Text('Use 25 attendance days'),
+              onPressed: disabled
+                  ? null
+                  : () => update((p) => p.copyWith(allowance: '25')),
+            ),
+            const SizedBox(height: 12),
+          ],
+          ConfigurationField(
+            label: coaching
+                ? 'Number of classes'
+                : 'Attendance days · custom count',
+            value: p.allowance,
+            numeric: true,
+            enabled: !disabled,
+            validator: poolInteger,
+            onChanged: (v) => update((p) => p.copyWith(allowance: v)),
           ),
           const SizedBox(height: 12),
+          Text(
+            coaching
+                ? 'Each attended class uses one class from the plan.'
+                : 'Multiple visits on the same day use one attendance day. Buying a plan does not reserve a time slot.',
+          ),
+          const SizedBox(height: 20),
         ],
-        ConfigurationField(
-          label: coaching
-              ? 'Number of classes'
-              : 'Attendance days · custom count',
-          value: p.allowance,
-          numeric: true,
-          enabled: !disabled,
-          validator: poolInteger,
-          onChanged: (v) => update((p) => p.copyWith(allowance: v)),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          coaching
-              ? 'Each attended class uses one class from the plan.'
-              : 'Multiple visits on the same day use one attendance day. Buying a plan does not reserve a time slot.',
-        ),
-        const SizedBox(height: 20),
         AppPicker(
           label: 'Plan validity',
           value: p.expiryMode,
@@ -163,7 +183,7 @@ class PoolPlansScreen extends StatelessWidget {
           onChanged: (v) => update((p) => p.copyWith(price: v)),
         ),
         const SizedBox(height: 20),
-        if (coaching) ...[
+        if (coaching && p.trackAttendance) ...[
           PoolDurationPicker(
             label: 'Duration per class',
             value: p.classDuration,
@@ -212,27 +232,29 @@ class PoolPlansScreen extends StatelessWidget {
           ),
           const SizedBox(height: 20),
         ],
-        Text(
-          coaching
-              ? 'Coaching days and available times'
-              : 'Allowed swimming days and times',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 12),
-        PoolHoursEditor(
-          hours: p.hours,
-          openingWindows: model.pools
-              .where((pool) => p.poolIds.contains(pool.id))
-              .map((pool) => pool.hours.window)
-              .toList(),
-          allowedDays: commonOpeningDays(
-            model.pools
-                .where((pool) => p.poolIds.contains(pool.id))
-                .map((pool) => pool.hours.days),
+        if (p.trackAttendance) ...[
+          Text(
+            coaching
+                ? 'Coaching days and available times'
+                : 'Allowed swimming days and times',
+            style: Theme.of(context).textTheme.titleMedium,
           ),
-          enabled: !disabled,
-          onChanged: (h) => update((p) => p.copyWith(hours: h)),
-        ),
+          const SizedBox(height: 12),
+          PoolHoursEditor(
+            hours: p.hours,
+            openingWindows: model.pools
+                .where((pool) => p.poolIds.contains(pool.id))
+                .map((pool) => pool.hours.window)
+                .toList(),
+            allowedDays: commonOpeningDays(
+              model.pools
+                  .where((pool) => p.poolIds.contains(pool.id))
+                  .map((pool) => pool.hours.days),
+            ),
+            enabled: !disabled,
+            onChanged: (h) => update((p) => p.copyWith(hours: h)),
+          ),
+        ],
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Plan enabled'),

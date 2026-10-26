@@ -50,7 +50,7 @@ class AdmissionScheduleFields extends StatelessWidget {
               .toList(),
           onChanged: cubit.plan,
         ),
-        if (s.plan?.kind == 'coaching')
+        if (s.plan?.kind == 'coaching' && s.plan?.trackAttendance != false)
           Padding(
             padding: EdgeInsets.only(top: 8.h),
             child: Text('Coach: ${s.plan!.coach}'),
@@ -75,107 +75,113 @@ class AdmissionScheduleFields extends StatelessWidget {
                 },
         ),
         SizedBox(height: 12.h),
-        AppPicker(
-          label: 'Attendance mode',
-          value: d.mode,
-          enabled: enabled,
-          items: const [
-            PickerItem('fixed', 'Fixed weekly schedule'),
-            PickerItem('flexible', 'Flexible attendance'),
-          ],
-          onChanged: (v) => cubit.update(d.copyWith(mode: v)),
-        ),
-        SizedBox(height: 12.h),
-        Text(
-          d.mode == 'fixed'
-              ? 'Allotted sessions count after they end, even when missed.'
-              : 'Attendance uses one day per date. No advance slot is reserved.',
-        ),
-        if (d.mode == 'fixed') ...[
+        if (s.plan?.trackAttendance == false)
+          const Text(
+            'Membership-only: validity and fees only. No sessions, attendance or space reservations.',
+          )
+        else ...[
+          AppPicker(
+            label: 'Attendance mode',
+            value: d.mode,
+            enabled: enabled,
+            items: const [
+              PickerItem('fixed', 'Fixed weekly schedule'),
+              PickerItem('flexible', 'Flexible attendance'),
+            ],
+            onChanged: (v) => cubit.update(d.copyWith(mode: v)),
+          ),
           SizedBox(height: 12.h),
-          Wrap(
-            spacing: 6.w,
-            children: [
-              for (var day = 1; day <= 7; day++)
-                FilterChip(
-                  label: Text(
-                    const [
-                      'Mon',
-                      'Tue',
-                      'Wed',
-                      'Thu',
-                      'Fri',
-                      'Sat',
-                      'Sun',
-                    ][day - 1],
+          Text(
+            d.mode == 'fixed'
+                ? 'Allotted sessions count after they end, even when missed.'
+                : 'Attendance uses one day per date. No advance slot is reserved.',
+          ),
+          if (d.mode == 'fixed') ...[
+            SizedBox(height: 12.h),
+            Wrap(
+              spacing: 6.w,
+              children: [
+                for (var day = 1; day <= 7; day++)
+                  FilterChip(
+                    label: Text(
+                      const [
+                        'Mon',
+                        'Tue',
+                        'Wed',
+                        'Thu',
+                        'Fri',
+                        'Sat',
+                        'Sun',
+                      ][day - 1],
+                    ),
+                    selected: d.weekdays.contains(day),
+                    onSelected: !enabled
+                        ? null
+                        : (value) {
+                            final days = {...d.weekdays};
+                            value ? days.add(day) : days.remove(day);
+                            cubit.update(
+                              d.copyWith(weekdays: days.toList()..sort()),
+                            );
+                          },
                   ),
-                  selected: d.weekdays.contains(day),
-                  onSelected: !enabled
-                      ? null
-                      : (value) {
-                          final days = {...d.weekdays};
-                          value ? days.add(day) : days.remove(day);
-                          cubit.update(
-                            d.copyWith(weekdays: days.toList()..sort()),
-                          );
-                        },
-                ),
-            ],
-          ),
+              ],
+            ),
+            SizedBox(height: 12.h),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.schedule),
+              label: Text('Start time: ${TimeFormat.display(d.time)}'),
+              onPressed: !enabled
+                  ? null
+                  : () async {
+                      final t = await showAppTimePicker(
+                        context: context,
+                        initialTime: d.time,
+                      );
+                      if (t != null && !cubit.isClosed) {
+                        cubit.update(d.copyWith(time: t));
+                      }
+                    },
+            ),
+          ],
           SizedBox(height: 12.h),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.schedule),
-            label: Text('Start time: ${TimeFormat.display(d.time)}'),
-            onPressed: !enabled
-                ? null
-                : () async {
-                    final t = await showAppTimePicker(
-                      context: context,
-                      initialTime: d.time,
-                    );
-                    if (t != null && !cubit.isClosed) {
-                      cubit.update(d.copyWith(time: t));
-                    }
-                  },
-          ),
-        ],
-        SizedBox(height: 12.h),
-        if (s.adjustableVisitDuration) ...[
-          Row(
-            children: [
-              IconButton(
-                tooltip: 'Decrease visit duration',
-                onPressed: enabled && d.duration > s.minimumVisitDuration
-                    ? () => cubit.adjustVisitDuration(-1)
-                    : null,
-                icon: const Icon(Icons.remove_circle_outline),
-              ),
-              Expanded(
-                child: Text(
-                  'Visit duration: ${d.duration} minutes',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium,
+          if (s.adjustableVisitDuration) ...[
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'Decrease visit duration',
+                  onPressed: enabled && d.duration > s.minimumVisitDuration
+                      ? () => cubit.adjustVisitDuration(-1)
+                      : null,
+                  icon: const Icon(Icons.remove_circle_outline),
                 ),
-              ),
-              IconButton(
-                tooltip: 'Increase visit duration',
-                onPressed: enabled && d.duration + 30 <= 1440
-                    ? () => cubit.adjustVisitDuration(1)
-                    : null,
-                icon: const Icon(Icons.add_circle_outline),
-              ),
-            ],
-          ),
-          Text(
-            'Minimum ${s.minimumVisitDuration} minutes · 30-minute steps',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ] else
-          Text(
-            'Visit duration: ${d.duration} minutes',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        SizedBox(height: 12.h),
+                Expanded(
+                  child: Text(
+                    'Visit duration: ${d.duration} minutes',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Increase visit duration',
+                  onPressed: enabled && d.duration + 30 <= 1440
+                      ? () => cubit.adjustVisitDuration(1)
+                      : null,
+                  icon: const Icon(Icons.add_circle_outline),
+                ),
+              ],
+            ),
+            Text(
+              'Minimum ${s.minimumVisitDuration} minutes · 30-minute steps',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ] else
+            Text(
+              'Visit duration: ${d.duration} minutes',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          SizedBox(height: 12.h),
+        ],
         InputDecorator(
           decoration: const InputDecoration(labelText: 'Expiry date'),
           child: Text(s.expiry ?? 'Calculated at review'),

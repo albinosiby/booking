@@ -6,6 +6,8 @@ import '../../modules/booking_blocks/screens/slot_block_screens.dart';
 import '../../modules/admissions/screens/admissions_screen.dart';
 import '../../modules/admissions/screens/admission_form_screen.dart';
 import '../../modules/admissions/screens/admission_detail_screen.dart';
+import '../../modules/admissions/repositories/admission_repository.dart';
+import '../../di/injection.dart';
 import '../../modules/messages/screens/templates_screen.dart';
 import '../../modules/messages/screens/template_editor_screen.dart';
 import '../../modules/messages/screens/message_preview_screen.dart';
@@ -218,7 +220,17 @@ GoRouter createRouter(
         branches: [
           StatefulShellBranch(
             routes: [
-              GoRoute(path: Routes.home, builder: (c, s) => const HomeScreen()),
+              GoRoute(
+                path: Routes.home,
+                builder: (c, s) {
+                  final admissions = getIt<AdmissionRepository>();
+                  return HomeScreen(
+                    memberships: admissions is MembershipActions
+                        ? admissions as MembershipActions
+                        : null,
+                  );
+                },
+              ),
             ],
           ),
           StatefulShellBranch(
@@ -353,7 +365,10 @@ GoRouter createRouter(
       ),
       GoRoute(
         path: '/admissions/:id',
-        builder: (c, s) => AdmissionDetailScreen(id: s.pathParameters['id']!),
+        builder: (c, s) => AdmissionDetailScreen(
+          id: s.pathParameters['id']!,
+          collectOnOpen: s.uri.queryParameters['collect'] == 'true',
+        ),
       ),
       GoRoute(
         path: '/booking/new',

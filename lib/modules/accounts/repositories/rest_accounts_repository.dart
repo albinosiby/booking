@@ -12,7 +12,7 @@ class RestAccountsRepository
   final RestApiService api;
   @override
   Future<WebsitePaymentDetails> websitePayments() async =>
-      WebsitePaymentDetails.fromJson(
+      websitePaymentDetailsFromJson(
         financeMap(await api.request('/accounts/website-payments')),
       );
   @override
@@ -20,7 +20,7 @@ class RestAccountsRepository
     int version,
     String upiId,
     LogoSelection? qr,
-  ) async => WebsitePaymentDetails.fromJson(
+  ) async => websitePaymentDetailsFromJson(
     financeMap(
       await api.request(
         '/accounts/website-payments',

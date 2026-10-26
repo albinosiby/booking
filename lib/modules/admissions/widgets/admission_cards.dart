@@ -140,7 +140,11 @@ class AdmissionListCard extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '${a.planName} · ${a.mode == 'fixed' ? 'Fixed schedule' : 'Flexible'}',
+                  '${a.planName} · ${a.membershipOnly
+                      ? 'Membership-only'
+                      : a.mode == 'fixed'
+                      ? 'Fixed schedule'
+                      : 'Flexible'}',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium,
@@ -149,33 +153,35 @@ class AdmissionListCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${a.remaining} of ${a.allowance} $unit left',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+          if (!a.membershipOnly) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${a.remaining} of ${a.allowance} $unit left',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-              Text(
-                '${a.used} used',
-                style: theme.textTheme.bodySmall?.copyWith(color: muted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              minHeight: 6,
-              value: a.allowance == 0 ? 0 : a.used / a.allowance,
-              color: status,
-              backgroundColor: scheme.outline.withValues(alpha: .35),
+                Text(
+                  '${a.used} used',
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                minHeight: 6,
+                value: a.allowance == 0 ? 0 : a.used / a.allowance,
+                color: status,
+                backgroundColor: scheme.outline.withValues(alpha: .35),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Wrap(
             spacing: 12,
             runSpacing: 4,
@@ -193,7 +199,9 @@ class AdmissionListCard extends StatelessWidget {
           ),
           if (a.balance > 0 ||
               expiringSoon ||
-              (a.remaining <= 3 && a.status == 'active')) ...[
+              (!a.membershipOnly &&
+                  a.remaining <= 3 &&
+                  a.status == 'active')) ...[
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -205,7 +213,9 @@ class AdmissionListCard extends StatelessWidget {
                     color: scheme.error,
                     icon: Icons.payments_outlined,
                   ),
-                if (a.remaining <= 3 && a.status == 'active')
+                if (!a.membershipOnly &&
+                    a.remaining <= 3 &&
+                    a.status == 'active')
                   const AdmissionTag(
                     'Low balance',
                     color: Color(0xFFFFB74D),
@@ -327,7 +337,9 @@ class AdmissionPlanCard extends StatelessWidget {
             children: [
               _Fact(
                 Icons.confirmation_number_outlined,
-                '${p.allowance} ${coaching ? 'classes' : 'days'}',
+                p.trackAttendance
+                    ? '${p.allowance} ${coaching ? 'classes' : 'days'}'
+                    : 'Membership-only',
               ),
               _Fact(Icons.event_available_outlined, p.validityLabel),
               if (coaching && p.duration != null)

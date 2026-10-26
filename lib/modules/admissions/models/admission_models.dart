@@ -27,6 +27,7 @@ class AdmissionPlan extends Equatable {
     this.expiryDate,
     this.seats,
     this.activeCount,
+    this.trackAttendance = true,
   });
   final String id, name, kind, coach;
   bool matchesKind(String? filter) =>
@@ -38,6 +39,7 @@ class AdmissionPlan extends Equatable {
 
   /// Active and upcoming admissions; null when the API predates the count.
   final int? activeCount;
+  final bool trackAttendance;
   String get validityLabel => switch (expiryMode) {
     'fixed_date' => 'Until ${expiryDate ?? '—'}',
     'after_months' => '$expiryMonths ${expiryMonths == 1 ? 'month' : 'months'}',
@@ -90,6 +92,7 @@ class AdmissionPlan extends Equatable {
     expiryDate,
     seats,
     activeCount,
+    trackAttendance,
   ];
 }
 
@@ -223,6 +226,9 @@ class Admission extends Equatable {
     this.visits = const [],
     this.payments = const [],
     this.history = const [],
+    this.deletedAt,
+    this.deletedBy,
+    this.deletionReason = '',
   });
   final String id,
       reference,
@@ -242,6 +248,10 @@ class Admission extends Equatable {
       today,
       localNow;
   final bool canMarkAttendance;
+  final String? deletedAt, deletedBy;
+  final String deletionReason;
+  bool get membershipOnly => mode == 'membership';
+  bool get deleted => deletedAt != null || status == 'deleted';
   final String? renewalId;
   final BookingCustomer customer;
   final int allowance, used, remaining, total, paid, balance, version, duration;
@@ -250,7 +260,9 @@ class Admission extends Equatable {
   final List<BookingPayment> payments;
   final List<AdmissionEvent> history;
   bool get canRenew =>
-      renewalId == null && ['completed', 'expired'].contains(status);
+      !deleted &&
+      renewalId == null &&
+      ['completed', 'expired'].contains(status);
   bool get canCheckIn =>
       mode == 'flexible' &&
       ['active', 'completed'].contains(status) &&
@@ -279,6 +291,9 @@ class Admission extends Equatable {
     history,
     renewalId,
     canMarkAttendance,
+    deletedAt,
+    deletedBy,
+    deletionReason,
   ];
 }
 

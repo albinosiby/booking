@@ -1,6 +1,12 @@
 import '../models/admission_models.dart';
 import '../../bookings/models/booking_models.dart';
 
+abstract interface class MembershipActions {
+  Stream<void> get changes;
+  Future<AdmissionPage> expiredMembers({int cursor = 0});
+  Future<void> deleteMembership(Admission admission, String reason, String key);
+}
+
 abstract class AdmissionRepository {
   Stream<void> get changes;
   Future<AdmissionCatalog> catalog();

@@ -8,14 +8,20 @@ import '../../workspace/cubit/workspace_cubit.dart';
 import '../../bookings/models/booking_models.dart';
 import '../../bookings/widgets/booking_widgets.dart';
 import '../models/admission_models.dart';
+import '../repositories/admission_repository.dart';
 import '../cubit/admission_cubit.dart';
 import '../cubit/admission_state.dart';
 import '../widgets/admission_cards.dart';
 import '../../../utils/helpers/time_format.dart';
 
 class AdmissionDetailScreen extends StatefulWidget {
-  const AdmissionDetailScreen({super.key, required this.id});
+  const AdmissionDetailScreen({
+    super.key,
+    required this.id,
+    this.collectOnOpen = false,
+  });
   final String id;
+  final bool collectOnOpen;
   @override
   State<AdmissionDetailScreen> createState() => _AdmissionDetailScreenState();
 }
@@ -27,7 +33,18 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
   @override
   void initState() {
     super.initState();
-    cubit.loadDetail(widget.id);
+    cubit.loadDetail(widget.id).then((_) {
+      if (!mounted ||
+          !widget.collectOnOpen ||
+          cubit.state.detail == null ||
+          !cubit.state.catalog.canCollect ||
+          cubit.state.detail!.balance <= 0) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) payment(false);
+      });
+    });
   }
 
   @override
@@ -143,6 +160,49 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
     if (why != null && mounted) await cubit.cancel(why);
   }
 
+  Future<void> deleteMembership() async {
+    var deletionReason = '';
+    final why = await showDialog<String>(
+      context: context,
+      builder: (dialog) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('Delete membership?'),
+          scrollable: true,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'This removes the membership from current lists and expiry reminders and cancels future sessions. Customer details, history, recorded payments and outstanding dues are kept. This does not refund or write off money.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                onChanged: (value) =>
+                    update(() => deletionReason = value.trim()),
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: 'Reason (required)',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: deletionReason.length < 2
+                  ? null
+                  : () => Navigator.pop(dialog, deletionReason),
+              child: const Text('Delete membership'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (why != null && mounted) await cubit.deleteMembership(why);
+  }
+
   Future<void> renew(Admission a) async {
     await context.push('/admissions/new?renewal_id=${a.id}');
     if (mounted) cubit.loadDetail(widget.id);
@@ -201,45 +261,53 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
             ],
           ),
           SizedBox(height: 18.h),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                '${a.remaining}',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: status,
+          if (a.membershipOnly)
+            const Text(
+              'Membership-only · validity and fees. No sessions or attendance.',
+            )
+          else ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  '${a.remaining}',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: status,
+                  ),
                 ),
-              ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'of ${a.allowance} $unit left',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                    Text(
-                      '${a.used} used · ${a.attended} present',
-                      style: theme.textTheme.bodySmall?.copyWith(color: muted),
-                    ),
-                  ],
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'of ${a.allowance} $unit left',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      Text(
+                        '${a.used} used · ${a.attended} present',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: muted,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          SizedBox(height: 8.h),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              minHeight: 8,
-              value: a.allowance == 0 ? 0 : a.used / a.allowance,
-              color: status,
-              backgroundColor: scheme.outline.withValues(alpha: .35),
+              ],
             ),
-          ),
-          SizedBox(height: 16.h),
+            SizedBox(height: 8.h),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                minHeight: 8,
+                value: a.allowance == 0 ? 0 : a.used / a.allowance,
+                color: status,
+                backgroundColor: scheme.outline.withValues(alpha: .35),
+              ),
+            ),
+            SizedBox(height: 16.h),
+          ],
           _InfoRow(Icons.phone_outlined, a.customer.phone),
           _InfoRow(
             Icons.place_outlined,
@@ -249,15 +317,18 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
             Icons.event_outlined,
             '${a.start} → ${a.expiry} (inclusive)',
           ),
-          _InfoRow(
-            a.mode == 'fixed' ? Icons.event_repeat : Icons.how_to_reg_outlined,
-            a.mode == 'fixed'
-                ? 'Fixed schedule · sessions count after they end'
-                : 'Flexible · one deduction per attendance date',
-          ),
+          if (!a.membershipOnly)
+            _InfoRow(
+              a.mode == 'fixed'
+                  ? Icons.event_repeat
+                  : Icons.how_to_reg_outlined,
+              a.mode == 'fixed'
+                  ? 'Fixed schedule · sessions count after they end'
+                  : 'Flexible · one deduction per attendance date',
+            ),
           if (a.kind == 'coaching')
             _InfoRow(Icons.person_outline, 'Coach · ${a.coach}'),
-          if (a.status == 'expired')
+          if (a.status == 'expired' && !a.membershipOnly)
             Padding(
               padding: EdgeInsets.only(top: 8.h),
               child: AdmissionTag(
@@ -532,7 +603,10 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
           _HistoryEntry(
             title: admissionAction(e.action),
             time: admissionTime(e.at),
-            reason: e.reason,
+            reason: [
+              e.reason,
+              if (e.action == 'deleted') 'Deleted by ${e.actor}',
+            ].where((value) => value.isNotEmpty).join(' · '),
             last: i == a.history.length - 1,
           ),
         if (a.history.isEmpty) const Text('No history yet.'),
@@ -552,19 +626,21 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
     return [
       AppStatRow(
         children: [
-          AppStatTile(
-            highlight: true,
-            icon: admissionKindIcon(a.kind),
-            label: 'Remaining',
-            value: '${a.remaining} of ${a.allowance}',
-            caption: '$unit left · expires ${a.expiry}',
-          ),
-          AppStatTile(
-            icon: Icons.how_to_reg_outlined,
-            label: 'Attended',
-            value: '${a.attended}',
-            caption: '${a.used} $unit used',
-          ),
+          if (!a.membershipOnly)
+            AppStatTile(
+              highlight: true,
+              icon: admissionKindIcon(a.kind),
+              label: 'Remaining',
+              value: '${a.remaining} of ${a.allowance}',
+              caption: '$unit left · expires ${a.expiry}',
+            ),
+          if (!a.membershipOnly)
+            AppStatTile(
+              icon: Icons.how_to_reg_outlined,
+              label: 'Attended',
+              value: '${a.attended}',
+              caption: '${a.used} $unit used',
+            ),
           AppStatTile(
             icon: Icons.south_west_rounded,
             label: 'Paid',
@@ -599,19 +675,21 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
           ),
         ],
         primary: [
-          AppPanel(
-            title: 'Sessions & attendance',
-            subtitle: a.visits.isEmpty
-                ? null
-                : '${a.visits.length} ${a.visits.length == 1 ? 'session' : 'sessions'}${upcoming > 0 ? ' · $upcoming upcoming' : ''}',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (a.visits.isEmpty) noVisits(a),
-                for (final v in a.visits) visit(a, v, s, enabled),
-              ],
+          if (!a.membershipOnly)
+            AppPanel(
+              title: 'Sessions & attendance',
+              subtitle: a.visits.isEmpty
+                  ? null
+                  : '${a.visits.length} ${a.visits.length == 1 ? 'session' : 'sessions'}${upcoming > 0 ? ' · $upcoming upcoming' : ''}',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (a.visits.isEmpty) noVisits(a),
+                  for (final v in a.visits)
+                    visit(a, v, s, enabled && !a.deleted),
+                ],
+              ),
             ),
-          ),
           AppPanel(title: 'History', child: history(a)),
         ],
       ),
@@ -647,6 +725,15 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
               onPressed: enabled ? () => cubit.loadDetail(widget.id) : null,
               icon: const Icon(Icons.refresh),
             ),
+            if (a != null &&
+                !a.deleted &&
+                s.catalog.canManage &&
+                cubit.repository is MembershipActions)
+              IconButton(
+                tooltip: 'Delete membership',
+                onPressed: enabled ? deleteMembership : null,
+                icon: const Icon(Icons.delete_outline),
+              ),
             if (canCancel)
               PopupMenuButton<String>(
                 tooltip: 'More actions',
@@ -661,6 +748,12 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
               ),
           ],
           children: [
+            if (a?.deleted == true)
+              AppCard(
+                child: Text(
+                  'Membership deleted. ${a!.deletionReason} History, payments and outstanding dues are retained.',
+                ),
+              ),
             if (s.loading) AppLoadingState(initial: a == null),
             if (s.error != null) AppErrorWidget(message: s.error!),
             if (s.locked && !s.busy)
@@ -672,12 +765,14 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
               money(a, currency),
               SizedBox(height: 16.h),
               ...actionButtons(a, s, enabled),
-              section(
-                'Sessions & attendance',
-                trailing: a.visits.isEmpty ? null : '${a.visits.length}',
-              ),
-              if (a.visits.isEmpty) noVisits(a),
-              for (final v in a.visits) visit(a, v, s, enabled),
+              if (!a.membershipOnly) ...[
+                section(
+                  'Sessions & attendance',
+                  trailing: a.visits.isEmpty ? null : '${a.visits.length}',
+                ),
+                if (a.visits.isEmpty) noVisits(a),
+                for (final v in a.visits) visit(a, v, s, enabled && !a.deleted),
+              ],
               section(
                 'Payments',
                 trailing: a.payments.isEmpty ? null : '${a.payments.length}',
@@ -716,6 +811,7 @@ String admissionAction(String action) => switch (action) {
   'collection' => 'Payment collected',
   'refund' => 'Refund recorded',
   'cancelled' => 'Admission cancelled',
+  'deleted' => 'Membership deleted · history and dues retained',
   'session_cancel' => 'Session cancelled',
   'session_reschedule' => 'Session rescheduled',
   'session_waive' => 'Session credit restored',

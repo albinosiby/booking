@@ -395,6 +395,7 @@ class PoolPlan extends Equatable {
     this.expiryDate,
     this.price = '',
     this.enabled = true,
+    this.trackAttendance = true,
     PoolHours? hours,
     this.classDuration = 60,
     this.seats = '10',
@@ -406,6 +407,7 @@ class PoolPlan extends Equatable {
   final String? expiryDate, coachId;
   final List<String> poolIds;
   final bool enabled;
+  final bool trackAttendance;
   final PoolHours hours;
   final int classDuration;
   bool get coaching => kind == 'coaching';
@@ -465,6 +467,7 @@ class PoolPlan extends Equatable {
     bool clearExpiryDate = false,
     String? price,
     bool? enabled,
+    bool? trackAttendance,
     PoolHours? hours,
     int? classDuration,
     String? seats,
@@ -483,6 +486,7 @@ class PoolPlan extends Equatable {
     expiryDate: clearExpiryDate ? null : expiryDate ?? this.expiryDate,
     price: price ?? this.price,
     enabled: enabled ?? this.enabled,
+    trackAttendance: trackAttendance ?? this.trackAttendance,
     hours: hours ?? this.hours,
     classDuration: classDuration ?? this.classDuration,
     seats: seats ?? this.seats,
@@ -506,7 +510,8 @@ class PoolPlan extends Equatable {
     'kind': kind,
     'name': name.trim(),
     'pool_ids': poolIds,
-    'allowance': int.tryParse(allowance),
+    'allowance': trackAttendance ? int.tryParse(allowance) : 0,
+    'track_attendance': trackAttendance,
     'expiry_mode': expiryMode,
     'expiry_days': expiryMode == 'after_start'
         ? int.tryParse(expiryDays)
@@ -518,8 +523,10 @@ class PoolPlan extends Equatable {
     'price_minor': Validation.priceMinor(price),
     'enabled': enabled,
     'availability': hours.toJson(localDraft: localDraft),
-    'class_duration_minutes': coaching ? classDuration : null,
-    'class_seats': coaching ? int.tryParse(seats) : null,
+    'class_duration_minutes': coaching && trackAttendance
+        ? classDuration
+        : null,
+    'class_seats': coaching && trackAttendance ? int.tryParse(seats) : null,
     'coach_id': coaching ? coachId : null,
     'renewal': 'none',
   };
@@ -549,6 +556,7 @@ class PoolPlan extends Equatable {
         ? v['_local']['price']
         : poolMoney(v['price_minor']),
     enabled: v['enabled'],
+    trackAttendance: v['track_attendance'] != false,
     hours: PoolHours.fromJson(Map<String, dynamic>.from(v['availability'])),
     classDuration:
         v['_local'] is Map && (v['_local'] as Map).containsKey('classDuration')
@@ -579,6 +587,7 @@ class PoolPlan extends Equatable {
     classDuration,
     seats,
     coachId,
+    trackAttendance,
   ];
 }
 
@@ -972,9 +981,8 @@ class PoolConfiguration extends Equatable {
       if (p.name.trim().length < 2 ||
           p.name.trim().length > 100 ||
           !['swimming', 'coaching'].contains(p.kind) ||
-          allowance == null ||
-          allowance < 1 ||
-          allowance > 10000 ||
+          (p.trackAttendance &&
+              (allowance == null || allowance < 1 || allowance > 10000)) ||
           ![
             'after_start',
             'after_months',
@@ -989,7 +997,8 @@ class PoolConfiguration extends Equatable {
           (p.price.isNotEmpty && Validation.priceMinor(p.price) == null)) {
         return 'Check plan allowance, expiry and price.';
       }
-      if (p.coaching &&
+      if (p.trackAttendance &&
+          p.coaching &&
           (seats == null ||
               seats < 1 ||
               seats > 10000 ||
@@ -998,13 +1007,21 @@ class PoolConfiguration extends Equatable {
         return 'Check coaching seats and class duration.';
       }
 
-      final err = eligibility(
-        p.poolIds,
-        p.hours,
-        p.enabled,
-        p.coaching ? seats! : 1,
-        p.coaching ? p.classDuration : 0,
-      );
+      final err = p.trackAttendance
+          ? eligibility(
+              p.poolIds,
+              p.hours,
+              p.enabled,
+              p.coaching ? seats! : 1,
+              p.coaching ? p.classDuration : 0,
+            )
+          : (p.poolIds.any(
+                  (id) => !pools.any(
+                    (pool) => pool.id == id && (!p.enabled || pool.enabled),
+                  ),
+                )
+                ? 'Choose existing enabled pools.'
+                : null);
       if (err != null) return '${p.name}: $err';
       if (complete &&
           p.enabled &&

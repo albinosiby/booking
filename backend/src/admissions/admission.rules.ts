@@ -15,7 +15,7 @@ export const enrollmentSchema = z
     resource_id: z.uuid(),
     plan_id: z.uuid(),
     starts_on: calendarDate,
-    mode: z.enum(["fixed", "flexible"]),
+    mode: z.enum(["fixed", "flexible", "membership"]),
     weekdays: z.array(z.number().int().min(1).max(7)).max(7),
     time: clock,
     duration_minutes: z.number().int().min(30).max(1440),

@@ -4,10 +4,37 @@ import '../../bookings/models/booking_models.dart';
 import '../models/admission_models.dart';
 import 'admission_repository.dart';
 
-class RestAdmissionRepository implements AdmissionRepository {
+class RestAdmissionRepository
+    implements AdmissionRepository, MembershipActions {
   RestAdmissionRepository(this.api, this.bookings);
   final BookingRepository bookings;
   final RestApiService api;
+  @override
+  Future<AdmissionPage> expiredMembers({int cursor = 0}) async {
+    final response = await api.request('/admissions/expired?cursor=$cursor');
+    return AdmissionPage(
+      List<Admission>.unmodifiable((response['items'] as List).map(decode)),
+      response['next_cursor'],
+    );
+  }
+
+  @override
+  Future<void> deleteMembership(
+    Admission admission,
+    String reason,
+    String key,
+  ) async {
+    await api.request(
+      '/admissions/${admission.id}/delete',
+      method: 'POST',
+      data: {
+        'command_key': key,
+        'version': admission.version,
+        'reason': reason,
+      },
+    );
+  }
+
   @override
   Stream<void> get changes => api.readUpdates
       .where((p) => p == '*' || p.startsWith('/admissions'))
@@ -66,6 +93,7 @@ class RestAdmissionRepository implements AdmissionRepository {
                   expiryDate: p['expiry_date'],
                   seats: p['class_seats'],
                   activeCount: p['active_count'],
+                  trackAttendance: p['track_attendance'] != false,
                 ),
               ),
             ),
@@ -116,6 +144,9 @@ class RestAdmissionRepository implements AdmissionRepository {
   }
 
   Admission decode(dynamic j) => Admission(
+    deletedAt: j['deleted_at'],
+    deletedBy: j['deleted_by'],
+    deletionReason: j['deletion_reason'] ?? '',
     id: j['id'],
     reference: j['reference'],
     businessId: j['business_id'],
@@ -174,7 +205,7 @@ class RestAdmissionRepository implements AdmissionRepository {
         (h) => AdmissionEvent(
           h['action'],
           h['created_at'],
-          h['actor_id'],
+          h['actor_name'] ?? h['actor_id'],
           h['details']['reason'] ?? '',
         ),
       ),

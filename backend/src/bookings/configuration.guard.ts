@@ -66,7 +66,8 @@ export async function protectBookingInventory(
       const pool = spaces.find((p: Row) => p.id === a.resource_id);
       if (
         !pool?.enabled ||
-        (a.plan_snapshot.kind !== "coaching" &&
+        (a.mode !== "membership" &&
+          a.plan_snapshot.kind !== "coaching" &&
           !validSwimmingDuration(pool, a.schedule.duration_minutes))
       )
         throw new ConflictException(

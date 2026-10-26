@@ -88,12 +88,15 @@ class AdmissionState extends Equatable {
   AdmissionPool? get pool =>
       business?.pools.where((p) => p.id == draft.poolId).firstOrNull;
   int get minimumVisitDuration => pool?.defaultDuration ?? 60;
-  bool get adjustableVisitDuration => plan != null && plan!.kind != 'coaching';
-  bool get validVisitDuration => adjustableVisitDuration
-      ? draft.duration >= minimumVisitDuration &&
-            draft.duration <= 1440 &&
-            (draft.duration - minimumVisitDuration) % 30 == 0
-      : plan?.duration == null || draft.duration == plan!.duration;
+  bool get adjustableVisitDuration =>
+      plan != null && plan!.trackAttendance && plan!.kind != 'coaching';
+  bool get validVisitDuration =>
+      plan?.trackAttendance == false ||
+      (adjustableVisitDuration
+          ? draft.duration >= minimumVisitDuration &&
+                draft.duration <= 1440 &&
+                (draft.duration - minimumVisitDuration) % 30 == 0
+          : plan?.duration == null || draft.duration == plan!.duration);
   String? get expiry => preview?.expiry ?? plan?.expiryFor(draft.start);
   BookingPaymentEntryModel get paymentEntry => BookingPaymentEntryModel(
     total: preview?.total ?? plan?.total,

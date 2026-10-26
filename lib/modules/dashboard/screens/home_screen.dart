@@ -18,9 +18,13 @@ import '../../workspace/cubit/workspace_cubit.dart';
 import '../../workspace/models/workspace.dart';
 import '../../businesses/widgets/business_icon.dart';
 import '../../coaching/widgets/today_students_section.dart';
+import '../../admissions/widgets/expired_members_section.dart';
+import '../../admissions/repositories/admission_repository.dart';
+import '../../workspace/models/workspace_access.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.memberships});
+  final MembershipActions? memberships;
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -154,6 +158,25 @@ class _HomeScreenState extends State<HomeScreen> {
             const TodayStudentsSection(),
             const SizedBox(height: 28),
           ],
+          if (widget.memberships != null &&
+              [
+                'manage_subscriptions',
+                'collect_payments',
+                'view_bookings',
+                'manage_bookings',
+              ].any(workspace.hasPermission))
+            ExpiredMembersSection(
+              key: ValueKey(
+                'expired-members-${workspaceAccessScope(workspace)}',
+              ),
+              repository: widget.memberships!,
+              canRenew: workspace.hasPermission('manage_subscriptions'),
+              canCollect: workspace.hasPermission('collect_payments'),
+              showAmounts:
+                  workspace.hasPermission('view_finance') ||
+                  workspace.hasPermission('collect_payments'),
+              currency: workspace.organization?.currency ?? 'INR',
+            ),
           if (showStatus) ...[
             LayoutBuilder(
               builder: (context, constraints) {

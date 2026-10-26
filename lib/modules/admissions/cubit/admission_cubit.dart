@@ -435,11 +435,15 @@ class AdmissionCubit extends Cubit<AdmissionState> {
         poolId: p?.id,
         planId: plan?.id,
         customer: a?.customer ?? customer ?? const BookingCustomer(),
-        mode: a?.mode ?? 'flexible',
+        mode: plan?.trackAttendance == false
+            ? 'membership'
+            : (a?.mode == 'fixed' ? 'fixed' : 'flexible'),
         start: date != null && date.compareTo(today) >= 0 ? date : today,
         time: a?.time ?? '06:00',
         duration: plan?.duration ?? p?.defaultDuration ?? 60,
-        weekdays: a?.weekdays ?? const [],
+        weekdays: plan?.trackAttendance == false
+            ? const []
+            : a?.weekdays ?? const [],
         renewedFrom: a?.id,
       );
       emit(
@@ -574,7 +578,28 @@ class AdmissionCubit extends Cubit<AdmissionState> {
     update(
       state.draft.copyWith(
         planId: id,
+        mode: p.trackAttendance
+            ? (state.draft.mode == 'fixed' ? 'fixed' : 'flexible')
+            : 'membership',
+        weekdays: p.trackAttendance ? state.draft.weekdays : const [],
         duration: p.duration ?? state.pool?.defaultDuration,
+      ),
+    );
+  }
+
+  Future<void> deleteMembership(String reason) async {
+    final admission = state.detail;
+    final actions = repository;
+    if (admission == null ||
+        actions is! MembershipActions ||
+        !state.catalog.canManage) {
+      return;
+    }
+    await mutate(
+      () => (actions as MembershipActions).deleteMembership(
+        admission,
+        reason,
+        key,
       ),
     );
   }

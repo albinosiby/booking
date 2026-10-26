@@ -103,6 +103,7 @@ class _AdmissionFiltersSheetState extends State<AdmissionFiltersSheet> {
                   'completed',
                   'expired',
                   'cancelled',
+                  'deleted',
                 ])
                   PickerItem(value, admissionStatusLabel(value)),
               ],

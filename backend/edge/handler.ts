@@ -202,6 +202,12 @@ export function createHandler(
   add("GET", "/v1/admissions/catalog", (i) =>
     services.admissions.catalog(i.actor),
   );
+  add("GET", "/v1/admissions/expired", (i) =>
+    services.admissions.expired(i.actor, i.query),
+  );
+  add("POST", "/v1/admissions/:id/delete", (i) =>
+    services.admissions.deleteMembership(i.actor, i.params.id, i.body),
+  );
   add("POST", "/v1/admissions/preview", (i) =>
     services.admissions.preview(i.actor, i.body),
   );

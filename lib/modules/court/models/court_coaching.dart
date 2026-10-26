@@ -18,6 +18,7 @@ class CourtPlan extends Equatable {
     this.expiryDate,
     this.price = '',
     this.enabled = true,
+    this.trackAttendance = true,
     CourtHours? hours,
     this.classDuration = 60,
     this.seats = '8',
@@ -29,6 +30,7 @@ class CourtPlan extends Equatable {
   final String? expiryDate, coachId;
   final List<String> courtIds;
   final bool enabled;
+  final bool trackAttendance;
   final CourtHours hours;
   final int classDuration;
   bool get coaching => kind == 'coaching';
@@ -67,13 +69,18 @@ class CourtPlan extends Equatable {
     if (name.trim().length < 2 || name.trim().length > 100) {
       return 'Give each coaching plan a 2–100 character name.';
     }
-    if (classes == null || classes < 1 || classes > 10000) {
+    if (trackAttendance &&
+        (classes == null || classes < 1 || classes > 10000)) {
       return 'Enter 1–10000 classes for $name.';
     }
-    if (coaching && (students == null || students < 1 || students > 500)) {
+    if (trackAttendance &&
+        coaching &&
+        (students == null || students < 1 || students > 500)) {
       return 'Enter 1–500 students per class for $name.';
     }
-    if (coaching && (classDuration < 30 || classDuration > 1440)) {
+    if (trackAttendance &&
+        coaching &&
+        (classDuration < 30 || classDuration > 1440)) {
       return 'Choose a class duration for $name.';
     }
     if (expiryMode == 'fixed_date'
@@ -94,8 +101,9 @@ class CourtPlan extends Equatable {
     if (enabled) {
       for (final court in courts.where((c) => courtIds.contains(c.id))) {
         if (!court.enabled ||
-            !hours.within(court.hours) ||
-            (!hours.allDay &&
+            (trackAttendance && !hours.within(court.hours)) ||
+            (trackAttendance &&
+                !hours.allDay &&
                 (coaching ? classDuration : court.defaultDuration) >
                     hours.span)) {
           return 'Keep $name on enabled courts, within ${court.name} hours and long enough for a class.';
@@ -125,6 +133,7 @@ class CourtPlan extends Equatable {
     bool clearExpiryDate = false,
     String? price,
     bool? enabled,
+    bool? trackAttendance,
     CourtHours? hours,
     int? classDuration,
     String? seats,
@@ -143,6 +152,7 @@ class CourtPlan extends Equatable {
     expiryDate: clearExpiryDate ? null : expiryDate ?? this.expiryDate,
     price: price ?? this.price,
     enabled: enabled ?? this.enabled,
+    trackAttendance: trackAttendance ?? this.trackAttendance,
     hours: hours ?? this.hours,
     classDuration: classDuration ?? this.classDuration,
     seats: seats ?? this.seats,
@@ -162,7 +172,8 @@ class CourtPlan extends Equatable {
     'name': name.trim(),
     'kind': kind,
     'court_ids': courtIds,
-    'allowance': int.tryParse(allowance),
+    'allowance': trackAttendance ? int.tryParse(allowance) : 0,
+    'track_attendance': trackAttendance,
     'expiry_mode': expiryMode,
     'expiry_days': expiryMode == 'after_start'
         ? int.tryParse(expiryDays)
@@ -177,8 +188,10 @@ class CourtPlan extends Equatable {
     'price_minor': Validation.priceMinor(price),
     'enabled': enabled,
     'availability': hours.toJson(localDraft: localDraft),
-    'class_duration_minutes': coaching ? classDuration : null,
-    'class_seats': coaching ? int.tryParse(seats) : null,
+    'class_duration_minutes': coaching && trackAttendance
+        ? classDuration
+        : null,
+    'class_seats': coaching && trackAttendance ? int.tryParse(seats) : null,
     'coach_id': coaching ? coachId : null,
     'renewal': 'none',
   };
@@ -199,6 +212,7 @@ class CourtPlan extends Equatable {
       expiryDate: v['expiry_date'],
       price: local['price'] ?? courtMoney(v['price_minor']),
       enabled: v['enabled'],
+      trackAttendance: v['track_attendance'] != false,
       hours: CourtHours.fromJson(Map<String, dynamic>.from(v['availability'])),
       classDuration: v['class_duration_minutes'] ?? 60,
       seats: local['seats'] ?? '${v['class_seats'] ?? 8}',
@@ -219,6 +233,7 @@ class CourtPlan extends Equatable {
     expiryDate,
     price,
     enabled,
+    trackAttendance,
     hours,
     classDuration,
     seats,

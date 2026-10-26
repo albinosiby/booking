@@ -58,7 +58,7 @@ class CourtCoachingScreen extends StatelessWidget {
                   (p) => (
                     p.id,
                     p.name,
-                    '${p.coaching ? 'Coaching' : 'Court plan'} · ${p.allowance} ${p.coaching ? 'classes' : 'play days'} · ${p.validityLabel} · ${model.currency} ${p.price.isEmpty ? 'not set' : p.price}${p.coaching ? ' · ${coachName(p)}' : ''}${p.enabled ? '' : ' · disabled'}',
+                    '${p.coaching ? 'Coaching' : 'Court plan'} · ${p.trackAttendance ? '${p.allowance} ${p.coaching ? 'classes' : 'play days'}' : 'Membership-only'} · ${p.validityLabel} · ${model.currency} ${p.price.isEmpty ? 'not set' : p.price}${p.coaching && p.trackAttendance ? ' · ${coachName(p)}' : ''}${p.enabled ? '' : ' · disabled'}',
                   ),
                 )
                 .toList(),
@@ -111,27 +111,47 @@ class CourtCoachingScreen extends StatelessWidget {
                   }
                 : null,
           ),
-        Text(
-          p.coaching
-              ? 'Each class reserves the chosen court for its full duration. Ordinary court bookings cannot use it during the class.'
-              : 'Each visit reserves the whole court for the player. Ordinary court bookings cannot use it during the visit.',
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Track sessions & attendance'),
+          subtitle: const Text(
+            'Off: list members, validity, fees and renewals only. No classes or court reservations. Applies to new enrollments and renewals; existing memberships keep their mode.',
+          ),
+          value: p.trackAttendance,
+          onChanged: disabled
+              ? null
+              : (value) => update(
+                  (plan) => plan.copyWith(
+                    trackAttendance: value,
+                    allowance: int.tryParse(plan.allowance) == 0
+                        ? '12'
+                        : plan.allowance,
+                  ),
+                ),
         ),
-        const SizedBox(height: 20),
-        ConfigurationField(
-          label: p.coaching ? 'Number of classes' : 'Number of play days',
-          value: p.allowance,
-          numeric: true,
-          enabled: !disabled,
-          validator: courtInteger,
-          onChanged: (v) => update((p) => p.copyWith(allowance: v)),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          p.coaching
-              ? 'Each class uses one class from the plan.'
-              : 'Each attended day uses one play day. Visits use the court minimum duration and can be extended in 30-minute steps.',
-        ),
-        const SizedBox(height: 20),
+        if (p.trackAttendance) ...[
+          Text(
+            p.coaching
+                ? 'Each class reserves the chosen court for its full duration. Ordinary court bookings cannot use it during the class.'
+                : 'Each visit reserves the whole court for the player. Ordinary court bookings cannot use it during the visit.',
+          ),
+          const SizedBox(height: 20),
+          ConfigurationField(
+            label: p.coaching ? 'Number of classes' : 'Number of play days',
+            value: p.allowance,
+            numeric: true,
+            enabled: !disabled,
+            validator: courtInteger,
+            onChanged: (v) => update((p) => p.copyWith(allowance: v)),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            p.coaching
+                ? 'Each class uses one class from the plan.'
+                : 'Each attended day uses one play day. Visits use the court minimum duration and can be extended in 30-minute steps.',
+          ),
+          const SizedBox(height: 20),
+        ],
         AppPicker(
           label: 'Plan validity',
           value: p.expiryMode,
@@ -185,7 +205,7 @@ class CourtCoachingScreen extends StatelessWidget {
           onChanged: (v) => update((p) => p.copyWith(price: v)),
         ),
         const SizedBox(height: 20),
-        if (p.coaching) ...[
+        if (p.coaching && p.trackAttendance) ...[
           CourtDurationPicker(
             label: 'Duration per class',
             value: p.classDuration,
@@ -231,22 +251,24 @@ class CourtCoachingScreen extends StatelessWidget {
           ),
           const SizedBox(height: 20),
         ],
-        Text(
-          p.coaching
-              ? 'Coaching days and available times'
-              : 'Allowed playing days and times',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 12),
-        CourtHoursEditor(
-          hours: p.hours,
-          openingWindows: selectedCourts.map((c) => c.hours.window).toList(),
-          allowedDays: commonOpeningDays(
-            selectedCourts.map((c) => c.hours.days),
+        if (p.trackAttendance) ...[
+          Text(
+            p.coaching
+                ? 'Coaching days and available times'
+                : 'Allowed playing days and times',
+            style: Theme.of(context).textTheme.titleMedium,
           ),
-          enabled: !disabled,
-          onChanged: (h) => update((p) => p.copyWith(hours: h)),
-        ),
+          const SizedBox(height: 12),
+          CourtHoursEditor(
+            hours: p.hours,
+            openingWindows: selectedCourts.map((c) => c.hours.window).toList(),
+            allowedDays: commonOpeningDays(
+              selectedCourts.map((c) => c.hours.days),
+            ),
+            enabled: !disabled,
+            onChanged: (h) => update((p) => p.copyWith(hours: h)),
+          ),
+        ],
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Plan enabled'),
