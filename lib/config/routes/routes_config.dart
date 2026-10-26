@@ -24,6 +24,7 @@ import '../../modules/businesses/screens/business_management_screen.dart';
 import '../../modules/businesses/screens/business_detail_screen.dart';
 import '../../modules/profile/screens/organization_details_screen.dart';
 import '../../modules/accounts/screens/accounts_screen.dart';
+import '../../modules/staff_cash/screens/staff_cash_screen.dart';
 import '../../modules/accounts/screens/account_settings_screen.dart';
 import '../../modules/accounts/screens/finance_entry_screen.dart';
 import '../../modules/accounts/screens/accounts_reports_screen.dart';
@@ -295,6 +296,7 @@ GoRouter createRouter(
               : const BlockLaunch(),
         ),
       ),
+      GoRoute(path: '/staff-cash', builder: (c, s) => const StaffCashScreen()),
       GoRoute(
         path: '/accounts/settings',
         builder: (c, s) => const AccountSettingsScreen(),

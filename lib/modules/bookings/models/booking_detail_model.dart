@@ -8,6 +8,7 @@ enum BookingDetailAction {
   refund,
   customer,
   cancelled,
+  cancelAndRefund,
   completed,
   checkedIn,
   noShow,
@@ -45,6 +46,13 @@ class BookingDetailModel extends Equatable {
       record != null &&
       record!.status != 'cancelled' &&
       record!.balance > 0;
+  bool get canCancelAndRefund =>
+      catalog.canManage &&
+      catalog.canRefund &&
+      catalog.canCollect &&
+      record?.status == 'confirmed' &&
+      record?.admissionId == null &&
+      (record?.netPaid ?? 0) > 0;
   List<BookingPayment> get paymentHistory {
     final rows = record?.payments.indexed.toList() ?? [];
     rows.sort((a, b) {

@@ -25,6 +25,13 @@ class AppConfig {
     defaultValue:
         'https://scwwkaywewecspsrskft.supabase.co/functions/v1/booking-api/v1',
   );
+
+  /// Supabase Edge region that runs the API. Must match the database region:
+  /// a function in another region pays a cross-ocean round trip per DB query.
+  static const functionRegion = String.fromEnvironment(
+    'API_FUNCTION_REGION',
+    defaultValue: 'ap-northeast-1',
+  );
   static const emulatorHost = String.fromEnvironment(
     'AUTH_EMULATOR_HOST',
     defaultValue: 'localhost',

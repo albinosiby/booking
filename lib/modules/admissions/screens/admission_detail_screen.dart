@@ -932,8 +932,37 @@ class _AdmissionPaymentSheet extends StatefulWidget {
 }
 
 class _AdmissionPaymentSheetState extends State<_AdmissionPaymentSheet> {
-  List<BookingPaymentDraft> payments = [BookingPaymentDraft()];
+  late List<BookingPaymentDraft> payments;
   String reason = '', error = '';
+  @override
+  void initState() {
+    super.initState();
+    payments = [
+      BookingPaymentDraft(
+        amount: widget.refund ? '' : (widget.limit / 100).toStringAsFixed(2),
+      ),
+    ];
+  }
+
+  void addPayment() {
+    final remaining =
+        widget.limit -
+        payments.fold<int>(
+          0,
+          (amount, payment) => amount + (payment.minor ?? 0),
+        );
+    setState(
+      () => payments = [
+        ...payments,
+        BookingPaymentDraft(
+          amount: !widget.refund && remaining > 0
+              ? (remaining / 100).toStringAsFixed(2)
+              : '',
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
     child: Padding(
@@ -960,8 +989,7 @@ class _AdmissionPaymentSheetState extends State<_AdmissionPaymentSheet> {
             enabled: true,
             currency: widget.currency,
             refund: widget.refund,
-            onAdd: () =>
-                setState(() => payments = [...payments, BookingPaymentDraft()]),
+            onAdd: addPayment,
             onRemove: (id) => setState(
               () => payments = payments.where((p) => p.id != id).toList(),
             ),
@@ -996,7 +1024,9 @@ class _AdmissionPaymentSheetState extends State<_AdmissionPaymentSheet> {
                 setState(
                   () => error =
                       validation ??
-                      'Check the amount and provide a refund reason.',
+                      (widget.refund
+                          ? 'Check the amount and provide a refund reason.'
+                          : 'Check the amount collected.'),
                 );
                 return;
               }

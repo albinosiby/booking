@@ -40,6 +40,7 @@ export async function admin<T = any>(
         body,
       ),
       apikey: process.env.BOOKING_API_PUBLISHABLE_KEY ?? "",
+      "x-region": process.env.BOOKING_API_REGION ?? "ap-northeast-1",
       ...(init.body === undefined
         ? {}
         : { "Content-Type": "application/json" }),

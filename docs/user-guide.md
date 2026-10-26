@@ -54,9 +54,13 @@ Open Configure or Profile → Business settings → your Party Hall business. Ad
 
 ## Bookings, split payments and rescheduling
 
-Tap New booking from Home, Bookings or Calendar. Expand Business & space, Date & time, Customer details and Split payments. Check available slots or enter a precise time, then Review and Confirm. Cash, UPI, card and bank transfer amounts can be combined on one booking; unpaid and partially paid bookings are allowed. Open booking details to record the balance later.
+Tap New booking from Home, Bookings or Calendar. Expand Business & space, Date & time, Customer details and Split payments. Check available slots or enter a precise time, then Review and Confirm. Cash, UPI, card and bank transfer amounts can be combined on one booking; unpaid and partially paid bookings are allowed. Open booking details to record the balance later. When you open Collect payment for an existing booking, the amount starts at the outstanding balance. Edit it for a partial payment; a second payment entry starts with the remainder after you change the first.
+
+On a membership detail, Collect payment also starts with the outstanding balance. You can change that amount or split it between payment methods before saving.
 
 Reschedule selects a new available date/time (or another assigned space in the same business), previews the new price and keeps the reference/customer/payments. Higher prices increase the balance; excess net payments show refund due. Cancellation releases the slot but does not issue a refund. The owner records refunds separately with a reason. If confirmation is uncertain, use Retry to recover the same request before making another booking/payment. See [booking module](booking-module.md).
+
+For a paid, confirmed booking, owners see **Cancel & refund**. Enter a cancellation reason and choose **Confirm cancellation**; after the cancellation is confirmed, the refund form opens. Return the money through Cash or UPI (or another supported method), enter the amount and refund reason, and save. Cash reduces Cash in hand; digital refunds use the selected bank account, even when the original collection was cash. Cancellation and refund are recorded separately. Leaving the refund form keeps the booking cancelled with its refund due; **Record refund** lets the owner finish later. Partial refunds leave the remaining amount due to the customer.
 
 ## Accounts, expenses and reports
 
@@ -69,6 +73,16 @@ Use Add entry → Expense or Extra income. Choose shared organization, business 
 Use Transfer money for cash deposits, withdrawals, bank-to-bank movements or historical unassigned bank receipts. Choose source, destination and amount, and enter the reason. No category selection is needed; transfers are labelled automatically. A transfer changes balances without adding income or expenses. Reversing a mistaken manual entry preserves its original history and requires an owner reason.
 
 Open Reports from the Accounts app bar. Select a month, year or custom dates and download PDF or Excel through the device Save dialog. Reports include summary totals and per-booking received amounts with payment-method breakdowns. Receipt dates determine collections; booking tariffs and amounts received through the cutoff are separate. Transfers and opening balances are not income. Use a shorter period if an export exceeds 20,000 records. See [Accounts module](accounts-module.md).
+
+## Staff cash handover
+
+Staff with payment access see **My cash** on the Accounts page. It shows what they collected on a chosen day (total, cash, UPI, card and amount in the bank, with no bank name), the day's transactions for their assigned spaces, and **Cash to hand over**.
+
+Cash held counts cash from bookings, admissions and income entries, minus cash refunds and cash expenses the staff member recorded, minus cash already handed over. It carries across days. Only cash is handed over; UPI and card go straight to the bank.
+
+The owner sees **Staff cash to collect** on the Accounts page. Choose **Collect**, enter the amount received (a part payment is fine), and confirm. Both owner and staff then see the remaining balance. If a staff member spent more cash than they hold, the owner sees **Give** instead, to repay them. Each handover also appears in Transactions as "Staff cash handovers" and never changes account balances.
+
+Cash collected before this feature was switched on is not counted.
 
 ## Booking notifications
 

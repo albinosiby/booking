@@ -34,10 +34,15 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     if (cubit.state.locked || !cubit.state.canCollectPending) return;
     if (cubit.state.action != BookingDetailAction.collection) {
       cubit.begin(BookingDetailAction.collection);
+    } else {
+      revealEditor();
     }
+  }
+
+  void revealEditor() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = paymentEditorKey.currentContext;
-      if (mounted && target != null) {
+      if (mounted && target != null && target.mounted) {
         Scrollable.ensureVisible(
           target,
           duration: const Duration(milliseconds: 250),
@@ -73,8 +78,13 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   @override
   Widget build(
     BuildContext context,
-  ) => BlocBuilder<BookingDetailCubit, BookingDetailModel>(
+  ) => BlocConsumer<BookingDetailCubit, BookingDetailModel>(
     bloc: cubit,
+    listenWhen: (previous, next) =>
+        previous.action != next.action &&
+        next.action != BookingDetailAction.none &&
+        !next.loading,
+    listener: (_, _) => revealEditor(),
     builder: (context, s) {
       final b = s.record,
           editing = s.action != BookingDetailAction.none,
@@ -245,6 +255,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton(
+                        key: const ValueKey('booking-cancel-action'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Theme.of(
                             context,
@@ -254,9 +265,17 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                           ),
                         ),
                         onPressed: enabled
-                            ? () => cubit.begin(BookingDetailAction.cancelled)
+                            ? () => cubit.begin(
+                                s.canCancelAndRefund
+                                    ? BookingDetailAction.cancelAndRefund
+                                    : BookingDetailAction.cancelled,
+                              )
                             : null,
-                        child: const Text('Cancel booking'),
+                        child: Text(
+                          s.canCancelAndRefund
+                              ? 'Cancel & refund'
+                              : 'Cancel booking',
+                        ),
                       ),
                     ),
                   ],
@@ -274,12 +293,22 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                             ? 'Record split payment'
                             : s.action == BookingDetailAction.refund
                             ? 'Record refund'
+                            : s.action == BookingDetailAction.cancelAndRefund
+                            ? 'Cancel & refund'
                             : s.action == BookingDetailAction.checkedIn
                             ? 'Check in customer'
                             : 'Confirm ${paymentLabel(s.action.name)}',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 16),
+                      if (s.action == BookingDetailAction.cancelAndRefund)
+                        Text(
+                          'Cancel this booking and release its slot. Then record a refund up to ${bookingMoney(b.netPaid, s.catalog.currency)}. No refund is recorded until you save the refund form.',
+                        ),
+                      if (s.action == BookingDetailAction.refund)
+                        const Text(
+                          'Return the money outside Booking OS, then record the amount, method and reason below.',
+                        ),
                       if (s.action == BookingDetailAction.checkedIn)
                         const Text(
                           'Confirm the customer has arrived. This keeps the booking confirmed and does not change payments.',
@@ -319,6 +348,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                               ? 'Payment note · optional'
                               : s.action == BookingDetailAction.checkedIn
                               ? 'Arrival note · optional'
+                              : s.action == BookingDetailAction.cancelAndRefund
+                              ? 'Cancellation reason'
+                              : s.action == BookingDetailAction.refund
+                              ? 'Refund reason'
                               : 'Reason',
                           value: s.reason,
                           enabled: enabled,
@@ -330,6 +363,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                         label: s.pending == null
                             ? (s.action == BookingDetailAction.checkedIn
                                   ? 'Confirm check in'
+                                  : s.action ==
+                                        BookingDetailAction.cancelAndRefund
+                                  ? 'Confirm cancellation'
                                   : 'Save changes')
                             : 'Retry action',
                         busy: s.saving,

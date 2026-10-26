@@ -20,6 +20,8 @@ import 'package:eden_booking/modules/bookings/models/booking_models.dart';
 import 'package:eden_booking/modules/bookings/repositories/booking_repository.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/utils/exceptions/app_exception.dart';
+import 'package:eden_booking/modules/staff_cash/repositories/staff_cash_repository.dart';
+import 'staff_cash_test.dart' show FakeStaffCash;
 import 'booking_module_test.dart' show BookingSource, FakeBookingRepository;
 import 'income_module_test.dart' show IncomeRepo;
 import 'package:eden_booking/modules/income/repositories/income_repository.dart';
@@ -341,6 +343,8 @@ void main() {
       getIt.registerSingleton<BookingRepository>(FakeBookingRepository());
       getIt.unregister<IncomeRepository>();
       getIt.registerSingleton<IncomeRepository>(IncomeRepo());
+      getIt.unregister<IStaffCashRepository>();
+      getIt.registerSingleton<IStaffCashRepository>(FakeStaffCash());
       final router = GoRouter(
         routes: [GoRoute(path: '/', builder: (c, s) => const AccountsScreen())],
       );
@@ -388,6 +392,8 @@ void main() {
       getIt.registerSingleton<BookingRepository>(FakeBookingRepository());
       getIt.unregister<IncomeRepository>();
       getIt.registerSingleton<IncomeRepository>(IncomeRepo());
+      getIt.unregister<IStaffCashRepository>();
+      getIt.registerSingleton<IStaffCashRepository>(FakeStaffCash());
       final page = switch (screen) {
         'overview' => const AccountsScreen(),
         'settings' => const AccountSettingsScreen(),

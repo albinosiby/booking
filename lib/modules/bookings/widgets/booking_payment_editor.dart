@@ -67,8 +67,10 @@ class BookingPaymentEditor extends StatelessWidget {
         const SizedBox(height: 16),
       ],
       if (payments.isEmpty)
-        const Text(
-          'No money recorded. You can confirm unpaid and collect later.',
+        Text(
+          refund
+              ? 'Add a refund amount and choose how it was returned.'
+              : 'No money recorded. You can confirm unpaid and collect later.',
         ),
       for (final p in payments)
         Padding(
@@ -81,7 +83,7 @@ class BookingPaymentEditor extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'Payment ${payments.indexOf(p) + 1}',
+                      '${refund ? 'Refund' : 'Payment'} ${payments.indexOf(p) + 1}',
                       style: Theme.of(context).textTheme.labelLarge,
                     ),
                   ),
@@ -123,7 +125,7 @@ class BookingPaymentEditor extends StatelessWidget {
                   Expanded(
                     flex: 6,
                     child: AppPicker(
-                      label: 'Payment method',
+                      label: refund ? 'Refund method' : 'Payment method',
                       value: p.method,
                       items: const [
                         PickerItem('cash', 'Cash'),
@@ -146,6 +148,14 @@ class BookingPaymentEditor extends StatelessWidget {
                   label: Text(refund ? 'Refund balance' : 'Pay balance'),
                 ),
               if (p.method != 'cash') _destination(context, p),
+              if (refund && p.method == 'cash')
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'From: Cash in hand',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
               ReviewMore(
                 title: 'Reference & payment date · optional',
                 children: [
@@ -229,7 +239,7 @@ class BookingPaymentEditor extends StatelessWidget {
           ),
         ),
       AppButton(
-        label: addLabel,
+        label: refund ? 'Add another refund' : addLabel,
         secondary: true,
         icon: Icons.add,
         onPressed: enabled && payments.length < 20 ? onAdd : null,
@@ -258,7 +268,9 @@ class BookingPaymentEditor extends StatelessWidget {
           ),
           if (banks.isNotEmpty)
             PopupMenuButton<String>(
-              tooltip: 'Change receiving account',
+              tooltip: refund
+                  ? 'Change refund account'
+                  : 'Change receiving account',
               enabled: enabled,
               onSelected: (v) =>
                   onUpdate(p.id, (p) => p.copyWith(accountId: v)),

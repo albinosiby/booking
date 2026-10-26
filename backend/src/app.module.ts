@@ -35,6 +35,8 @@ import { IncomeService } from "./income/income.service";
 import { IncomeController } from "./income/income.controller";
 import { AccountsService } from "./accounts/accounts.service";
 import { AccountsController } from "./accounts/accounts.controller";
+import { StaffCashService } from "./accounts/staff-cash.service";
+import { StaffCashController } from "./accounts/staff-cash.controller";
 import { BookingService } from "./bookings/booking.service";
 import { BookingController } from "./bookings/booking.controller";
 import { HallService } from "./hall/hall.service";
@@ -76,6 +78,7 @@ import {
     ExpensesController,
     IncomeController,
     AccountsController,
+    StaffCashController,
     BookingController,
     WorkspaceController,
     CatalogController,
@@ -101,6 +104,7 @@ import {
     ExpensesService,
     IncomeService,
     AccountsService,
+    StaffCashService,
     BookingService,
     Database,
     AuthGuard,

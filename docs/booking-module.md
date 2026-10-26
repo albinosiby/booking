@@ -10,6 +10,8 @@ Booking details shows reference, space, local dates/times/timezone, customer, st
 
 Cancellation releases inventory, keeps records and makes existing net payments refundable; it does not automatically refund money. Refund recording is owner-only, requires a reason and cannot exceed refund due. Completed/no-show statuses are allowed only after the relevant end/start time, and retain payment obligations. No-show does not release the remaining reserved time early. There is no overpayment collection, price override or tentative reservation in this release.
 
+Paid confirmed regular bookings expose an owner-only **Cancel & refund** action. It confirms cancellation first using the existing status command, refreshes the authoritative booking/version, then opens the existing refund editor. Refunds require a second explicit save. Cash and UPI (including cash collections refunded via UPI) use the refund's selected source, and partial/split refunds remain supported. An uncertain cancellation retries its original command before opening the form. A successful cancellation whose refresh fails clears the stale confirmed record and pending command; reload the booking and use **Record refund** to continue. Staff, unpaid bookings and admission visits do not get the combined action. No API or schema change is required.
+
 ## Business-specific inventory
 
 - Turf: football/cricket offerings reserve physical section IDs. Each half is independent; Full Ground reserves both halves and conflicts across sports.

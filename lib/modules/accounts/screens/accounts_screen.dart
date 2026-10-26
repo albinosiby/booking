@@ -11,6 +11,7 @@ import '../models/accounts_screen_models.dart';
 import '../widgets/accounts_dashboard_widgets.dart';
 import '../widgets/accounts_overview_widgets.dart';
 import '../widgets/accounts_widgets.dart';
+import '../../staff_cash/widgets/staff_cash_owner_section.dart';
 
 class AccountsScreen extends StatefulWidget {
   const AccountsScreen({super.key});
@@ -57,6 +58,12 @@ class _AccountsScreenState extends State<AccountsScreen> {
                 Icons.swap_horiz,
                 'Transfer',
                 () => _open('/accounts/entry/transfer'),
+              ),
+            if (catalog != null && catalog.canManage != true)
+              FinanceAction(
+                Icons.account_balance_wallet_outlined,
+                'My cash',
+                () => _open('/staff-cash'),
               ),
             if (catalog?.canView == true)
               FinanceAction(
@@ -202,6 +209,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                 ),
               ),
             ],
+            if (catalog.canManage) StaffCashOwnerSection(currency: currency),
             FinanceSection(
               'Recent activity',
               action: 'View all',
@@ -490,6 +498,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
                             ),
                           ),
                         ),
+                      if (catalog?.canManage == true)
+                        StaffCashOwnerSection(currency: currency),
                     ],
                   ),
                 ),

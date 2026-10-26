@@ -22,6 +22,7 @@ import type { Actor } from "../src/common/auth.guard";
 import type { WorkspaceService } from "../src/workspace/workspace.service";
 import type { BookingService } from "../src/bookings/booking.service";
 import type { AccountsService } from "../src/accounts/accounts.service";
+import type { StaffCashService } from "../src/accounts/staff-cash.service";
 import type { TurfService } from "../src/turf/turf.service";
 import type { CourtService } from "../src/court/court.service";
 import type { PoolService } from "../src/pool/pool.service";
@@ -50,6 +51,7 @@ type Services = {
   workspace: WorkspaceService;
   bookings: BookingService;
   accounts: AccountsService;
+  staffCash: StaffCashService;
   turf: TurfService;
   court: CourtService;
   pool: PoolService;
@@ -453,6 +455,18 @@ export function createHandler(
   add("POST", "/v1/bookings/:id/customer", (i) =>
     b.editCustomer(i.actor, i.params.id, i.body),
   );
+  add("GET", "/v1/staff-cash/me", (i) =>
+    services.staffCash.me(i.actor, i.query),
+  );
+  add("GET", "/v1/staff-cash/overview", (i) =>
+    services.staffCash.overview(i.actor),
+  );
+  add("GET", "/v1/staff-cash/history", (i) =>
+    services.staffCash.history(i.actor, i.query),
+  );
+  add("POST", "/v1/staff-cash/:membershipId/settle", (i) =>
+    services.staffCash.settle(i.actor, i.params.membershipId, i.body),
+  );
   add("GET", "/v1/accounts/catalog", (i) => a.catalog(i.actor));
   add("GET", "/v1/accounts/website-payments", (i) =>
     a.websitePayments(i.actor),
@@ -582,7 +596,7 @@ export function createHandler(
       headers.set("Vary", "Origin");
       headers.set(
         "Access-Control-Allow-Headers",
-        "authorization, apikey, content-type, x-client-info",
+        "authorization, apikey, content-type, x-client-info, x-region",
       );
       headers.set(
         "Access-Control-Allow-Methods",

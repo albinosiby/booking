@@ -49,6 +49,9 @@ import '../modules/accounts/cubit/accounts_cubits.dart';
 import '../modules/accounts/models/accounts_models.dart';
 import '../modules/accounts/repositories/accounts_repository.dart';
 import '../modules/accounts/repositories/rest_accounts_repository.dart';
+import '../modules/staff_cash/cubit/staff_cash_cubits.dart';
+import '../modules/staff_cash/repositories/rest_staff_cash_repository.dart';
+import '../modules/staff_cash/repositories/staff_cash_repository.dart';
 import '../modules/bookings/cubit/booking_form_cubit.dart';
 import '../modules/bookings/cubit/booking_detail_cubit.dart';
 import '../modules/bookings/cubit/booking_list_cubit.dart';
@@ -182,6 +185,12 @@ void registerFeatureDependencies(GetIt di) {
   di.registerLazySingleton<AccountsRepository>(
     () => RestAccountsRepository(di()),
   );
+  di.registerLazySingleton<IStaffCashRepository>(
+    () => RestStaffCashRepository(di()),
+  );
+  di.registerFactory<StaffCashCubit>(() => StaffCashCubit(di()));
+  di.registerFactory<OwnerStaffCashCubit>(() => OwnerStaffCashCubit(di()));
+  di.registerFactory<StaffCashHistoryCubit>(() => StaffCashHistoryCubit(di()));
   di.registerLazySingleton<ReportSaver>(() => DeviceReportSaver());
   di.registerFactoryParam<AccountsOverviewCubit, WorkspaceSession, void>(
     (s, _) => AccountsOverviewCubit(s, di(), di()),

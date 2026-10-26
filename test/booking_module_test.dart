@@ -1099,8 +1099,8 @@ void main() {
       await d.load();
       expect(d.state.record!.cleanupMinutes, 12);
       d.begin(BookingDetailAction.collection);
-      expect(d.state.payments.single.amount, '');
-      expect(d.state.paymentEntry.remaining, 20000);
+      expect(d.state.payments.single.amount, '200.00');
+      expect(d.state.paymentEntry.remaining, 0);
       d.payBalance(d.state.payments.single.id);
       expect(d.state.payments.single.amount, '200.00');
       d.updatePayment(

@@ -568,6 +568,85 @@ test("cancellation releases inventory, records reason and requires a separately 
     }),
   );
 });
+test("cancel then refund supports cash and UPI from the selected account without automatic payouts", async () => {
+  for (const method of ["cash", "upi"]) {
+    const f = await fixture();
+    const org = (
+      await db.query<{ organization_id: string }>(
+        "SELECT organization_id FROM businesses WHERE id=$1",
+        [f.id],
+      )
+    ).rows[0].organization_id;
+    const bank = randomUUID();
+    await db.query(
+      "INSERT INTO money_accounts(id,organization_id,name,kind,is_primary) VALUES($1,$2,'Refund bank','bank',true)",
+      [bank, org],
+    );
+    const cash = (
+      await db.query<{ id: string }>(
+        "SELECT id FROM money_accounts WHERE organization_id=$1 AND kind='cash'",
+        [org],
+      )
+    ).rows[0].id;
+    const { id } = await create(f, f.selection, [payment("cash", 50000)]);
+    const before = await service.detail(f.owner, id);
+    await assert.rejects(
+      () =>
+        service.payments(f.owner, id, {
+          command_key: randomUUID(),
+          version: before.version,
+          kind: "refund",
+          payments: [payment(method, 50000)],
+          reason: "Refund before cancellation",
+        }),
+      /refund due/,
+    );
+    const cancellation = {
+      command_key: randomUUID(),
+      version: before.version,
+      status: "cancelled",
+      reason: "Customer cancelled",
+    };
+    await service.status(f.owner, id, cancellation);
+    await service.status(f.owner, id, cancellation);
+    const cancelled = await service.detail(f.owner, id);
+    assert.equal(cancelled.status, "cancelled");
+    assert.equal(cancelled.refund_due_minor, 50000);
+    assert.equal(cancelled.payments.length, 1);
+    const source = method === "cash" ? cash : bank;
+    const refund = {
+      command_key: randomUUID(),
+      version: cancelled.version,
+      kind: "refund",
+      payments: [{ ...payment(method, 50000), account_id: source }],
+      reason: "Returned to customer",
+    };
+    await service.payments(f.owner, id, refund);
+    await service.payments(f.owner, id, refund);
+    const after = await service.detail(f.owner, id);
+    assert.equal(after.status, "cancelled");
+    assert.equal(after.refund_due_minor, 0);
+    assert.equal(after.net_paid_minor, 0);
+    assert.equal(after.payments.length, 2);
+    assert.equal(
+      after.history.filter((h: any) => h.action === "cancelled").length,
+      1,
+    );
+    assert.equal(
+      after.history.filter((h: any) => h.action === "refund_recorded").length,
+      1,
+    );
+    const posted = (
+      await db.query<{ account_id: string; amount_minor: string }>(
+        "SELECT l.account_id,l.amount_minor FROM finance_lines l JOIN finance_events e ON e.id=l.event_id JOIN booking_payments p ON p.id=e.booking_payment_id WHERE p.booking_id=$1 AND p.kind='refund'",
+        [id],
+      )
+    ).rows;
+    assert.equal(posted.length, 1);
+    assert.equal(posted[0].account_id, source);
+    assert.equal(Number(posted[0].amount_minor), -50000);
+  }
+});
 test("changed tariff requires new quote and future bookings protect topology/capacity and history", async () => {
   const f = await fixture(),
     v = await request(f),

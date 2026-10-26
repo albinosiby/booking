@@ -23,6 +23,8 @@ export function bookingHeaders() {
     apikey:
       process.env.BOOKING_API_PUBLISHABLE_KEY ??
       "sb_publishable_d6iVFApYyh41BlF9GkTsgw_h0d-chZN",
+    // Run the API next to the database; see BOOKING_API_REGION in deploy/railway.env.example.
+    "x-region": process.env.BOOKING_API_REGION ?? "ap-northeast-1",
   };
 }
 

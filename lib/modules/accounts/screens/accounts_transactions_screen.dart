@@ -10,6 +10,7 @@ import '../models/accounts_models.dart';
 import '../models/accounts_screen_models.dart';
 import '../widgets/accounts_overview_widgets.dart';
 import '../widgets/accounts_widgets.dart';
+import '../../staff_cash/widgets/staff_cash_owner_section.dart';
 
 class AccountsTransactionsScreen extends StatefulWidget {
   const AccountsTransactionsScreen({super.key, required this.filter});
@@ -32,105 +33,112 @@ class _AccountsTransactionsScreenState
   }
 
   @override
-  Widget build(BuildContext context) =>
-      BlocBuilder<TransactionsCubit, TransactionsModel>(
-        bloc: cubit,
-        builder: (c, s) => AppPage(
-          title: 'Transactions',
-          back: true,
-          showAppBar: true,
-          compactHeader: true,
-          actions: [
-            IconButton(
-              tooltip: 'Change dates',
-              onPressed: () async {
-                final f = await chooseFinanceDates(c, s.filter);
-                if (f != null) cubit.load(filter: f);
-              },
-              icon: const Icon(Icons.calendar_today_outlined),
-            ),
-            IconButton(
-              tooltip: 'Refresh transactions',
-              onPressed: cubit.refresh,
-              icon: const Icon(Icons.refresh),
-            ),
-          ],
-          children: [
-            Text(
-              '${s.filter.from} → ${s.filter.until}',
-              style: Theme.of(c).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              initialValue: s.filter.query,
-              decoration: const InputDecoration(
-                labelText: 'Search reason, booking or customer',
-                prefixIcon: Icon(Icons.search),
-              ),
-              textInputAction: TextInputAction.search,
-              onFieldSubmitted: (v) =>
-                  cubit.load(filter: s.filter.search(v, s.filter.kind)),
-            ),
-            const SizedBox(height: 12),
-            AppPicker(
-              label: 'Transaction type',
-              value: s.filter.kind ?? '',
-              items: [
-                const PickerItem('', 'All transactions'),
-                ...[
-                  'booking_collection',
-                  'booking_refund',
-                  'admission_collection',
-                  'admission_refund',
-                  'income',
-                  'expense',
-                  'transfer',
-                  'reversal',
-                ].map((v) => PickerItem(v, financeLabel(v))),
-              ],
-              onChanged: (v) => cubit.load(
-                filter: s.filter.search(s.filter.query, v.isEmpty ? null : v),
-              ),
-            ),
-            const SizedBox(height: 20),
-            if (s.loading)
-              AppLoadingState(
-                initial: s.items.isEmpty,
-                label: s.items.isEmpty ? 'Loading transactions…' : null,
-              ),
-            if (s.error != null)
-              AppErrorWidget(message: s.error!, onRetry: cubit.refresh),
-            if (!s.loading && s.error == null && s.items.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 60),
-                child: Center(child: Text('No matching transactions.')),
-              ),
-            if (s.items.isNotEmpty)
-              FinanceTransactionGroups(
-                entries: s.items,
-                currency:
-                    c
-                        .read<WorkspaceCubit>()
-                        .state
-                        .data
-                        .organization
-                        ?.currency ??
-                    'INR',
-                onTap: (e) async {
-                  await c.push('/accounts/transaction', extra: e);
-                  if (mounted) cubit.load();
-                },
-              ),
-            if (s.next != null)
-              AppButton(
-                label: 'Load more',
-                secondary: true,
-                busy: s.loading,
-                onPressed: () => cubit.load(more: true),
-              ),
-          ],
+  Widget build(
+    BuildContext context,
+  ) => BlocBuilder<TransactionsCubit, TransactionsModel>(
+    bloc: cubit,
+    builder: (c, s) => AppPage(
+      title: 'Transactions',
+      back: true,
+      showAppBar: true,
+      compactHeader: true,
+      actions: [
+        IconButton(
+          tooltip: 'Change dates',
+          onPressed: () async {
+            final f = await chooseFinanceDates(c, s.filter);
+            if (f != null) cubit.load(filter: f);
+          },
+          icon: const Icon(Icons.calendar_today_outlined),
         ),
-      );
+        IconButton(
+          tooltip: 'Refresh transactions',
+          onPressed: cubit.refresh,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
+      children: [
+        Text(
+          '${s.filter.from} → ${s.filter.until}',
+          style: Theme.of(c).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          initialValue: s.filter.query,
+          decoration: const InputDecoration(
+            labelText: 'Search reason, booking or customer',
+            prefixIcon: Icon(Icons.search),
+          ),
+          textInputAction: TextInputAction.search,
+          onFieldSubmitted: (v) =>
+              cubit.load(filter: s.filter.search(v, s.filter.kind)),
+        ),
+        const SizedBox(height: 12),
+        AppPicker(
+          label: 'Transaction type',
+          value: s.filter.kind ?? '',
+          items: [
+            const PickerItem('', 'All transactions'),
+            ...[
+              'booking_collection',
+              'booking_refund',
+              'admission_collection',
+              'admission_refund',
+              'income',
+              'expense',
+              'transfer',
+              'reversal',
+            ].map((v) => PickerItem(v, financeLabel(v))),
+          ],
+          onChanged: (v) => cubit.load(
+            filter: s.filter.search(s.filter.query, v.isEmpty ? null : v),
+          ),
+        ),
+        const SizedBox(height: 20),
+        if (c.read<WorkspaceCubit>().state.data.isOwner &&
+            s.filter.kind == null &&
+            s.filter.accountId == null &&
+            s.filter.query.isEmpty)
+          StaffCashHistorySection(
+            from: s.filter.from,
+            until: s.filter.until,
+            currency:
+                c.read<WorkspaceCubit>().state.data.organization?.currency ??
+                'INR',
+          ),
+        if (s.loading)
+          AppLoadingState(
+            initial: s.items.isEmpty,
+            label: s.items.isEmpty ? 'Loading transactions…' : null,
+          ),
+        if (s.error != null)
+          AppErrorWidget(message: s.error!, onRetry: cubit.refresh),
+        if (!s.loading && s.error == null && s.items.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 60),
+            child: Center(child: Text('No matching transactions.')),
+          ),
+        if (s.items.isNotEmpty)
+          FinanceTransactionGroups(
+            entries: s.items,
+            currency:
+                c.read<WorkspaceCubit>().state.data.organization?.currency ??
+                'INR',
+            onTap: (e) async {
+              await c.push('/accounts/transaction', extra: e);
+              if (mounted) cubit.load();
+            },
+          ),
+        if (s.next != null)
+          AppButton(
+            label: 'Load more',
+            secondary: true,
+            busy: s.loading,
+            onPressed: () => cubit.load(more: true),
+          ),
+      ],
+    ),
+  );
 }
 
 class AccountsTransactionScreen extends StatefulWidget {

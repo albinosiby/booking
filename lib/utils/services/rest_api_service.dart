@@ -59,6 +59,9 @@ class RestApiService {
                 target.host == Uri.parse(AppConfig.supabaseUrl).host &&
                 target.path.startsWith('/functions/v1/')) {
               options.headers['apikey'] = AppConfig.supabasePublishableKey;
+              if (AppConfig.functionRegion.isNotEmpty) {
+                options.headers['x-region'] = AppConfig.functionRegion;
+              }
             }
             final token = await auth.token();
             if (token != null) {

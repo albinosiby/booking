@@ -18,6 +18,7 @@ import { BookingService } from "../src/bookings/booking.service";
 import { ExpensesService } from "../src/expenses/expenses.service";
 import { IncomeService } from "../src/income/income.service";
 import { AccountsService } from "../src/accounts/accounts.service";
+import { StaffCashService } from "../src/accounts/staff-cash.service";
 import { TurfService } from "../src/turf/turf.service";
 import { CourtService } from "../src/court/court.service";
 import { PoolService } from "../src/pool/pool.service";
@@ -53,6 +54,7 @@ export const services = {
   agentCalls: new AgentCallService(db as never, workspace, sarvam),
   voice: new VoiceService(db as never, bookings),
   accounts,
+  staffCash: new StaffCashService(db as never, workspace),
   turf: new TurfService(db as never, workspace),
   court: new CourtService(db as never, workspace),
   pool: new PoolService(db as never, workspace),

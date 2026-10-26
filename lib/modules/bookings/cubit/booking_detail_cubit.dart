@@ -75,7 +75,13 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
         !state.catalog.canCollect) {
       return;
     }
-    if (a == BookingDetailAction.refund && !state.catalog.canRefund) return;
+    if (a == BookingDetailAction.refund &&
+        (!state.catalog.canRefund || b.refundDue <= 0)) {
+      return;
+    }
+    if (a == BookingDetailAction.cancelAndRefund && !state.canCancelAndRefund) {
+      return;
+    }
     if (![
           BookingDetailAction.collection,
           BookingDetailAction.refund,
@@ -89,7 +95,13 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
         customer: b.customer,
         notes: b.notes,
         reason: '',
-        payments: [BookingPaymentDraft()],
+        payments: [
+          BookingPaymentDraft(
+            amount: a == BookingDetailAction.collection
+                ? (b.balance / 100).toStringAsFixed(2)
+                : '',
+          ),
+        ],
       ),
     );
   }
@@ -185,6 +197,9 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
     }
     final b = state.record!, a = state.action;
     if (a == BookingDetailAction.none) return;
+    if (a == BookingDetailAction.cancelAndRefund && !state.canCancelAndRefund) {
+      return;
+    }
     final key = const Uuid().v4();
     BookingCommand command;
     if (a == BookingDetailAction.collection ||
@@ -238,7 +253,9 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
       }
       command = BookingCommand(key, '/bookings/$id/status', {
         'version': b.version,
-        'status': a == BookingDetailAction.checkedIn
+        'status': a == BookingDetailAction.cancelAndRefund
+            ? 'cancelled'
+            : a == BookingDetailAction.checkedIn
             ? 'checked_in'
             : a == BookingDetailAction.noShow
             ? 'no_show'
@@ -254,17 +271,18 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
 
   Future<void> _send(BookingCommand c) async {
     final g = generation;
+    final openRefund = state.action == BookingDetailAction.cancelAndRefund;
     emit(state.copyWith(saving: true, pending: c));
     try {
       await repository.submit(c);
-      if (valid(g)) await load();
+      if (valid(g)) await _afterSaved(g, openRefund: openRefund);
     } catch (e) {
       if (!valid(g)) return;
       if (e is AppException && e.code == 'NETWORK') {
         try {
           final result = await repository.commandResult(c.key);
           if (result != null && valid(g)) {
-            await load();
+            await _afterSaved(g, openRefund: openRefund);
             return;
           }
         } catch (_) {}
@@ -286,6 +304,29 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _afterSaved(int g, {required bool openRefund}) async {
+    if (!valid(g)) return;
+    // The command is committed. Retire it and its stale record even if the
+    // following read fails, so a reload cannot repeat a cancellation or payment.
+    emit(BookingDetailModel(catalog: state.catalog));
+    await load();
+    if (!valid(g + 1)) return;
+    if (state.error != null) {
+      emit(
+        state.copyWith(
+          error:
+              '${openRefund ? 'Cancellation was recorded. Reload this booking to continue with the refund.' : 'The action was recorded. Reload this booking to see the latest details.'} ${state.error}',
+        ),
+      );
+      return;
+    }
+    if (openRefund &&
+        state.record?.status == 'cancelled' &&
+        (state.record?.refundDue ?? 0) > 0) {
+      begin(BookingDetailAction.refund);
     }
   }
 

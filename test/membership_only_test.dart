@@ -6,6 +6,7 @@ import 'package:eden_booking/modules/admissions/models/admission_models.dart';
 import 'package:eden_booking/modules/admissions/repositories/admission_repository.dart';
 import 'package:eden_booking/modules/admissions/screens/admission_detail_screen.dart';
 import 'package:eden_booking/modules/admissions/widgets/expired_members_section.dart';
+import 'package:eden_booking/modules/bookings/models/booking_models.dart';
 import 'package:eden_booking/modules/court/models/court_coaching.dart';
 import 'package:eden_booking/modules/pool/models/pool_configuration.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_session.dart';
@@ -66,6 +67,7 @@ class MembershipRepositoryFake extends AdmissionsFake
   }
   String? deletedReason;
   AppException? expiryError;
+  List<BookingPaymentDraft>? collectedPayments;
   @override
   Future<AdmissionCatalog> catalog() async => const AdmissionCatalog(
     canManage: true,
@@ -113,6 +115,17 @@ class MembershipRepositoryFake extends AdmissionsFake
   ) async {
     deletedReason = reason;
     record = member(status: 'deleted');
+  }
+
+  @override
+  Future<void> payments(
+    Admission admission,
+    List<BookingPaymentDraft> entries,
+    String kind,
+    String reason,
+    String key,
+  ) async {
+    collectedPayments = List.unmodifiable(entries);
   }
 }
 
@@ -209,6 +222,72 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+  testWidgets('membership collection prefills due and splits the remainder', (
+    tester,
+  ) async {
+    final session = await workspace(), repository = MembershipRepositoryFake();
+    await getIt.reset();
+    addTearDown(session.close);
+    addTearDown(getIt.reset);
+    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    getIt.registerFactoryParam<AdmissionCubit, WorkspaceSession, void>(
+      (value, _) => AdmissionCubit(value, repository),
+    );
+    await tester.pumpWidget(
+      ScreenUtilInit(
+        designSize: const Size(390, 844),
+        builder: (context, _) => BlocProvider.value(
+          value: session,
+          child: MaterialApp(
+            theme: AppTheme.build(Brightness.light),
+            home: const AdmissionDetailScreen(id: 'membership'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Collect payment'));
+    await tester.tap(find.text('Collect payment'));
+    await tester.pumpAndSettle();
+    Finder amountFields() => find.descendant(
+      of: find.byWidgetPredicate(
+        (widget) =>
+            widget is ConfigurationField && widget.label == 'Amount · INR',
+      ),
+      matching: find.byType(TextFormField),
+    );
+    expect(
+      tester.widget<TextFormField>(amountFields().first).controller!.text,
+      '60.00',
+    );
+    expect(repository.collectedPayments, isNull);
+
+    await tester.enterText(amountFields().first, '20');
+    await tester.ensureVisible(find.text('Add other payment'));
+    await tester.tap(find.text('Add other payment'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextFormField>(amountFields().last).controller!.text,
+      '40.00',
+    );
+    expect(repository.collectedPayments, isNull);
+
+    await tester.enterText(amountFields().last, '45');
+    await tester.ensureVisible(find.text('Save'));
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(repository.collectedPayments, isNull);
+    expect(find.text('Check the amount collected.'), findsOneWidget);
+
+    await tester.enterText(amountFields().last, '40');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(repository.collectedPayments?.map((p) => p.minor).toList(), [
+      2000,
+      4000,
+    ]);
+    expect(tester.takeException(), isNull);
+  });
   for (final width in [320.0, 1280.0]) {
     testWidgets(
       'Home expiry actions fit $width and open renewal and collection',
