@@ -15,7 +15,7 @@ class TeamDeletionTarget {
         invitation: false,
         eligible:
             record['active'] == false &&
-            ['staff', 'manager'].contains(record['role']),
+            ['staff', 'manager', 'owner'].contains(record['role']),
       );
   factory TeamDeletionTarget.invitation(Map<String, dynamic> record) =>
       TeamDeletionTarget(

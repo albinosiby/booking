@@ -83,7 +83,7 @@ export function teamAccessMessage(
     `Hello ${notice.name},`,
     "",
     `You have been added to ${notice.organization} on BookingOS.`,
-    `Responsibility: ${notice.role === "manager" ? "Manager" : "Staff"}`,
+    `Responsibility: ${roleLabel(notice.role)}`,
     "",
     "Your business and resource access:",
     ...scope.map((line) => `• ${line}`),
@@ -110,7 +110,7 @@ export function teamAccessMessage(
   return {
     subject: `Your BookingOS access to ${notice.organization.replace(/[\r\n]/g, " ")}`,
     text: lines.join("\n"),
-    html: `<html><body style="font-family:Arial,sans-serif;color:#20251d;max-width:600px;margin:32px auto;padding:24px"><h1 style="font-size:24px">Welcome to ${escapeHtml(notice.organization)}</h1><p>Hello ${escapeHtml(notice.name)}, you have been added to BookingOS as ${notice.role === "manager" ? "Manager" : "Staff"}.</p><h2 style="font-size:18px">Your access</h2>${list(scope)}<h2 style="font-size:18px">Your permissions</h2>${permissions.length ? list(permissions) : "<p>No operational permissions enabled. Contact your owner if you need access.</p>"}<p>Sign in with Google using <strong>${escapeHtml(notice.email)}</strong>. Your team access activates automatically and opens your dashboard. A verified email/password account with the same email also works.</p><p><a href="${escapeHtml(urls.web)}" style="display:inline-block;background:#b2f35b;color:#16210a;padding:14px 24px;border-radius:10px;text-decoration:none">Sign in on the web</a></p><p><a href="${escapeHtml(urls.app)}">Open the BookingOS app</a> (requires the installed app)</p><p>If the app link does not open, use Web login or open the installed app and choose Sign in. No invitation link or acceptance code is required.</p><p>Your owner can change or remove access. If you were not expecting this email, contact the organization owner. Another email will not grant this access.</p></body></html>`,
+    html: `<html><body style="font-family:Arial,sans-serif;color:#20251d;max-width:600px;margin:32px auto;padding:24px"><h1 style="font-size:24px">Welcome to ${escapeHtml(notice.organization)}</h1><p>Hello ${escapeHtml(notice.name)}, you have been added to BookingOS as ${roleLabel(notice.role)}.</p><h2 style="font-size:18px">Your access</h2>${list(scope)}<h2 style="font-size:18px">Your permissions</h2>${permissions.length ? list(permissions) : "<p>No operational permissions enabled. Contact your owner if you need access.</p>"}<p>Sign in with Google using <strong>${escapeHtml(notice.email)}</strong>. Your team access activates automatically and opens your dashboard. A verified email/password account with the same email also works.</p><p><a href="${escapeHtml(urls.web)}" style="display:inline-block;background:#b2f35b;color:#16210a;padding:14px 24px;border-radius:10px;text-decoration:none">Sign in on the web</a></p><p><a href="${escapeHtml(urls.app)}">Open the BookingOS app</a> (requires the installed app)</p><p>If the app link does not open, use Web login or open the installed app and choose Sign in. No invitation link or acceptance code is required.</p><p>Your owner can change or remove access. If you were not expecting this email, contact the organization owner. Another email will not grant this access.</p></body></html>`,
   };
 }
 
@@ -169,4 +169,8 @@ export class NodemailerTeamAccessMailer implements TeamAccessMailer {
       transport.close();
     }
   }
+}
+
+function roleLabel(role: string) {
+  return role === "owner" ? "Owner" : role === "manager" ? "Manager" : "Staff";
 }

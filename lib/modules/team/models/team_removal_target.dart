@@ -20,10 +20,19 @@ class TeamRemovalTarget {
   final String id, name, email, role;
   final bool active, pending;
   bool get removable =>
-      active && !pending && (role == 'staff' || role == 'manager');
-  String get label => role == 'manager' ? 'Remove manager' : 'Remove staff';
-  String get confirmation =>
-      '$name ($email) will lose access to this organization. '
-      'Their business and space assignments will be removed, and their coaching plans will become Unassigned. '
-      'Existing bookings, payments and attendance history will be preserved.';
+      active &&
+      !pending &&
+      (role == 'staff' || role == 'manager' || role == 'owner');
+  String get label => switch (role) {
+    'owner' => 'Remove owner',
+    'manager' => 'Remove manager',
+    _ => 'Remove staff',
+  };
+  String get confirmation => role == 'owner'
+      ? '$name ($email) will lose owner access to this organization. '
+            'Their coaching plans will become Unassigned. '
+            'Existing bookings, payments and attendance history will be preserved.'
+      : '$name ($email) will lose access to this organization. '
+            'Their business and space assignments will be removed, and their coaching plans will become Unassigned. '
+            'Existing bookings, payments and attendance history will be preserved.';
 }

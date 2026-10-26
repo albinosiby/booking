@@ -28,6 +28,7 @@ function fixture() {
     bookings: service,
     blocks: service,
     accounts: service,
+    invoices: service,
     expenses: service,
     income: service,
     turf: service,
@@ -762,4 +763,22 @@ test("Edge MCP management and provisioning accept only signed admin requests", a
     assert.equal(f.calls.at(-1).method, target);
     assert.equal(f.calls.at(-1).args[0].uid, "admin-panel");
   }
+});
+test("Edge routes invoice settings, generation and PDF with actor and booking IDs", async () => {
+  const f = fixture();
+  assert.equal(
+    (await f.request("/v1/invoices/settings", "GET", undefined, null)).status,
+    401,
+  );
+  await f.request("/v1/invoices/settings", "PUT", { enabled: false });
+  assert.equal(f.calls.at(-1).method, "saveSettings");
+  assert.deepEqual(f.calls.at(-1).args[1], { enabled: false });
+  await f.request(`/v1/invoices/bookings/${id}`, "POST", { command_key: id });
+  assert.equal(f.calls.at(-1).method, "generate");
+  assert.equal(f.calls.at(-1).args[1], id);
+  await f.request(`/v1/invoices/bookings/${id}`);
+  assert.equal(f.calls.at(-1).method, "list");
+  const pdf = await f.request(`/v1/invoices/${id}/pdf`);
+  assert.equal(f.calls.at(-1).method, "pdf");
+  assert.equal(pdf.headers.get("content-type"), "application/pdf");
 });

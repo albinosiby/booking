@@ -31,6 +31,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
   Set<String> get restricted => cubit.state.restricted;
   Map<String, Set<String>> get resources => cubit.state.resources;
   Set<String> get permissions => cubit.state.permissions;
+  bool get isOwnerRole => role == 'owner';
   bool get pendingAccess => widget.member?['pending_access'] == true;
   static const labels = {
     'view_bookings': 'View bookings',
@@ -62,13 +63,14 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
   Future<void> save() async {
     if (cubit.state.busy) return;
     if (!form.currentState!.validate()) return;
-    if (businesses.isEmpty) {
+    if (!isOwnerRole && businesses.isEmpty) {
       showMessage(context, 'Select at least one business.');
       return;
     }
-    if (restricted.any(
-      (b) => businesses.contains(b) && (resources[b]?.isEmpty ?? true),
-    )) {
+    if (!isOwnerRole &&
+        restricted.any(
+          (b) => businesses.contains(b) && (resources[b]?.isEmpty ?? true),
+        )) {
       showMessage(
         context,
         'Select at least one resource for restricted businesses.',
@@ -79,8 +81,8 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
       name: name.text.trim(),
       email: email.text.trim().toLowerCase(),
       role: role,
-      permissions: permissions,
-      assignments: businesses.map(
+      permissions: isOwnerRole ? const <String>[] : permissions,
+      assignments: (isOwnerRole ? <String>{} : businesses).map(
         (b) => BusinessAssignment(
           b,
           restricted.contains(b) ? resources[b]! : <String>[],
@@ -167,22 +169,25 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
       items: const [
         PickerItem('staff', 'Staff'),
         PickerItem('manager', 'Manager'),
+        PickerItem('owner', 'Owner'),
       ],
       value: role,
       onChanged: (v) => cubit.selectRole(v),
     ),
-    const SizedBox(height: 12),
-    SwitchListTile(
-      contentPadding: EdgeInsets.zero,
-      title: const Text('Also a coach'),
-      subtitle: const Text(
-        'Can teach assigned coaching plans. Enable attendance separately under Permissions.',
+    if (!isOwnerRole) ...[
+      const SizedBox(height: 12),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Also a coach'),
+        subtitle: const Text(
+          'Can teach assigned coaching plans. Enable attendance separately under Permissions.',
+        ),
+        value: permissions.contains('coach'),
+        onChanged: cubit.state.busy
+            ? null
+            : (value) => cubit.selectPermission('coach', value),
       ),
-      value: permissions.contains('coach'),
-      onChanged: cubit.state.busy
-          ? null
-          : (value) => cubit.selectPermission('coach', value),
-    ),
+    ],
   ];
 
   List<Widget> businessCards(StaffAssignmentScreenModel s) => [
@@ -309,7 +314,7 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
         ? 'The right people. The right access.'
         : 'Edit staff access.',
     subtitle:
-        'Assign staff to one business or several. You remain the organization owner.',
+        'Assign staff to one business or several, or make them an owner with full access.',
     maxWidth: 1200,
     children: [
       Form(
@@ -327,29 +332,38 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
                 child: Column(children: identityFields()),
               ),
             ),
-            AppPanel(
-              title: 'Assign businesses',
-              subtitle: 'Optionally restrict a business to selected resources.',
-              child: s.data.businesses.isEmpty
-                  ? const AppEmptyState(
-                      title: 'No businesses yet',
-                      message: 'Add a business before assigning staff.',
-                    )
-                  : AppGrid(
-                      minTileWidth: 300,
-                      maxColumns: 2,
-                      children: businessCards(s),
-                    ),
-            ),
+            if (!isOwnerRole)
+              AppPanel(
+                title: 'Assign businesses',
+                subtitle:
+                    'Optionally restrict a business to selected resources.',
+                child: s.data.businesses.isEmpty
+                    ? const AppEmptyState(
+                        title: 'No businesses yet',
+                        message: 'Add a business before assigning staff.',
+                      )
+                    : AppGrid(
+                        minTileWidth: 300,
+                        maxColumns: 2,
+                        children: businessCards(s),
+                      ),
+              ),
           ],
           secondary: [
-            AppPanel(
-              title: 'Permissions',
-              subtitle: 'What this person can do in assigned businesses.',
-              child: permissionsCard(),
-            ),
+            if (isOwnerRole)
+              const AppCard(
+                child: Text(
+                  'Owners have full access to every business and can add or remove other owners.',
+                ),
+              )
+            else
+              AppPanel(
+                title: 'Permissions',
+                subtitle: 'What this person can do in assigned businesses.',
+                child: permissionsCard(),
+              ),
             ...submit(s),
-            if (permissions.contains('coach')) ...[
+            if (!isOwnerRole && permissions.contains('coach')) ...[
               const SizedBox(height: 20),
               coaching(s),
             ],
@@ -381,40 +395,49 @@ class _StaffAssignmentScreenState extends State<StaffAssignmentScreen> {
                       ? 'The right people.\nThe right access.'
                       : 'Edit staff access.',
                   subtitle:
-                      'Assign staff to one business or several. You remain the organization owner.',
+                      'Assign staff to one business or several, or make them an owner with full access.',
                   children: [
                     Form(
                       key: form,
                       child: Column(
                         children: [
                           ...identityFields(),
-                          const SizedBox(height: 24),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Assign businesses',
-                              style: Theme.of(c).textTheme.titleMedium,
+                          if (isOwnerRole)
+                            const AppCard(
+                              child: Text(
+                                'Owners have full access to every business and can add or remove other owners.',
+                              ),
+                            )
+                          else ...[
+                            const SizedBox(height: 24),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Assign businesses',
+                                style: Theme.of(c).textTheme.titleMedium,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          for (final card in businessCards(s))
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: card,
+                            const SizedBox(height: 10),
+                            for (final card in businessCards(s))
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: card,
+                              ),
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Permissions',
+                                style: Theme.of(c).textTheme.titleMedium,
+                              ),
                             ),
-                          const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Permissions',
-                              style: Theme.of(c).textTheme.titleMedium,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          permissionsCard(),
+                            const SizedBox(height: 12),
+                            permissionsCard(),
+                          ],
                           const SizedBox(height: 24),
                           ...submit(s),
-                          if (permissions.contains('coach')) ...[
+                          if (!isOwnerRole &&
+                              permissions.contains('coach')) ...[
                             const SizedBox(height: 20),
                             coaching(s),
                           ],

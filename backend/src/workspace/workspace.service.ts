@@ -946,14 +946,34 @@ export class WorkspaceService {
   async revoke(actor: Actor, id: string, invitation: boolean) {
     return this.db.transaction(async (db) => {
       const m = await this.member(actor, true, db);
+      if (!invitation) {
+        if (id === m.id)
+          throw new ConflictException(
+            "You cannot remove your own owner access. Ask another owner to do it.",
+          );
+        // Serialize owner removals so two owners cannot remove each other.
+        await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+          `team-owners:${m.organization_id}`,
+        ]);
+      }
       const result = await db.query(
         invitation
           ? "UPDATE invitations SET revoked_at=now() WHERE id=$1 AND organization_id=$2 AND accepted_at IS NULL RETURNING id"
-          : "UPDATE memberships SET active=false WHERE id=$1 AND organization_id=$2 AND role!='owner' AND user_id NOT LIKE 'sarvam:%' RETURNING id",
+          : "UPDATE memberships SET active=false WHERE id=$1 AND organization_id=$2 AND user_id NOT LIKE 'sarvam:%' RETURNING id",
         [id, m.organization_id],
       );
       if (!result.rows.length)
         throw new NotFoundException("Staff access or invitation not found.");
+      if (
+        !invitation &&
+        !(
+          await db.query(
+            "SELECT 1 FROM memberships WHERE organization_id=$1 AND role='owner' AND active=true AND user_id NOT LIKE 'sarvam:%'",
+            [m.organization_id],
+          )
+        ).rows.length
+      )
+        throw new ConflictException("An organization needs at least one owner.");
       if (!invitation) {
         // Revoke pending grants too, so the next sign-in cannot restore access.
         await db.query(
@@ -1012,12 +1032,12 @@ export class WorkspaceService {
         } else {
           if (
             record.active ||
-            !["staff", "manager"].includes(record.role) ||
+            !["staff", "manager", "owner"].includes(record.role) ||
             record.user_id.startsWith("sarvam:") ||
             record.id === owner.id
           )
             throw new ConflictException(
-              "Only removed staff or managers can be deleted permanently.",
+              "Only removed team members can be deleted permanently.",
             );
           const pending = await db.query(
             "SELECT id FROM invitations WHERE organization_id=$1 AND lower(email)=$2 AND revoked_at IS NULL AND accepted_at IS NULL",

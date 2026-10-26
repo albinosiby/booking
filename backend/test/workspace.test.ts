@@ -784,3 +784,34 @@ test("permanent deletion rolls back all cleanup when another protected record re
     service.deleteTeamRecord(f.owner, "not-a-uuid", false),
   );
 });
+
+test("an owner can add another owner, who can remove them, but never themselves", async () => {
+  const { owner } = await fixture("pool");
+  const second = actor();
+  const invitation = await service.invite(owner, {
+    email: second.email,
+    display_name: "Second owner",
+    role: "owner",
+    permissions: ["view_bookings"],
+    assignments: [],
+  });
+  await service.accept(
+    second,
+    new URL(invitation.invitation_url).searchParams.get("token")!,
+  );
+  const joined = await service.workspace(second);
+  assert.equal(joined.membership.role, "owner");
+  assert.deepEqual(joined.membership.permissions, []);
+  await assert.rejects(
+    service.revoke(second, joined.membership.id, false),
+    /own owner access/,
+  );
+  const first = await service.workspace(owner);
+  await service.revoke(second, first.membership.id, false);
+  await assert.rejects(service.workspace(owner), /membership|removed/i);
+  const team = await service.team(second);
+  assert.equal(
+    team.members.filter((m: { active: boolean }) => m.active).length,
+    1,
+  );
+});

@@ -114,7 +114,7 @@ export const invitationSchema = z
   .object({
     email: z.email().transform((v) => v.toLowerCase()),
     display_name: name,
-    role: z.enum(["staff", "manager"]),
+    role: z.enum(["staff", "manager", "owner"]),
     permissions: z.array(z.enum(permissionNames)).max(permissionNames.length),
     assignments: z
       .array(
@@ -125,10 +125,21 @@ export const invitationSchema = z
           })
           .strict(),
       )
-      .min(1)
       .max(100),
   })
-  .strict();
+  .strict()
+  // Owners cover every business, so they carry no assignments or permissions.
+  .transform((v) =>
+    v.role === "owner" ? { ...v, permissions: [], assignments: [] } : v,
+  )
+  .superRefine((v, c) => {
+    if (v.role !== "owner" && !v.assignments.length)
+      c.addIssue({
+        code: "custom",
+        path: ["assignments"],
+        message: "Select at least one business",
+      });
+  });
 
 export const logoSchema = z
   .object({

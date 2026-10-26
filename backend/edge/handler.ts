@@ -23,6 +23,7 @@ import type { WorkspaceService } from "../src/workspace/workspace.service";
 import type { BookingService } from "../src/bookings/booking.service";
 import type { AccountsService } from "../src/accounts/accounts.service";
 import type { StaffCashService } from "../src/accounts/staff-cash.service";
+import type { InvoicesService } from "../src/invoices/invoices.service";
 import type { TurfService } from "../src/turf/turf.service";
 import type { CourtService } from "../src/court/court.service";
 import type { PoolService } from "../src/pool/pool.service";
@@ -52,6 +53,7 @@ type Services = {
   bookings: BookingService;
   accounts: AccountsService;
   staffCash: StaffCashService;
+  invoices: InvoicesService;
   turf: TurfService;
   court: CourtService;
   pool: PoolService;
@@ -467,6 +469,24 @@ export function createHandler(
   add("POST", "/v1/staff-cash/:membershipId/settle", (i) =>
     services.staffCash.settle(i.actor, i.params.membershipId, i.body),
   );
+  const inv = services.invoices;
+  add("GET", "/v1/invoices/settings", (i) => inv.settings(i.actor));
+  add("PUT", "/v1/invoices/settings", (i) => inv.saveSettings(i.actor, i.body));
+  add("GET", "/v1/invoices/bookings/:bookingId", (i) =>
+    inv.list(i.actor, i.params.bookingId),
+  );
+  add("POST", "/v1/invoices/bookings/:bookingId", (i) =>
+    inv.generate(i.actor, i.params.bookingId, i.body),
+  );
+  add("GET", "/v1/invoices/:id/pdf", async (i) => {
+    const { bytes, filename } = await inv.pdf(i.actor, i.params.id);
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    });
+  });
   add("GET", "/v1/accounts/catalog", (i) => a.catalog(i.actor));
   add("GET", "/v1/accounts/website-payments", (i) =>
     a.websitePayments(i.actor),

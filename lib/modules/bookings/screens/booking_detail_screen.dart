@@ -9,6 +9,9 @@ import '../models/booking_detail_model.dart';
 import '../models/booking_models.dart' show bookingMoney;
 import '../cubit/booking_detail_cubit.dart';
 import '../widgets/booking_widgets.dart';
+import '../../invoices/repositories/invoice_repository.dart';
+import '../../invoices/cubit/invoice_cubits.dart';
+import '../../invoices/widgets/booking_invoices_card.dart';
 
 class BookingDetailScreen extends StatefulWidget {
   const BookingDetailScreen({
@@ -212,6 +215,11 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   ],
                 ),
               ),
+              if (!editing && invoicesAvailable(getIt))
+                BookingInvoicesSection(
+                  key: ValueKey('invoices-${b.id}'),
+                  create: () => getIt<BookingInvoicesCubit>(param1: b.id),
+                ),
               const SizedBox(height: 20),
               if (!editing) ...[
                 if (s.catalog.canManage && b.status == 'confirmed')

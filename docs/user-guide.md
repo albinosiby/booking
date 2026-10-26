@@ -84,6 +84,14 @@ The owner sees **Staff cash to collect** on the Accounts page. Choose **Collect*
 
 Cash collected before this feature was switched on is not counted.
 
+## Booking invoices
+
+Invoices are on by default. The owner can turn them off or on in Profile → Account settings → **Generate invoices**. While they are off, the invoice buttons are hidden on every booking.
+
+Open a booking and use **Download invoice** to save a PDF, or **Share invoice** to send it through the phone's share sheet (WhatsApp, email and so on). The PDF shows your logo, organization name, address and phone, the customer's name and phone, the booking reference, business/space, date and time, the price and any discount, the payments received, **Amount paid so far** and **Amount to pay (balance due)**. When a balance is due it also lists how to pay: the bank account number(s) routed for that space (or your primary bank if none is routed) and your UPI ID and QR code from Account settings → Website payment details.
+
+Every invoice is saved with its own number (INV-000001, INV-000002 …) under **Invoice history** on the booking. A saved invoice never changes: opening an old one later shows exactly what was printed then, even if you have since changed the price, payments, bank accounts or organization details. Tapping Download or Share again when nothing has changed reuses the latest invoice instead of creating a new number; after a new payment, discount or reschedule it creates the next one. Anyone who can see the booking can generate and reopen its invoices; only the owner can switch the feature on or off.
+
 ## Booking notifications
 
 On the configured Android or iOS app, log in and allow notifications when prompted. Owners receive placed, cancelled and rescheduled booking alerts; staff receive them for assigned businesses/spaces when they have booking-management permission. Tap an alert to open the booking. You can use the app with notifications denied; re-enable them in system settings and return to the app to register again. Logging out unlinks this installation and clears its displayed local alerts. Delivery requires the server setup in [Firebase notifications](firebase-notifications.md).

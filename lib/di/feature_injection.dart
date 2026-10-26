@@ -52,6 +52,10 @@ import '../modules/accounts/repositories/rest_accounts_repository.dart';
 import '../modules/staff_cash/cubit/staff_cash_cubits.dart';
 import '../modules/staff_cash/repositories/rest_staff_cash_repository.dart';
 import '../modules/staff_cash/repositories/staff_cash_repository.dart';
+import '../modules/invoices/cubit/invoice_cubits.dart';
+import '../modules/invoices/repositories/device_invoice_files.dart';
+import '../modules/invoices/repositories/invoice_repository.dart';
+import '../modules/invoices/repositories/rest_invoice_repository.dart';
 import '../modules/bookings/cubit/booking_form_cubit.dart';
 import '../modules/bookings/cubit/booking_detail_cubit.dart';
 import '../modules/bookings/cubit/booking_list_cubit.dart';
@@ -191,6 +195,14 @@ void registerFeatureDependencies(GetIt di) {
   di.registerFactory<StaffCashCubit>(() => StaffCashCubit(di()));
   di.registerFactory<OwnerStaffCashCubit>(() => OwnerStaffCashCubit(di()));
   di.registerFactory<StaffCashHistoryCubit>(() => StaffCashHistoryCubit(di()));
+  di.registerLazySingleton<IInvoiceRepository>(
+    () => RestInvoiceRepository(di()),
+  );
+  di.registerLazySingleton<InvoiceFileGateway>(() => DeviceInvoiceFiles());
+  di.registerFactory<InvoiceSettingsCubit>(() => InvoiceSettingsCubit(di()));
+  di.registerFactoryParam<BookingInvoicesCubit, String, void>(
+    (bookingId, _) => BookingInvoicesCubit(di(), di(), bookingId),
+  );
   di.registerLazySingleton<ReportSaver>(() => DeviceReportSaver());
   di.registerFactoryParam<AccountsOverviewCubit, WorkspaceSession, void>(
     (s, _) => AccountsOverviewCubit(s, di(), di()),

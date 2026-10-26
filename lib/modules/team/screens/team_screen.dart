@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../cubit/team_cubit.dart';
+import '../../workspace/cubit/workspace_cubit.dart';
 import '../widgets/team_desktop_widgets.dart';
 
 class TeamScreen extends StatefulWidget {
@@ -92,6 +93,9 @@ class _TeamScreenState extends State<TeamScreen> {
     final colors = Theme.of(context).colorScheme;
     final active = member['active'] == true;
     final owner = member['role'] == 'owner';
+    final self =
+        member['id'] ==
+        context.read<WorkspaceCubit>().state.data.membership?['id'];
     return TeamPersonTile(
       name: member['display_name'],
       email: member['email'],
@@ -119,7 +123,7 @@ class _TeamScreenState extends State<TeamScreen> {
       actions: [
         if (TeamDeletionTarget.member(member).eligible)
           deleteButton(s, TeamDeletionTarget.member(member)),
-        if (!owner && active)
+        if (active && !self)
           TextButton.icon(
             onPressed: s.busy ? null : () => remove(member),
             style: TextButton.styleFrom(foregroundColor: colors.error),

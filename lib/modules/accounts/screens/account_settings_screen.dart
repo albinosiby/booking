@@ -11,6 +11,9 @@ import '../models/accounts_screen_models.dart';
 import '../widgets/accounts_widgets.dart';
 import '../widgets/website_payment_settings_card.dart';
 import '../repositories/website_payment_repository.dart';
+import '../../invoices/repositories/invoice_repository.dart';
+import '../../invoices/cubit/invoice_cubits.dart';
+import '../../invoices/widgets/invoice_settings_card.dart';
 
 class AccountSettingsScreen extends StatefulWidget {
   const AccountSettingsScreen({super.key});
@@ -113,6 +116,13 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 WebsitePaymentSettingsCard(
                   key: ValueKey('website-payment-${cubit.accessScope}'),
                   repository: cubit.repository as WebsitePaymentRepository,
+                ),
+                const SizedBox(height: 22),
+              ],
+              if (invoicesAvailable(getIt)) ...[
+                InvoiceSettingsSection(
+                  key: ValueKey('invoice-settings-${cubit.accessScope}'),
+                  create: () => getIt<InvoiceSettingsCubit>(),
                 ),
                 const SizedBox(height: 22),
               ],
@@ -465,6 +475,13 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
             WebsitePaymentSettingsCard(
               key: ValueKey('website-payment-${cubit.accessScope}'),
               repository: cubit.repository as WebsitePaymentRepository,
+            ),
+            const SizedBox(height: 22),
+          ],
+          if (invoicesAvailable(getIt)) ...[
+            InvoiceSettingsSection(
+              key: ValueKey('invoice-settings-${cubit.accessScope}'),
+              create: () => getIt<InvoiceSettingsCubit>(),
             ),
             const SizedBox(height: 22),
           ],
