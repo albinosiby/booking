@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:equatable/equatable.dart';
 
 const websitePhotoLimit = 40, websiteSpacePhotoLimit = 4;
+const websitePhotoSourceMaxBytes = 10 * 1024 * 1024;
 
 /// A booking space and its website overrides. Null rules use the website defaults.
 class WebsiteSpace extends Equatable {

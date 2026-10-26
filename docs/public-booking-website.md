@@ -290,7 +290,16 @@ Visitors land on `/<slug>`, read the organisation description and browse enabled
 
 Owners manage photos from **Profile → Design website**. Select or replace a logo, hero, service-card or space photo alongside other design edits. Selections preview locally with a **Not saved yet** label; selecting, replacing and removing photos do not write to the server. **Save changes** applies the pending photos and form edits. An explicit publication action also saves pending changes before updating publication status. Photos become visible on an already-published site only after that explicit save; drafts remain private. The first space photo is the cover. Photos belonging to removed resources remain removable in the settings screen and stay hidden from visitors. Removing the hero restores the styled fallback. Removing all space photos leaves the existing illustration available.
 
-The Flutter repository accepts static JPEG/PNG/WebP sources up to 2 MiB, decodes them with a 24-megapixel limit, honours orientation, removes EXIF/camera metadata, resizes to a maximum 1920-pixel edge, and encodes JPEG (maximum 1 MiB). Native encoding runs in a worker isolate. The server independently validates type, file signatures, dimensions and size; it accepts no remote URLs or SVG. Owner-side decoded previews are bounded to the screen repository lifetime and scoped to the website; originals are never sent to the public catalogue.
+The Flutter website-photo repository accepts static JPEG/PNG/WebP sources up to 10 MiB, decodes them with a 24-megapixel limit, honours orientation, removes EXIF/camera metadata, resizes to a maximum 1920-pixel edge, and encodes JPEG (maximum 1 MiB). This includes larger source files such as 4 MiB photos; the organization-profile logo picker retains its existing 2 MiB input limit. Native encoding runs in a worker isolate. The server independently validates type, file signatures, dimensions and size; it accepts no remote URLs or SVG. Owner-side decoded previews are bounded to the screen repository lifetime and scoped to the website; originals are never sent to the public catalogue. Website photo slots show the input size/format limit, and selection errors appear in a visible, dismissible snackbar rather than only at the top of a scrolled editor.
+
+The 26 October 2026 browser-preview regression came from the website picker
+inheriting the organization logo's 2 MiB cap and rejecting 4 MiB photos before
+encoding. Verification reproduced that failure before the fix. All 45 focused
+Flutter tests and ten isolated Chrome checks passed afterward, including the
+larger input, compression, preview visibility, cancellation, oversized rejection
+and unchanged profile-logo limit. Flutter analysis reported no issues. This is
+a client-only fix; no live settings, API deployment or database changes were
+performed, and the updated web/native client must be released to use it.
 
 ### Schema, access and capacity
 

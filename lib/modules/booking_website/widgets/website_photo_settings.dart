@@ -107,6 +107,10 @@ class WebsitePhotoSlot extends StatelessWidget {
             help,
             style: t.textTheme.bodySmall?.copyWith(color: c.onSurfaceVariant),
           ),
+          const SizedBox(height: 6),
+          const Text(
+            'JPG, PNG or WebP up to ${websitePhotoSourceMaxBytes ~/ (1024 * 1024)} MB. Photos are optimized for the website.',
+          ),
           const SizedBox(height: 16),
           if (image != null)
             WebsitePhotoTile(
@@ -187,6 +191,10 @@ class WebsiteSpaceGallery extends StatelessWidget {
         Text(
           'Shown in the gallery when visitors book this space. The first photo is the cover.',
           style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'JPG, PNG or WebP up to ${websitePhotoSourceMaxBytes ~/ (1024 * 1024)} MB. Photos are optimized for the website.',
         ),
         const SizedBox(height: 10),
         if (images.isNotEmpty)

@@ -170,7 +170,9 @@ class RestWebsiteRepository implements WebsiteRepository {
 
   @override
   Future<LogoSelection?> pickImage() async {
-    final selected = await LogoPickerService().pick();
+    final selected = await LogoPickerService().pick(
+      maxBytes: websitePhotoSourceMaxBytes,
+    );
     if (selected == null) return null;
     final bytes = await compute(encodeWebsitePhoto, selected);
     return LogoSelection(bytes, 'image/jpeg');

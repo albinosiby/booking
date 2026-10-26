@@ -66,6 +66,7 @@ class TestWebsiteRepository implements WebsiteRepository {
   WebsiteSettings value;
   int reads = 0, saves = 0, uploads = 0, picks = 0, removals = 0;
   String? saveError;
+  String? pickError;
   int? failUploadAt;
   final writeVersions = <int>[];
   final photoWrites = <WebsiteImage>[];
@@ -108,6 +109,7 @@ class TestWebsiteRepository implements WebsiteRepository {
   @override
   Future<LogoSelection?> pickImage() async {
     picks++;
+    if (pickError != null) throw AppException(pickError!);
     return delayedPick?.future ?? selectedPhoto;
   }
 
@@ -780,6 +782,132 @@ void main() {
         expect(repo.value.images.single.kind, 'logo');
         expect(find.text('Not saved yet'), findsNothing);
         expect(find.text('All changes saved'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final (width, existingPhotos, selectionFails) in [
+    (390.0, 0, false),
+    (1440.0, 0, false),
+    (390.0, 1, false),
+    (1440.0, 1, false),
+    (390.0, 0, true),
+    (1440.0, 0, true),
+  ]) {
+    testWidgets(
+      'space image selection displays preview or error at $width pixels with $existingPhotos existing photos (failure: $selectionFails)',
+      (tester) async {
+        tester.view.physicalSize = Size(width, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final workspace = WorkspaceCubit(BookingSource());
+        await workspace.load();
+        final repo = TestWebsiteRepository()
+          ..selectedPhoto = LogoSelection(
+            Uint8List.fromList(img.encodeJpg(img.Image(width: 8, height: 8))),
+            'image/jpeg',
+          );
+        if (selectionFails) repo.pickError = 'Choose an image up to 10 MB.';
+        repo.value = repo.value.copyWith(
+          images: [
+            for (var index = 0; index < existingPhotos; index++)
+              WebsiteImage(
+                id: 'existing-photo-$index',
+                kind: 'space',
+                businessId: 'business',
+                resourceId: 'court-1',
+                bytes: repo.selectedPhoto!.bytes,
+              ),
+          ],
+        );
+        getIt
+            .registerFactoryParam<WebsiteSettingsCubit, WorkspaceSession, void>(
+              (session, _) => WebsiteSettingsCubit(session, repo),
+            );
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox());
+          await workspace.close();
+        });
+        await tester.pumpWidget(
+          BlocProvider.value(
+            value: workspace,
+            child: ScreenUtilInit(
+              designSize: const Size(390, 844),
+              builder: (_, _) =>
+                  MaterialApp(home: const WebsiteSettingsScreen()),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final editor = find.byKey(
+          const PageStorageKey('website-editor-content'),
+        );
+        final section = width >= 1180
+            ? find.byKey(const ValueKey('website-nav-2'))
+            : find.descendant(
+                of: editor,
+                matching: find.text('Services & spaces'),
+              );
+        await tester.ensureVisible(section);
+        await tester.tap(section);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Court 1'));
+        await tester.tap(find.text('Court 1'));
+        await tester.pumpAndSettle();
+        final upload = find.text('Add space photo ($existingPhotos/4)').first;
+        await tester.ensureVisible(upload);
+        await tester.tap(upload);
+        await tester.pumpAndSettle();
+        expect(repo.picks, 1);
+        expect(repo.uploads, 0);
+        if (selectionFails) {
+          final feedback = find.descendant(
+            of: find.byType(SnackBar),
+            matching: find.text('Choose an image up to 10 MB.'),
+          );
+          expect(feedback, findsOneWidget);
+          expect(
+            tester.getRect(feedback).overlaps(Rect.fromLTWH(0, 0, width, 1000)),
+            isTrue,
+          );
+          expect(find.text('Not saved yet'), findsNothing);
+          expect(
+            tester
+                .widget<AppButton>(
+                  find.widgetWithText(AppButton, 'Save changes'),
+                )
+                .onPressed,
+            isNull,
+          );
+          expect(tester.takeException(), isNull);
+          return;
+        }
+        expect(find.text('Not saved yet'), findsOneWidget);
+        final thumbnail = find.ancestor(
+          of: find.text('Not saved yet'),
+          matching: find.byType(WebsitePhotoTile),
+        );
+        expect(thumbnail, findsOneWidget);
+        expect(
+          tester.getRect(thumbnail).overlaps(Rect.fromLTWH(0, 0, width, 1000)),
+          isTrue,
+        );
+        final image = tester.widget<WebsitePhotoTile>(thumbnail).image;
+        expect(image.kind, 'space');
+        expect(image.businessId, 'business');
+        expect(image.resourceId, 'court-1');
+        expect(image.bytes, isNotEmpty);
+        final displayedImage = find.descendant(
+          of: thumbnail,
+          matching: find.byType(Image),
+        );
+        expect(displayedImage, findsOneWidget);
+        expect(
+          tester
+              .widget<AppButton>(find.widgetWithText(AppButton, 'Save changes'))
+              .onPressed,
+          isNotNull,
+        );
         expect(tester.takeException(), isNull);
       },
     );

@@ -85,6 +85,24 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     });
   }
 
+  Future<void> selectPhoto({
+    required String kind,
+    String? businessId,
+    String? resourceId,
+  }) async {
+    await cubit.photo(
+      kind: kind,
+      businessId: businessId,
+      resourceId: resourceId,
+    );
+    if (!mounted || cubit.state.error == null) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(
+      SnackBar(content: Text(cubit.state.error!), showCloseIcon: true),
+    );
+  }
+
   Widget field({
     required String label,
     required String value,
@@ -359,7 +377,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
       settings: d,
       disabled: s.busy,
       height: 96,
-      onUpload: () => cubit.photo(kind: 'logo'),
+      onUpload: () => selectPhoto(kind: 'logo'),
       onRemove: (id) => cubit.photo(removeId: id),
     ),
     if (d.image('logo') == null)
@@ -422,7 +440,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
       settings: d,
       disabled: s.busy,
       wide: true,
-      onUpload: () => cubit.photo(kind: 'hero'),
+      onUpload: () => selectPhoto(kind: 'hero'),
       onRemove: (id) => cubit.photo(removeId: id),
     ),
     Padding(
@@ -725,7 +743,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
                 onBusiness: (id, b) => cubit.updateBusiness(id, (_) => b),
                 onSpace: cubit.updateSpace,
                 onCopyRules: cubit.copyRulesToAll,
-                onUpload: (kind, businessId, resourceId) => cubit.photo(
+                onUpload: (kind, businessId, resourceId) => selectPhoto(
                   kind: kind,
                   businessId: businessId,
                   resourceId: resourceId,

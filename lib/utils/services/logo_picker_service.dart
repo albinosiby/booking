@@ -10,19 +10,22 @@ class LogoSelection {
 }
 
 class LogoPickerService {
-  Future<LogoSelection?> pick() async {
+  Future<LogoSelection?> pick({int maxBytes = AppConstants.logoLimit}) async {
+    final sizeLabel = maxBytes % (1024 * 1024) == 0
+        ? '${maxBytes ~/ (1024 * 1024)} MB'
+        : '$maxBytes bytes';
     try {
       final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['png', 'jpg', 'jpeg', 'webp'],
       );
       if (file == null) return null;
-      if ((file.lengthSync() ?? 0) > AppConstants.logoLimit) {
-        throw const AppException('Choose an image up to 2 MB.');
+      if ((file.lengthSync() ?? 0) > maxBytes) {
+        throw AppException('Choose an image up to $sizeLabel.');
       }
       final bytes = await file.readAsBytes();
-      if (bytes.isEmpty || bytes.length > AppConstants.logoLimit) {
-        throw const AppException('Choose an image up to 2 MB.');
+      if (bytes.isEmpty || bytes.length > maxBytes) {
+        throw AppException('Choose an image up to $sizeLabel.');
       }
       final contentType = switch (file.extension?.toLowerCase()) {
         'png' => 'image/png',
