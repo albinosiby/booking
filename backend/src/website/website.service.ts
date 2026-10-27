@@ -1113,7 +1113,7 @@ export class WebsiteService {
       await this.limit(
         db,
         site,
-        `phone:${hash(v.customer.phone.replace(/\D/g, "").replace(/^0+/, ""))}`,
+        `phone:${hash(v.customer.phone.replace(/\D/g, "").replace(/^0+/, "").slice(-10))}`,
         3,
         3600,
       );

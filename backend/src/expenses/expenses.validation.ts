@@ -23,7 +23,7 @@ export type ExpensesFilter = z.infer<typeof expensesFilter>;
 export const categoryInput = z
   .object({
     name: z.string().trim().min(2).max(80),
-    active: z.boolean().default(true),
+    active: z.boolean().optional(),
   })
   .strict();
 export const attachmentInput = z

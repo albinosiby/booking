@@ -55,6 +55,12 @@ export const locationSchema = z
         message: "Enter a valid six-digit Indian pincode",
       });
     try {
+      if (
+        !/^[A-Z][A-Za-z0-9_+-]*(\/[A-Z][A-Za-z0-9_+-]*)+$|^UTC$/.test(
+          v.timezone,
+        )
+      )
+        throw new Error("timezone");
       new Intl.DateTimeFormat("en", { timeZone: v.timezone });
     } catch {
       c.addIssue({

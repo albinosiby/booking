@@ -5,8 +5,10 @@ export const calendarDate = z
     (v) =>
       /^\d{4}-\d{2}-\d{2}$/.test(v) &&
       !Number.isNaN(Date.parse(v)) &&
-      new Date(v).toISOString().startsWith(v),
-    "Use a valid calendar date",
+      new Date(v).toISOString().startsWith(v) &&
+      Number(v.slice(0, 4)) >= 2000 &&
+      Number(v.slice(0, 4)) <= 2100,
+    "Use a valid calendar date between 2000 and 2100",
   );
 export const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 export const selectionSchema = z

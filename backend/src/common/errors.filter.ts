@@ -33,6 +33,14 @@ export class ErrorsFilter implements ExceptionFilter {
             : status === 401
               ? "UNAUTHENTICATED"
               : "REQUEST_ERROR";
+    } else if (
+      ["22021", "22P05", "22P02", "22001", "23514"].includes(
+        (error as { code?: string })?.code ?? "",
+      )
+    ) {
+      status = 422;
+      message = "Some of the text or values entered are not valid.";
+      code = "VALIDATION_ERROR";
     } else if ((error as { code?: string })?.code === "23505") {
       status = 409;
       message = "A record with these details already exists.";

@@ -80,16 +80,16 @@ export class IncomeService {
         if (
           !(
             await this.db.query(
-              "UPDATE income_categories SET name=$1,active=$2 WHERE organization_id=$3 AND id=$4 RETURNING id",
-              [v.name, v.active, m.organization_id, id],
+              "UPDATE income_categories SET name=$1,active=COALESCE($2::boolean,active) WHERE organization_id=$3 AND id=$4 RETURNING id",
+              [v.name, v.active ?? null, m.organization_id, id],
             )
           ).rows.length
         )
           throw new NotFoundException("Category not found.");
       } else
         await this.db.query(
-          "INSERT INTO income_categories(id,organization_id,name) VALUES($1,$2,$3)",
-          [categoryId, m.organization_id, v.name],
+          "INSERT INTO income_categories(id,organization_id,name,active) VALUES($1,$2,$3,$4)",
+          [categoryId, m.organization_id, v.name, v.active ?? true],
         );
     } catch (e) {
       if ((e as any).code === "23505")

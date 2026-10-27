@@ -7,6 +7,16 @@ import type { Actor } from "../common/auth.guard";
 
 const verified = new WeakSet<Actor>();
 const MAX_AGE = 60_000;
+// Single-use nonces. Per process only: a replay is refused on the instance that saw the first use.
+const usedNonces = new Map<string, number>();
+function consumeNonce(nonce: string) {
+  const now = Date.now();
+  for (const [key, expires] of usedNonces)
+    if (expires <= now) usedNonces.delete(key);
+  if (usedNonces.has(nonce))
+    throw new UnauthorizedException("Admin request is invalid or expired.");
+  usedNonces.set(nonce, now + 2 * MAX_AGE);
+}
 
 export function isPanelActor(actor: Actor) {
   return verified.has(actor);
@@ -38,6 +48,7 @@ export function panelActor(
     .digest();
   if (!timingSafeEqual(expected, Buffer.from(mac, "hex")))
     throw new UnauthorizedException("Admin request is invalid or expired.");
+  consumeNonce(nonce);
   const actor = {
     uid: "admin-panel",
     email: "admin-panel@bookingos.internal",

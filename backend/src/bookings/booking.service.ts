@@ -366,7 +366,7 @@ export class BookingService {
     if (v.id) {
       const c = (
         await db.query<Row>(
-          "SELECT id FROM customers WHERE id=$1 AND organization_id=$2",
+          "SELECT id,name,phone,email FROM customers WHERE id=$1 AND organization_id=$2",
           [v.id, m.organization_id],
         )
       ).rows[0];
@@ -385,14 +385,17 @@ export class BookingService {
             "This customer is outside your assigned booking history.",
           );
       }
-      return v.id;
+      return {
+        id: v.id as string,
+        snapshot: { name: c.name, phone: c.phone, email: c.email },
+      };
     }
     const id = randomUUID();
     await db.query(
       "INSERT INTO customers(id,organization_id,name,phone,email) VALUES($1,$2,$3,$4,$5)",
       [id, m.organization_id, v.name, v.phone.replace(/[^\d+]/g, ""), v.email],
     );
-    return id;
+    return { id, snapshot: v };
   }
   private async writePayments(
     db: Queryable,
@@ -480,7 +483,11 @@ export class BookingService {
           throw new BadRequestException(
             "Payments cannot exceed the booking total.",
           );
-        const customerId = await this.customer(db, m, v.customer),
+        const { id: customerId, snapshot: customer } = await this.customer(
+            db,
+            m,
+            v.customer,
+          ),
           id = randomUUID(),
           reference = "BK-" + id.replace(/-/g, "").slice(0, 12).toUpperCase();
         await db.query(
@@ -497,7 +504,7 @@ export class BookingService {
             q.total_minor,
             JSON.stringify(v.selection),
             JSON.stringify(q),
-            JSON.stringify({ ...v.customer, id: customerId }),
+            JSON.stringify({ ...customer, id: customerId }),
             v.notes,
             v.selection.people,
             actor.uid,
@@ -734,12 +741,16 @@ export class BookingService {
           throw new ConflictException(
             "Booking changed. Reload before editing.",
           );
-        const customerId = await this.customer(db, m, v.customer);
+        const { id: customerId, snapshot: customer } = await this.customer(
+          db,
+          m,
+          v.customer,
+        );
         await db.query(
           "UPDATE bookings SET customer_id=$1,customer_snapshot=$2,notes=$3,version=version+1 WHERE id=$4",
           [
             customerId,
-            JSON.stringify({ ...v.customer, id: customerId }),
+            JSON.stringify({ ...customer, id: customerId }),
             v.notes,
             id,
           ],

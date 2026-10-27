@@ -56,6 +56,15 @@ function withCurrentCoach(a: Row, config: Row | undefined, names: CoachNames) {
   };
 }
 const reasonSchema = z.string().trim().min(2).max(500);
+// pg returns DATE columns as Date objects (local midnight; PGlite uses UTC midnight): compare as YYYY-MM-DD.
+const ymd = (v: unknown): string => {
+  if (!(v instanceof Date)) return String(v);
+  const utcMidnight =
+    v.getUTCHours() === 0 && v.getUTCMinutes() === 0 && v.getUTCSeconds() === 0;
+  return utcMidnight
+    ? v.toISOString().slice(0, 10)
+    : `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
+};
 @Injectable()
 export class AdmissionService {
   constructor(private readonly db: Database) {}
@@ -577,7 +586,7 @@ export class AdmissionService {
             localStamp(Date.parse(session.ends_at) - 1, a.timezone).slice(
               0,
               10,
-            ) > a.expires_on
+            ) > ymd(a.expires_on)
           )
             throw new BadRequestException(
               "The class must end within admission validity.",
@@ -1460,7 +1469,10 @@ export class AdmissionService {
         const now = Date.now();
         const local = localStamp(now, a.timezone),
           today = local.slice(0, 10);
-        if (!["active", "completed"].includes(a.status) || today > a.expires_on)
+        if (
+          !["active", "completed"].includes(a.status) ||
+          today > ymd(a.expires_on)
+        )
           throw new BadRequestException(
             "The plan is not active, has expired, or has no remaining days.",
           );
@@ -1525,8 +1537,8 @@ export class AdmissionService {
         ).rows[0];
         if (
           ("date" in v && v.date !== today) ||
-          attendanceDate < a.starts_on ||
-          attendanceDate > a.expires_on ||
+          attendanceDate < ymd(a.starts_on) ||
+          attendanceDate > ymd(a.expires_on) ||
           (a.status === "completed" && !sameDay)
         )
           throw new BadRequestException(
@@ -1534,7 +1546,7 @@ export class AdmissionService {
           );
         if (
           localStamp(Date.parse(s.ends_at) - 1, a.timezone).slice(0, 10) >
-          a.expires_on
+          ymd(a.expires_on)
         )
           throw new BadRequestException(
             "The visit must end within admission validity.",
@@ -1743,8 +1755,8 @@ export class AdmissionService {
             (past && !session.admission_waived) ||
             !v.date ||
             !v.time ||
-            v.date < a.starts_on ||
-            v.date > a.expires_on
+            v.date < ymd(a.starts_on) ||
+            v.date > ymd(a.expires_on)
           )
             throw new BadRequestException(
               "Choose a future session within admission validity.",
@@ -1779,7 +1791,7 @@ export class AdmissionService {
           if (
             Date.parse(next.starts_at) <= Date.now() ||
             localStamp(Date.parse(next.ends_at) - 1, a.timezone).slice(0, 10) >
-              a.expires_on
+              ymd(a.expires_on)
           )
             throw new BadRequestException(
               "Choose a future session ending within admission validity.",
