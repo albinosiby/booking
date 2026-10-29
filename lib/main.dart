@@ -17,6 +17,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:go_router/go_router.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import 'config/app_config.dart';
+import 'design_system/layouts/app_resume_layout.dart';
 import 'config/routes/routes_config.dart';
 import 'core/settings/application_setting.dart';
 import 'di/injection.dart';
@@ -263,12 +264,14 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
         scrollBehavior: const AppScrollBehavior(),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-          child: !AppConfig.useSupabase && AppConfig.useAuthEmulator && kIsWeb
-              ? Padding(
-                  padding: const EdgeInsets.only(bottom: 64),
-                  child: child,
-                )
-              : child!,
+          child: AppResumeLayout(
+            child: !AppConfig.useSupabase && AppConfig.useAuthEmulator && kIsWeb
+                ? Padding(
+                    padding: const EdgeInsets.only(bottom: 64),
+                    child: child,
+                  )
+                : child!,
+          ),
         ),
       ),
     ),

@@ -377,8 +377,30 @@
   align-items: center;
   gap: 7px;
 }
-.space-gallery {
+.booking-hero {
   margin-bottom: 32px;
+}
+.booking-hero-photo {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  cursor: zoom-in;
+  text-align: left;
+}
+.booking-hero-illustration {
+  height: 300px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #e3eaed;
+}
+.booking-hero-illustration .space-art {
+  height: 100%;
+  margin: 0;
+}
+.booking-hero-illustration .space-art svg {
+  width: 100%;
+  height: 100%;
 }
 .gallery-main {
   position: relative;
@@ -402,27 +424,123 @@
   border-radius: 7px;
   font-size: 13px;
 }
-.gallery-thumbnails {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
+.gallery-main > span:first-of-type {
+  max-width: calc(100% - 170px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.gallery-thumbnails > button {
-  padding: 3px;
-  border: 2px solid transparent;
-  background: white;
-  border-radius: 10px;
-  width: 88px;
-  height: 62px;
+.space-gallery {
+  margin: 40px 0 32px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
 }
-.gallery-thumbnails > button[aria-pressed="true"] {
-  border-color: var(--teal);
+.venue-gallery-heading h2 {
+  margin: 6px 0;
 }
-.gallery-thumbnails img {
+.venue-gallery-heading > p:last-child {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+.venue-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.venue-gallery-grid > button {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  border: 0;
+  padding: 0;
+  border-radius: 16px;
+  background: #e3eaed;
+  cursor: zoom-in;
+}
+.venue-gallery-grid img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 5px;
+}
+.photo-expand-hint,
+.gallery-main > .photo-expand-hint {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  left: auto;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: #15384bde;
+  color: white;
+  font-size: 12px;
+}
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 16px;
+  padding: max(16px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+  border: 0;
+  color: white;
+  background: #081822f5;
+}
+.photo-viewer[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+}
+.photo-viewer::backdrop {
+  background: #081822;
+}
+.photo-viewer-header,
+.photo-viewer-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.photo-viewer-header {
+  justify-content: space-between;
+}
+.photo-viewer-controls {
+  justify-content: center;
+}
+.photo-viewer button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #ffffff66;
+  border-radius: 50%;
+  background: #ffffff1a;
+  color: white;
+}
+.photo-viewer-header button {
+  font-size: 32px;
+  line-height: 1;
+}
+.photo-viewer button:focus-visible {
+  outline: 3px solid white;
+  outline-offset: 3px;
+}
+.photo-viewer-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+.photo-viewer-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 @media (max-width: 1050px) {
   .home-shell {
@@ -501,8 +619,13 @@
     flex-direction: column;
     gap: 5px;
   }
-  .gallery-main {
+  .gallery-main,
+  .booking-hero-illustration {
     height: 220px;
+  }
+  .venue-gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 }
 * {

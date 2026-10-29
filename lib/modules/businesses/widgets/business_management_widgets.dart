@@ -4,10 +4,10 @@ import '../../../utils/helpers/validation.dart';
 import '../../workspace/models/workspace.dart';
 
 String businessSettingsPath(Business b) =>
-    '/businesses/${b.id}/${b.ready ? 'settings' : 'setup'}';
+    '/businesses/${b.id}/${b.ready || b.status == 'paused' ? 'settings' : 'setup'}';
 String businessStatus(Business b) => switch (b.status) {
   'ready' => 'Ready',
-  'paused' => 'Paused',
+  'paused' => 'Off',
   _ => 'Setup needed',
 };
 

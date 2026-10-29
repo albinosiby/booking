@@ -5,6 +5,7 @@ import '../../workspace/models/workspace_access.dart';
 import '../../workspace/models/workspace_state.dart';
 import '../../workspace/repositories/workspace_session.dart';
 import '../models/business_management_model.dart';
+import '../models/business_availability_action.dart';
 import '../repositories/business_repository.dart';
 
 class BusinessManagementCubit
@@ -131,5 +132,44 @@ class BusinessManagementCubit
       return false;
     }
     return save(() => repository.rename(id, name.trim()));
+  }
+
+  bool _changingStatus = false;
+  Future<bool> setBookingEnabled(BusinessAvailabilityAction action) async {
+    if (_changingStatus ||
+        _savingOrder ||
+        state.busy ||
+        state.reordering ||
+        !state.data.isOwner) {
+      return false;
+    }
+    final business = state.data.businesses
+        .where((b) => b.id == action.id)
+        .firstOrNull;
+    final current = business == null
+        ? null
+        : BusinessAvailabilityAction.forBusiness(business);
+    if (current == null ||
+        current.version != action.version ||
+        current.enabled != action.enabled) {
+      emit(
+        state.copyWith(
+          message: 'Business changed. Review its latest status and try again.',
+        ),
+      );
+      return false;
+    }
+    _changingStatus = true;
+    try {
+      return await save(
+        () => repository.setBookingEnabled(
+          action.id,
+          action.enabled,
+          action.version,
+        ),
+      );
+    } finally {
+      _changingStatus = false;
+    }
   }
 }

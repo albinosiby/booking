@@ -7,6 +7,7 @@ class WebsiteSettingsState extends Equatable {
     this.draft,
     this.loading = true,
     this.busy = false,
+    this.autosaving = false,
     this.savingAddress = false,
     this.addressError,
     this.error,
@@ -14,7 +15,7 @@ class WebsiteSettingsState extends Equatable {
     this.revision = 0,
   });
   final WebsiteSettings? saved, draft;
-  final bool loading, busy, savingAddress;
+  final bool loading, busy, savingAddress, autosaving;
   final String? error, message, addressError;
 
   /// Bumped when an action rewrites several fields at once so their inputs refresh.
@@ -31,6 +32,7 @@ class WebsiteSettingsState extends Equatable {
     WebsiteSettings? draft,
     bool? loading,
     bool? busy,
+    bool? autosaving,
     bool? savingAddress,
     String? addressError,
     String? error,
@@ -41,6 +43,7 @@ class WebsiteSettingsState extends Equatable {
     draft: draft ?? this.draft,
     loading: loading ?? this.loading,
     busy: busy ?? this.busy,
+    autosaving: autosaving ?? this.autosaving,
     savingAddress: savingAddress ?? this.savingAddress,
     addressError: addressError,
     error: error,
@@ -54,6 +57,7 @@ class WebsiteSettingsState extends Equatable {
     loading,
     busy,
     savingAddress,
+    autosaving,
     addressError,
     error,
     message,

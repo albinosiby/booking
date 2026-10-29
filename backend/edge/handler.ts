@@ -358,6 +358,9 @@ export function createHandler(
     add("PATCH", `/v1/businesses/:id/${kind}-configuration`, (i) =>
       services[kind].configure(i.actor, i.params.id, i.body),
     );
+  add("PATCH", "/v1/businesses/:id/booking-status", (i) =>
+    w.setBookingEnabled(i.actor, i.params.id, i.body),
+  );
   add("POST", "/v1/businesses/:id/activate", (i) =>
     w.activate(i.actor, i.params.id),
   );
@@ -676,7 +679,7 @@ export function createHandler(
         return respond({
           status: "ok",
           runtime: "supabase-edge",
-          revision: "2026-10-24-flexible-coach-attendance",
+          revision: "2026-10-29-business-booking-status",
         });
       }
       if (req.method === "GET" && path === "/v1/catalog")

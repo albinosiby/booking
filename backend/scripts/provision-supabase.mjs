@@ -179,7 +179,7 @@ try {
   }
   await client.query(`CREATE TABLE migrated_identities (
     email text PRIMARY KEY CHECK(email=lower(email)),
-    actor_id text NOT NULL UNIQUE REFERENCES memberships(user_id),
+    actor_id text NOT NULL UNIQUE,
     supabase_subject uuid UNIQUE,
     created_at timestamptz NOT NULL DEFAULT now()
   )`);

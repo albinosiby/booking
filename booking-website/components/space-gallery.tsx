@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { imageLink } from "../lib/site-links";
+import { PhotoViewer } from "./photo-viewer";
 
 export function SpaceGallery({
   slug,
@@ -13,32 +14,41 @@ export function SpaceGallery({
   name: string;
   preview?: string;
 }) {
-  const [selected, setSelected] = useState(images[0]);
+  const [selected, setSelected] = useState<number | null>(null);
   if (!images.length) return null;
-  const current = images.includes(selected) ? selected : images[0];
   return (
     <section className="space-gallery" aria-label={`${name} photos`}>
-      <div className="gallery-main">
-        <img
-          src={imageLink(slug, current, preview)}
-          alt={`${name} — photo ${images.indexOf(current) + 1}`}
-          fetchPriority="high"
-        />
-        <span>{name}</span>
+      <div className="venue-gallery-heading">
+        <p className="eyebrow">Take a look around</p>
+        <h2>Venue photos</h2>
+        <p>{name} · Tap a photo to view fullscreen.</p>
       </div>
-      {images.length > 1 && (
-        <div className="gallery-thumbnails" aria-label="Choose a photo">
-          {images.map((id, i) => (
-            <button
-              key={id}
-              aria-label={`Show ${name} photo ${i + 1}`}
-              aria-pressed={current === id}
-              onClick={() => setSelected(id)}
-            >
-              <img src={imageLink(slug, id, preview)} alt="" />
-            </button>
-          ))}
-        </div>
+      <div className="venue-gallery-grid">
+        {images.map((id, i) => (
+          <button
+            type="button"
+            key={id}
+            aria-label={`View ${name} photo ${i + 1} fullscreen`}
+            onClick={() => setSelected(i)}
+          >
+            <img
+              src={imageLink(slug, id, preview)}
+              alt={`${name} — venue photo ${i + 1}`}
+              loading="lazy"
+            />
+            <span className="photo-expand-hint">View fullscreen</span>
+          </button>
+        ))}
+      </div>
+      {selected !== null && (
+        <PhotoViewer
+          slug={slug}
+          images={images}
+          name={name}
+          initialIndex={selected}
+          preview={preview}
+          onClose={() => setSelected(null)}
+        />
       )}
     </section>
   );

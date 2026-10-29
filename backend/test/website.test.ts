@@ -445,3 +445,43 @@ test("distributed limits are stored in the database and apply across service ins
   );
   await assert.rejects(() => f.website.catalog(f.slug), /Too many/);
 });
+
+test("business off removes public choices and rejects an already-issued guest quote", async () => {
+  const isolated = await seedWebsite(db, "business-off-public-test");
+  const catalog = await isolated.website.catalog(isolated.slug);
+  const business = catalog.businesses.find((b) => b.type === "badminton")!;
+  const resource = business.resources[0],
+    option = resource.options[0];
+  const selection = {
+    business_id: business.id,
+    resource_id: resource.id,
+    option_id: option.id,
+    date: addDate(business.today, 2),
+    time: "10:00",
+    duration_minutes: option.default_duration,
+    people: 1,
+  };
+  const quote = await isolated.website.quote(isolated.slug, { selection });
+  const before = (
+    await isolated.workspace.workspace(isolated.owner)
+  ).businesses.find((b: any) => b.id === business.id);
+  await isolated.workspace.setBookingEnabled(isolated.owner, business.id, {
+    enabled: false,
+    version: before.version,
+  });
+  assert.equal(
+    (await isolated.website.catalog(isolated.slug)).businesses.some(
+      (b) => b.id === business.id,
+    ),
+    false,
+  );
+  await assert.rejects(
+    isolated.website.book(isolated.slug, {
+      command_key: randomUUID(),
+      selection,
+      quote_token: quote.quote_token,
+      customer: { name: "Guest", phone: "+919123456781" },
+    }),
+    /available|not found|ready/i,
+  );
+});

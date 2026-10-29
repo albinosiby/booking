@@ -1616,3 +1616,53 @@ test("booking notification enqueue follows successful command history exactly on
     );
   }
 });
+
+test("turning a business off rejects stale quotes, keeps collections and restores saved setup", async () => {
+  const f = await fixture();
+  const existing = await create(f);
+  const pending = await request(f, { ...f.selection, time: "12:00" });
+  const before = (await workspace.workspace(f.owner)).businesses.find(
+    (b: any) => b.id === f.id,
+  );
+  await workspace.setBookingEnabled(f.owner, f.id, {
+    enabled: false,
+    version: before.version,
+  });
+  assert.equal((await service.catalog(f.owner)).businesses.length, 0);
+  await assert.rejects(service.create(f.owner, pending), /not ready/i);
+  await assert.rejects(
+    service.quote(f.owner, {
+      selection: f.selection,
+      exclude_booking_id: null,
+    }),
+    /not ready/i,
+  );
+  await assert.rejects(
+    service.availability(f.owner, {
+      selection: f.selection,
+      exclude_booking_id: null,
+    }),
+    /not ready/i,
+  );
+  const detail = await service.detail(f.owner, existing.id);
+  await service.payments(f.owner, existing.id, {
+    command_key: randomUUID(),
+    version: detail.version,
+    payments: [payment("cash", 10000)],
+    kind: "collection",
+    reason: "",
+  });
+  assert.equal((await service.detail(f.owner, existing.id)).payments.length, 1);
+  const off = (await workspace.workspace(f.owner)).businesses.find(
+    (b: any) => b.id === f.id,
+  );
+  assert.equal(off.status, "paused");
+  assert.deepEqual(off.configuration, before.configuration);
+  assert.deepEqual(off.resources, before.resources);
+  await workspace.setBookingEnabled(f.owner, f.id, {
+    enabled: true,
+    version: off.version,
+  });
+  assert.equal((await service.catalog(f.owner)).businesses.length, 1);
+  assert.equal((await service.detail(f.owner, existing.id)).id, existing.id);
+});

@@ -8,6 +8,8 @@ import '../../workspace/cubit/workspace_cubit.dart';
 import '../../workspace/models/workspace.dart';
 import '../cubit/business_management_cubit.dart';
 import '../models/business_management_model.dart';
+import '../models/business_availability_action.dart';
+import '../widgets/business_availability_menu.dart';
 import '../widgets/business_icon.dart';
 import '../widgets/business_desktop_widgets.dart';
 import '../widgets/business_management_widgets.dart';
@@ -27,6 +29,18 @@ class _BusinessManagementScreenState extends State<BusinessManagementScreen> {
   void dispose() {
     cubit.close();
     super.dispose();
+  }
+
+  Future<void> changeAvailability(BusinessAvailabilityAction action) async {
+    if (!await confirmBusinessAvailability(context, action) || !mounted) return;
+    final saved = await cubit.setBookingEnabled(action);
+    if (saved && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${action.name} is ${action.enabled ? 'on' : 'off'}.'),
+        ),
+      );
+    }
   }
 
   Widget businessRow(
@@ -70,12 +84,26 @@ class _BusinessManagementScreenState extends State<BusinessManagementScreen> {
                         ),
                         Text(business.type.label),
                         const SizedBox(height: 4),
-                        Text(
-                          '${businessStatus(business)} · ${business.resources.length} ${business.resources.length == 1 ? 'space' : 'spaces'}',
-                          style: Theme.of(context).textTheme.bodySmall,
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            BusinessStatusPill(business),
+                            Text(
+                              '${business.resources.length} ${business.resources.length == 1 ? 'space' : 'spaces'}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
                         ),
                       ],
                     ),
+                  ),
+                  BusinessAvailabilityMenu(
+                    business: business,
+                    onSelected: s.busy || s.reordering
+                        ? null
+                        : changeAvailability,
                   ),
                 ],
               ),
@@ -110,7 +138,9 @@ class _BusinessManagementScreenState extends State<BusinessManagementScreen> {
                         : () => context.push(businessSettingsPath(business)),
                     icon: const Icon(Icons.tune, size: 18),
                     label: Text(
-                      business.ready ? 'Configure' : 'Continue setup',
+                      business.ready || business.status == 'paused'
+                          ? 'Configure'
+                          : 'Continue setup',
                     ),
                   ),
                 ],
@@ -295,7 +325,7 @@ class _BusinessManagementScreenState extends State<BusinessManagementScreen> {
                 ),
                 AppStatTile(
                   icon: Icons.build_circle_outlined,
-                  label: 'Setup needed or paused',
+                  label: 'Setup needed or off',
                   value: '${all.length - ready}',
                 ),
                 AppStatTile(
@@ -345,6 +375,7 @@ class _BusinessManagementScreenState extends State<BusinessManagementScreen> {
                       location: s.locationFor(b)?.name,
                       onOpen: () => context.push('/businesses/${b.id}'),
                       onRename: s.busy ? null : () => rename(b),
+                      onAvailability: s.busy ? null : changeAvailability,
                       onConfigure: s.busy
                           ? null
                           : () => context.push(businessSettingsPath(b)),

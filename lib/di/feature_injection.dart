@@ -103,7 +103,11 @@ void registerFeatureDependencies(GetIt di) {
   );
   di.registerFactory<WebsiteRepository>(() => RestWebsiteRepository(di()));
   di.registerFactoryParam<WebsiteSettingsCubit, WorkspaceSession, void>(
-    (s, _) => WebsiteSettingsCubit(s, di()),
+    (s, _) => WebsiteSettingsCubit(
+      s,
+      di(),
+      autosaveDelay: const Duration(milliseconds: 700),
+    ),
   );
   di.registerLazySingleton<SlotBlockRepository>(
     () => RestSlotBlockRepository(di(), di()),

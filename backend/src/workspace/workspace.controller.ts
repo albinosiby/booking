@@ -120,6 +120,13 @@ export class WorkspaceController {
   ) {
     return this.service.configure(r.actor, id, b);
   }
+  @Patch("businesses/:id/booking-status") setBookingEnabled(
+    @Req() r: AuthRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() b: unknown,
+  ) {
+    return this.service.setBookingEnabled(r.actor, id, b);
+  }
   @Post("businesses/:id/activate") activate(
     @Req() r: AuthRequest,
     @Param("id", ParseUUIDPipe) id: string,

@@ -49,7 +49,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   String readiness(Business business) => business.ready
       ? 'Ready for bookings. Review your spaces and current setup below.'
       : business.status == 'paused'
-      ? 'This business is paused. Review its configuration before taking bookings.'
+      ? 'This business is off. Existing bookings, collections and attendance remain available. Turn it on from Businesses to accept new bookings.'
       : 'Finish setting up spaces, hours and prices to start taking bookings.';
 
   // Wide windows: overview tiles, a grid of spaces with their hours and
@@ -106,7 +106,9 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                     : () => context.push(businessSettingsPath(business)),
                 icon: const Icon(Icons.tune, size: 18),
                 label: Text(
-                  business.ready ? 'Configure business' : 'Continue setup',
+                  business.ready || business.status == 'paused'
+                      ? 'Configure business'
+                      : 'Continue setup',
                 ),
               ),
             ]
@@ -341,7 +343,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                     business.ready
                         ? 'Ready for bookings. Review your spaces and current setup below.'
                         : business.status == 'paused'
-                        ? 'This business is paused. Review its configuration before taking bookings.'
+                        ? 'This business is off. Existing bookings, collections and attendance remain available. Turn it on from Businesses to accept new bookings.'
                         : 'Finish setting up spaces, hours and prices to start taking bookings.',
                     style: theme.textTheme.bodyMedium,
                   ),
@@ -359,7 +361,9 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                       : () => context.push(businessSettingsPath(business)),
                   icon: const Icon(Icons.tune),
                   label: Text(
-                    business.ready ? 'Configure business' : 'Continue setup',
+                    business.ready || business.status == 'paused'
+                        ? 'Configure business'
+                        : 'Continue setup',
                   ),
                 ),
                 OutlinedButton.icon(

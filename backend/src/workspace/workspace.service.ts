@@ -617,9 +617,36 @@ export class WorkspaceService {
       return { id };
     });
   }
-  async activate(actor: Actor, id: string) {
+  async setBookingEnabled(actor: Actor, id: string, input: unknown) {
+    const v = z
+      .object({ enabled: z.boolean(), version: z.number().int().positive() })
+      .strict()
+      .parse(input);
+    if (v.enabled) return this.activate(actor, id, v.version);
     return this.db.transaction(async (db) => {
       const b = await this.business(actor, id, db);
+      if (b.version !== v.version || b.status !== "ready")
+        throw new ConflictException(
+          "Business changed. Refresh before turning it off.",
+        );
+      await db.query(
+        "UPDATE businesses SET status='paused',version=version+1 WHERE id=$1",
+        [id],
+      );
+      await this.audit(db, actor, b.organization_id, "business.turned_off", id);
+      return { id };
+    });
+  }
+  async activate(actor: Actor, id: string, expectedVersion?: number) {
+    return this.db.transaction(async (db) => {
+      const b = await this.business(actor, id, db);
+      if (
+        expectedVersion !== undefined &&
+        (b.version !== expectedVersion || b.status !== "paused")
+      )
+        throw new ConflictException(
+          "Business changed. Refresh before turning it on.",
+        );
       if (!b.configuration)
         throw new BadRequestException("Save operating rules and prices first.");
       if (
@@ -973,7 +1000,9 @@ export class WorkspaceService {
           )
         ).rows.length
       )
-        throw new ConflictException("An organization needs at least one owner.");
+        throw new ConflictException(
+          "An organization needs at least one owner.",
+        );
       if (!invitation) {
         // Revoke pending grants too, so the next sign-in cannot restore access.
         await db.query(

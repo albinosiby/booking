@@ -135,3 +135,31 @@ test("support records without a deleted team identity remain available to admins
   const detail = await service.ticket(admin, ticketId);
   assert.equal((detail.ticket as any).user_name, "Removed team member");
 });
+
+test("agent requests remain listed when the requester membership was deleted", async () => {
+  const organization = (await workspace.workspace(owner)).organization;
+  const requestId = randomUUID(),
+    formerMemberId = randomUUID();
+  await db.query("DELETE FROM agent_call_requests WHERE organization_id=$1", [
+    organization.id,
+  ]);
+  await db.query(
+    "INSERT INTO agent_call_requests(id,organization_id,membership_id) VALUES($1,$2,$3)",
+    [requestId, organization.id, formerMemberId],
+  );
+  const result = (await service.agentRequests(admin, {})) as {
+    requests: { id: string; user_name: string; user_email: string }[];
+  };
+  const request = result.requests.find((r) => r.id === requestId);
+  assert.equal(request?.user_name, "Removed team member");
+  assert.equal(request?.user_email, "");
+  assert.equal(
+    (
+      await db.query(
+        "SELECT membership_id FROM agent_call_requests WHERE id=$1",
+        [requestId],
+      )
+    ).rows[0].membership_id,
+    formerMemberId,
+  );
+});

@@ -2,6 +2,8 @@ import "reflect-metadata";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { supabaseActor } from "../src/common/supabase-auth";
 import { Database } from "../src/common/database";
 import { WorkspaceService } from "../src/workspace/workspace.service";
 import { locationSchema } from "../src/workspace/validation";
@@ -752,11 +754,11 @@ test("permanent deletion rolls back all cleanup when another protected record re
   const snapshot = await service.workspace(staff),
     memberId = snapshot.membership.id;
   await service.revoke(f.owner, memberId, false);
-  // Unrelated service records are never cascaded away by team deletion.
+  // Unknown protected references still roll the whole deletion back.
   await db.query(
-    "INSERT INTO agent_call_requests(id,organization_id,membership_id) VALUES($1,$2,$3)",
-    [randomUUID(), snapshot.organization.id, memberId],
+    "CREATE TABLE test_protected_member (membership_id uuid REFERENCES memberships(id))",
   );
+  await db.query("INSERT INTO test_protected_member VALUES($1)", [memberId]);
   await assert.rejects(
     () => service.deleteTeamRecord(f.owner, memberId, false),
     /Other protected records/,
@@ -814,4 +816,163 @@ test("an owner can add another owner, who can remove them, but never themselves"
     team.members.filter((m: { active: boolean }) => m.active).length,
     1,
   );
+});
+
+test("removed owner deletion retains migrated login identity and agent request", async () => {
+  const { owner } = await fixture();
+  const second = actor();
+  const grant = await service.invite(owner, {
+    email: second.email,
+    display_name: "Replacement owner",
+    role: "owner",
+    permissions: [],
+    assignments: [],
+  });
+  await service.accept(
+    second,
+    new URL(grant.invitation_url).searchParams.get("token")!,
+  );
+  const original = (await service.workspace(owner)).membership;
+  // Reproduce the deployed legacy FK, then apply the prepared repair locally.
+  await db.query(
+    "CREATE TABLE migrated_identities(email text PRIMARY KEY, actor_id text UNIQUE NOT NULL REFERENCES memberships(user_id), supabase_subject uuid UNIQUE)",
+  );
+  const subject = randomUUID();
+  await db.query("INSERT INTO migrated_identities VALUES($1,$2,$3)", [
+    owner.email,
+    owner.uid,
+    subject,
+  ]);
+  const repair = readFileSync(
+    "migrations/20261029054331_preserve_removed_owner_identity.sql",
+    "utf8",
+  ).replace(
+    "DROP CONSTRAINT agent_call_requests_membership_id_organization_id_fkey",
+    "DROP CONSTRAINT IF EXISTS agent_call_requests_membership_id_organization_id_fkey",
+  );
+  // The embedded test transaction's exec supports complete SQL scripts.
+  await db.transaction(async (tx) => {
+    await (tx as unknown as { exec(sql: string): Promise<unknown> }).exec(
+      repair,
+    );
+  });
+  const requestId = randomUUID();
+  await db.query(
+    "INSERT INTO agent_call_requests(id,organization_id,membership_id) VALUES($1,$2,$3)",
+    [requestId, original.organization_id, original.id],
+  );
+  await service.revoke(second, original.id, false);
+  await service.deleteTeamRecord(second, original.id, false);
+  assert.equal(
+    (await db.query("SELECT id FROM memberships WHERE id=$1", [original.id]))
+      .rows.length,
+    0,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT membership_id FROM agent_call_requests WHERE id=$1",
+        [requestId],
+      )
+    ).rows[0].membership_id,
+    original.id,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT actor_id,supabase_subject FROM migrated_identities WHERE email=$1",
+        [owner.email],
+      )
+    ).rows[0].supabase_subject,
+    subject,
+  );
+  process.env.SUPABASE_URL = "https://project.supabase.co";
+  process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test";
+  const signedIn = await supabaseActor(
+    "token",
+    db,
+    async () =>
+      new Response(
+        JSON.stringify({
+          id: subject,
+          email: owner.email,
+          email_confirmed_at: "2026-01-01",
+          user_metadata: {},
+        }),
+      ),
+  );
+  assert.equal(signedIn.uid, owner.uid);
+  assert.equal((await service.session(signedIn)).membership, null);
+  await assert.rejects(service.member(signedIn), /membership/i);
+  assert.equal((await service.workspace(second)).membership.role, "owner");
+});
+
+test("only owners toggle configured business availability with a current version", async () => {
+  const f = await fixture();
+  await assert.rejects(
+    service.setBookingEnabled(f.owner, f.id, { enabled: false, version: 1 }),
+    /changed/i,
+  );
+  await service.addResource(f.owner, f.id, { name: "Pitch", capacity: 10 });
+  const setupVersion = (await service.workspace(f.owner)).businesses.find(
+    (b: any) => b.id === f.id,
+  ).version;
+  await service.configure(f.owner, f.id, { ...rules, version: setupVersion });
+  await service.activate(f.owner, f.id);
+  let business = (await service.workspace(f.owner)).businesses.find(
+    (b: any) => b.id === f.id,
+  );
+  const other = await fixture();
+  await assert.rejects(
+    service.setBookingEnabled(other.owner, f.id, {
+      enabled: false,
+      version: business.version,
+    }),
+    /not found/i,
+  );
+  const staff = actor();
+  const grant = await service.invite(f.owner, {
+    email: staff.email,
+    display_name: "Staff",
+    role: "staff",
+    permissions: [],
+    assignments: [{ business_id: f.id, resource_ids: [] }],
+  });
+  await service.accept(
+    staff,
+    new URL(grant.invitation_url).searchParams.get("token")!,
+  );
+  await assert.rejects(
+    service.setBookingEnabled(staff, f.id, {
+      enabled: false,
+      version: business.version,
+    }),
+    /owner/i,
+  );
+  await assert.rejects(
+    service.setBookingEnabled(f.owner, f.id, {
+      enabled: "false",
+      version: business.version,
+    }),
+  );
+  const version = business.version;
+  await service.setBookingEnabled(f.owner, f.id, { enabled: false, version });
+  await assert.rejects(
+    service.setBookingEnabled(f.owner, f.id, { enabled: true, version }),
+    /changed/i,
+  );
+  business = (await service.workspace(f.owner)).businesses.find(
+    (b: any) => b.id === f.id,
+  );
+  assert.equal(business.status, "paused");
+  assert.equal(business.version, version + 1);
+  await service.setBookingEnabled(f.owner, f.id, {
+    enabled: true,
+    version: business.version,
+  });
+  business = (await service.workspace(f.owner)).businesses.find(
+    (b: any) => b.id === f.id,
+  );
+  assert.equal(business.status, "ready");
+  assert.equal(business.version, version + 2);
 });

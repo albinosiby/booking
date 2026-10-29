@@ -3,6 +3,8 @@ import 'package:eden_booking/design_system/design_system.dart';
 import '../../workspace/models/workspace.dart';
 import 'business_icon.dart';
 import 'business_management_widgets.dart';
+import 'business_availability_menu.dart';
+import '../models/business_availability_action.dart';
 
 /// Rounded status label: green when ready, amber when paused, neutral when
 /// setup is still needed.
@@ -32,12 +34,14 @@ class BusinessStatusPill extends StatelessWidget {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 6),
-          Text(
-            businessStatus(business),
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+          Flexible(
+            child: Text(
+              businessStatus(business),
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -76,11 +80,13 @@ class BusinessGridCard extends StatelessWidget {
     this.onOpen,
     this.onRename,
     this.onConfigure,
+    this.onAvailability,
   });
   final Business business;
   final int position;
   final String? location;
   final VoidCallback? onOpen, onRename, onConfigure;
+  final ValueChanged<BusinessAvailabilityAction>? onAvailability;
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context), colors = theme.colorScheme;
@@ -103,6 +109,10 @@ class BusinessGridCard extends StatelessWidget {
                 BusinessIconBadge(business.type),
                 const Spacer(),
                 BusinessStatusPill(business),
+                BusinessAvailabilityMenu(
+                  business: business,
+                  onSelected: onAvailability,
+                ),
               ],
             ),
           ),
@@ -141,7 +151,11 @@ class BusinessGridCard extends StatelessWidget {
               TextButton.icon(
                 onPressed: onConfigure,
                 icon: const Icon(Icons.tune, size: 18),
-                label: Text(business.ready ? 'Configure' : 'Continue setup'),
+                label: Text(
+                  business.ready || business.status == 'paused'
+                      ? 'Configure'
+                      : 'Continue setup',
+                ),
               ),
             ],
           ),

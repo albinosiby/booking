@@ -134,6 +134,19 @@ class RestWorkspaceRepository
   }
 
   @override
+  Future<void> setBusinessBookingEnabled(
+    String id,
+    bool enabled,
+    int version,
+  ) async {
+    await api.request(
+      '${ApiPath.businesses}/$id/booking-status',
+      method: 'PATCH',
+      data: {'enabled': enabled, 'version': version},
+    );
+  }
+
+  @override
   Future<Map<String, dynamic>> team() async =>
       Map<String, dynamic>.from(await api.request(ApiPath.team));
   @override

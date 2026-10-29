@@ -18,6 +18,7 @@ class AppPage extends StatelessWidget {
     this.floatingActionButton,
     this.showAppBar = false,
     this.compactHeader = false,
+    this.inlineDesktopTitle = false,
     this.fillRemaining,
     this.header,
     this.slivers,
@@ -30,6 +31,9 @@ class AppPage extends StatelessWidget {
   final Widget? floatingActionButton;
   final bool showAppBar;
   final bool compactHeader;
+
+  /// Put the desktop title beside Back and omit the separate introduction.
+  final bool inlineDesktopTitle;
 
   /// Optional empty/remaining content centered below the scrollable page header.
   final Widget? fillRemaining;
@@ -179,7 +183,9 @@ class AppPage extends StatelessWidget {
     padding: EdgeInsets.fromLTRB(
       AppSpacing.page,
       wide
-          ? 32
+          ? inlineDesktopTitle
+                ? 16
+                : 32
           : back || showAppBar
           ? 0
           : 24,
@@ -209,10 +215,12 @@ class AppPage extends StatelessWidget {
         children: [
           if (wide && (back || onBack != null || showAppBar)) ...[
             webBar(context),
-            const SizedBox(height: 20),
+            SizedBox(height: inlineDesktopTitle ? 16 : 20),
           ],
-          ?header,
-          if (header == null && eyebrow != null) ...[
+          if (!(wide && inlineDesktopTitle)) ?header,
+          if (!(wide && inlineDesktopTitle) &&
+              header == null &&
+              eyebrow != null) ...[
             Text(
               eyebrow!.toUpperCase(),
               style: TextStyle(
@@ -224,9 +232,13 @@ class AppPage extends StatelessWidget {
             ),
             SizedBox(height: compactHeader ? 6 : 12),
           ],
-          if (header == null && (wide || !showAppBar))
+          if (!(wide && inlineDesktopTitle) &&
+              header == null &&
+              (wide || !showAppBar))
             Text(title, style: Theme.of(context).textTheme.headlineLarge),
-          if (header == null && subtitle != null) ...[
+          if (!(wide && inlineDesktopTitle) &&
+              header == null &&
+              subtitle != null) ...[
             SizedBox(height: compactHeader && showAppBar && !wide ? 0 : 12),
             Text(
               subtitle!,
@@ -237,7 +249,8 @@ class AppPage extends StatelessWidget {
               ),
             ),
           ],
-          SizedBox(height: compactHeader && !wide ? 12 : 28),
+          if (!(wide && inlineDesktopTitle))
+            SizedBox(height: compactHeader && !wide ? 12 : 28),
           ...children,
         ],
       ),
@@ -264,7 +277,18 @@ class AppPage extends StatelessWidget {
             icon: const Icon(Icons.arrow_back, size: 18),
             label: const Text('Back'),
           ),
-        const Spacer(),
+        if (inlineDesktopTitle) ...[
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+          ),
+        ] else
+          const Spacer(),
         ...?actions,
       ],
     );

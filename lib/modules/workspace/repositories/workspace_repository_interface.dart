@@ -14,6 +14,7 @@ abstract interface class WorkspaceRepository {
   Future<void> removeResource(String business, String resource);
   Future<void> configure(String id, Map<String, dynamic> data);
   Future<void> activate(String id);
+  Future<void> setBusinessBookingEnabled(String id, bool enabled, int version);
   Future<Map<String, dynamic>> team();
   Future<String> invite(Map<String, dynamic> data);
   Future<Map<String, dynamic>> addTeamMember(Map<String, dynamic> data);

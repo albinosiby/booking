@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { SiteHeader } from "./site-header";
 import { SpaceGallery } from "./space-gallery";
+import { BookingHero } from "./booking-hero";
 import { BookingTimePicker } from "./booking-time-picker";
 import { BookingReview } from "./booking-review";
 import { BookingConfirmation } from "./booking-confirmation";
@@ -233,12 +234,11 @@ export function BookingPage({
             </div>
           </div>
         )}
-        {b.mode === "slots" && resource && (
-          <SpaceGallery
-            key={resource.id}
+        {b.mode === "slots" && business && (
+          <BookingHero
+            key={`${business.id}:${business.card_image ?? "illustration"}`}
             slug={slug}
-            images={resource.images}
-            name={selectedName(resource)}
+            business={business}
             preview={preview}
           />
         )}
@@ -736,6 +736,15 @@ export function BookingPage({
             </div>
             {b.mode === "slots" && summary}
           </div>
+        )}
+        {b.mode === "slots" && resource && (
+          <SpaceGallery
+            key={`${resource.id}:${resource.images.join(",")}`}
+            slug={slug}
+            images={resource.images}
+            name={selectedName(resource)}
+            preview={preview}
+          />
         )}
         <footer className="site-footer">
           <span>Booking directly with {site.title}</span>

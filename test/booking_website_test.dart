@@ -124,7 +124,8 @@ class TestWebsiteRepository implements WebsiteRepository {
     uploads++;
     photoOperations.add('upload:$kind');
     writeVersions.add(version);
-    expect(version, value.version);
+    // The repository can be invoked by an autosave timer during a tester pump.
+    expectSync(version, value.version);
     if (uploads == failUploadAt) {
       throw const AppException('Photo upload failed.', code: 'REQUEST_ERROR');
     }
@@ -160,7 +161,8 @@ class TestWebsiteRepository implements WebsiteRepository {
     removals++;
     photoOperations.add('remove:$id');
     writeVersions.add(version);
-    expect(version, value.version);
+    // The repository can be invoked by an autosave timer during a tester pump.
+    expectSync(version, value.version);
     value = value.copyWith(
       version: value.version + 1,
       images: [

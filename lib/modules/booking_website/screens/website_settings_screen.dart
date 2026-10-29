@@ -32,6 +32,46 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   final expanded = <int>{0};
   int selectedSection = 0;
   bool desktop = false;
+  bool _allowLeave = false, _leaving = false;
+  Future<void> leave() async {
+    if (_leaving || cubit.state.busy) return;
+    _leaving = true;
+    try {
+      var saved = await cubit.flushAutosave();
+      if (!mounted) return;
+      if (!saved) {
+        saved =
+            await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Changes are not saved'),
+                content: Text(
+                  cubit.state.error ??
+                      'Finish the incomplete fields or retry saving before leaving.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Keep editing'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Discard changes'),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+      }
+      if (!mounted || !saved) return;
+      setState(() => _allowLeave = true);
+      await WidgetsBinding.instance.endOfFrame;
+      if (mounted) Navigator.of(context).maybePop();
+    } finally {
+      _leaving = false;
+    }
+  }
+
   static const sections = [
     ('Website address', 'Your public booking link', Icons.language_rounded),
     (
@@ -241,7 +281,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
               label: const Text('Open website'),
             ),
             OutlinedButton.icon(
-              onPressed: s.busy || s.dirty || d.url == null
+              onPressed: s.busy || s.autosaving || s.dirty || d.url == null
                   ? null
                   : () => cubit.link(copy: true),
               icon: const Icon(Icons.copy_outlined),
@@ -264,103 +304,109 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     ),
   );
 
-  Widget address(
-    WebsiteSettingsState s,
-    WebsiteSettings d,
-  ) => section(0, 'Edit the name, then save your website address.', [
-    LayoutBuilder(
-      builder: (context, constraints) {
-        final style = Theme.of(context).textTheme.bodyMedium!;
-        const prefix = 'https://';
-        final suffix = '.${d.addressDomain}';
-        double textWidth(String text) {
-          final painter = TextPainter(
-            text: TextSpan(text: text, style: style),
-            textDirection: Directionality.of(context),
-            textScaler: MediaQuery.textScalerOf(context),
-          )..layout();
-          final width = painter.width;
-          painter.dispose();
-          return width;
-        }
+  Widget address(WebsiteSettingsState s, WebsiteSettings d) => section(
+    0,
+    cubit.autosaveEnabled
+        ? 'Your website address saves automatically after you finish typing.'
+        : 'Edit the name, then save your website address.',
+    [
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final style = Theme.of(context).textTheme.bodyMedium!;
+          const prefix = 'https://';
+          final suffix = '.${d.addressDomain}';
+          double textWidth(String text) {
+            final painter = TextPainter(
+              text: TextSpan(text: text, style: style),
+              textDirection: Directionality.of(context),
+              textScaler: MediaQuery.textScalerOf(context),
+            )..layout();
+            final width = painter.width;
+            painter.dispose();
+            return width;
+          }
 
-        // Wrap the fixed domain on narrow screens to leave room to type.
-        final inline =
-            constraints.maxWidth >= textWidth(prefix) + textWidth(suffix) + 120;
-        Widget fixed(String text) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Center(
-            widthFactor: 1,
-            heightFactor: 1,
-            child: Text(text, style: style),
-          ),
-        );
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextFormField(
-              key: addressField,
-              initialValue: d.slug,
-              enabled: !s.busy,
-              maxLength: 63,
-              autocorrect: false,
-              enableSuggestions: false,
-              textCapitalization: TextCapitalization.none,
-              keyboardType: TextInputType.url,
-              validator: websiteAddressError,
-              onChanged: (v) =>
-                  cubit.update(d.copyWith(slug: v.trim().toLowerCase())),
-              onFieldSubmitted: (_) => saveAddress(),
-              decoration: InputDecoration(
-                labelText: 'Website name',
-                floatingLabelBehavior: FloatingLabelBehavior.always,
-                hintText: 'your-name',
-                prefixIcon: fixed(prefix),
-                prefixIconConstraints: const BoxConstraints(minHeight: 48),
-                suffixIcon: inline ? fixed(suffix) : null,
-                suffixIconConstraints: const BoxConstraints(minHeight: 48),
-                helperText: 'Lowercase letters, numbers and single hyphens.',
-                helperMaxLines: 3,
-                errorText: s.addressError,
-                errorMaxLines: 4,
-                border: const OutlineInputBorder(),
-              ),
+          // Wrap the fixed domain on narrow screens to leave room to type.
+          final inline =
+              constraints.maxWidth >=
+              textWidth(prefix) + textWidth(suffix) + 120;
+          Widget fixed(String text) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Center(
+              widthFactor: 1,
+              heightFactor: 1,
+              child: Text(text, style: style),
             ),
-            if (!inline)
-              Align(alignment: Alignment.centerRight, child: fixed(suffix)),
-          ],
-        );
-      },
-    ),
-    const SizedBox(height: 12),
-    Align(
-      alignment: Alignment.centerLeft,
-      child: FilledButton.icon(
-        key: const ValueKey('website-address-save'),
-        onPressed: s.busy || !s.addressDirty ? null : saveAddress,
-        icon: s.savingAddress
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.save_outlined),
-        label: Text(s.savingAddress ? 'Saving…' : 'Save'),
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                key: addressField,
+                initialValue: d.slug,
+                enabled: !s.busy,
+                maxLength: 63,
+                autocorrect: false,
+                enableSuggestions: false,
+                textCapitalization: TextCapitalization.none,
+                keyboardType: TextInputType.url,
+                validator: websiteAddressError,
+                onChanged: (v) =>
+                    cubit.update(d.copyWith(slug: v.trim().toLowerCase())),
+                onFieldSubmitted: (_) => saveAddress(),
+                decoration: InputDecoration(
+                  labelText: 'Website name',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  hintText: 'your-name',
+                  prefixIcon: fixed(prefix),
+                  prefixIconConstraints: const BoxConstraints(minHeight: 48),
+                  suffixIcon: inline ? fixed(suffix) : null,
+                  suffixIconConstraints: const BoxConstraints(minHeight: 48),
+                  helperText: 'Lowercase letters, numbers and single hyphens.',
+                  helperMaxLines: 3,
+                  errorText: s.addressError,
+                  errorMaxLines: 4,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              if (!inline)
+                Align(alignment: Alignment.centerRight, child: fixed(suffix)),
+            ],
+          );
+        },
       ),
-    ),
-    if (s.addressError != null)
+      const SizedBox(height: 12),
       Align(
         alignment: Alignment.centerLeft,
-        child: TextButton(
-          onPressed: s.busy ? null : cubit.load,
-          child: const Text('Reload settings'),
+        child: FilledButton.icon(
+          key: const ValueKey('website-address-save'),
+          onPressed: s.busy || s.autosaving || !s.addressDirty
+              ? null
+              : saveAddress,
+          icon: s.savingAddress
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.save_outlined),
+          label: Text(s.savingAddress ? 'Saving…' : 'Save'),
         ),
       ),
-    const SizedBox(height: 12),
-    const Text(
-      'After saving a new name, share the updated address. The previous address will no longer open this website.',
-    ),
-  ]);
+      if (s.addressError != null)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: s.busy ? null : cubit.load,
+            child: const Text('Reload settings'),
+          ),
+        ),
+      const SizedBox(height: 12),
+      const Text(
+        'After saving a new name, share the updated address. The previous address will no longer open this website.',
+      ),
+    ],
+  );
 
   void saveAddress() {
     if (addressField.currentState?.validate() ?? false) cubit.saveAddress();
@@ -448,7 +494,9 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Text(
-        'Logo and photo changes are applied when you save your website.',
+        cubit.autosaveEnabled
+            ? 'Logo and photo changes save automatically.'
+            : 'Logo and photo changes are applied when you save your website.',
         style: TextStyle(color: Theme.of(context).colorScheme.primary),
       ),
     ),
@@ -496,7 +544,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
         keyboard: TextInputType.number,
         onChanged: (v) {
           final n = int.tryParse(v);
-          if (n != null) cubit.update(d.copyWith(noticeMinutes: n));
+          cubit.update(d.copyWith(noticeMinutes: n ?? -1));
         },
         validator: (v) {
           final n = int.tryParse(v ?? '');
@@ -511,7 +559,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
         keyboard: TextInputType.number,
         onChanged: (v) {
           final n = int.tryParse(v);
-          if (n != null) cubit.update(d.copyWith(advanceDays: n));
+          cubit.update(d.copyWith(advanceDays: n ?? -1));
         },
         validator: (v) {
           final n = int.tryParse(v ?? '');
@@ -540,7 +588,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     runSpacing: 12,
     children: [
       FilledButton.tonalIcon(
-        onPressed: s.busy || d.status == 'published' && !s.dirty
+        onPressed: s.busy || s.autosaving || d.status == 'published' && !s.dirty
             ? null
             : () => save('publish'),
         icon: const Icon(Icons.public),
@@ -550,12 +598,12 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
       ),
       if (d.status == 'published')
         OutlinedButton(
-          onPressed: s.busy ? null : () => save('pause'),
+          onPressed: s.busy || s.autosaving ? null : () => save('pause'),
           child: const Text('Pause bookings'),
         ),
       if (d.status == 'published' || d.status == 'paused')
         TextButton(
-          onPressed: s.busy ? null : () => save('unpublish'),
+          onPressed: s.busy || s.autosaving ? null : () => save('unpublish'),
           child: const Text('Unpublish'),
         ),
     ],
@@ -572,10 +620,17 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
           Semantics(
             liveRegion: true,
             child: Text(
-              s.busy
+              s.autosaving
+                  ? 'Saving changes…'
+                  : s.busy
                   ? 'Please wait…'
                   : s.dirty
-                  ? 'You have unsaved changes'
+                  ? cubit.autosaveEnabled
+                        ? s.error != null
+                              ? 'Changes not saved. Retry when ready.'
+                              : cubit.pendingValidation ??
+                                    'Changes save automatically…'
+                        : 'You have unsaved changes'
                   : 'All changes saved',
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -585,10 +640,14 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
             children: [
               Expanded(
                 child: AppButton(
-                  label: 'Save changes',
+                  label: cubit.autosaveEnabled
+                      ? s.error != null
+                            ? 'Retry save'
+                            : 'Save now'
+                      : 'Save changes',
                   icon: Icons.save_outlined,
                   busy: s.busy,
-                  onPressed: s.busy || !s.dirty ? null : save,
+                  onPressed: s.busy || s.autosaving || !s.dirty ? null : save,
                 ),
               ),
               const SizedBox(width: 12),
@@ -597,7 +656,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
                   label: 'Preview',
                   icon: Icons.visibility_outlined,
                   secondary: true,
-                  onPressed: s.busy || s.dirty
+                  onPressed: s.busy || s.autosaving || s.dirty
                       ? null
                       : () => cubit.link(preview: true),
                 ),
@@ -704,7 +763,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
       primary: false,
       padding: const EdgeInsets.only(bottom: 28),
       child: KeyedSubtree(
-        key: ValueKey('${d.version}-${s.revision}'),
+        key: ValueKey(s.revision),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -771,34 +830,45 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
         bloc: cubit,
         builder: (context, s) {
           final d = s.draft;
-          return AppPage(
-            title: 'Design website',
-            subtitle: 'Make your booking website feel like your venue.',
-            back: true,
-            showAppBar: true,
-            compactHeader: true,
-            maxWidth: 1260,
-            bottomBar: d == null ? null : saveBar(s),
-            fixedBody: s.loading
-                ? const Center(child: CircularProgressIndicator())
-                : d == null
-                ? Center(
-                    child: AppErrorWidget(
-                      message: s.error ?? 'Could not load website settings.',
-                      onRetry: cubit.load,
-                    ),
-                  )
-                : desktop
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(width: 252, child: navigation()),
-                      const SizedBox(width: 28),
-                      Expanded(child: editor(s, d)),
-                    ],
-                  )
-                : editor(s, d),
-            children: const [],
+          return PopScope(
+            canPop:
+                !cubit.autosaveEnabled ||
+                _allowLeave ||
+                (!s.dirty && !s.autosaving && !s.busy),
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop && cubit.autosaveEnabled) leave();
+            },
+            child: AppPage(
+              onBack: cubit.autosaveEnabled ? leave : null,
+              title: 'Design website',
+              subtitle: 'Make your booking website feel like your venue.',
+              back: true,
+              showAppBar: true,
+              compactHeader: true,
+              inlineDesktopTitle: true,
+              maxWidth: 1260,
+              bottomBar: d == null ? null : saveBar(s),
+              fixedBody: s.loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : d == null
+                  ? Center(
+                      child: AppErrorWidget(
+                        message: s.error ?? 'Could not load website settings.',
+                        onRetry: cubit.load,
+                      ),
+                    )
+                  : desktop
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(width: 252, child: navigation()),
+                        const SizedBox(width: 28),
+                        Expanded(child: editor(s, d)),
+                      ],
+                    )
+                  : editor(s, d),
+              children: const [],
+            ),
           );
         },
       );

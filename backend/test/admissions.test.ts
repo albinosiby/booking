@@ -970,3 +970,22 @@ test("a flexible-only pool class starts atomically and later students share its 
   assert.equal(after.sessions.length, 1);
   t.mock.restoreAll();
 });
+
+test("business off stops new admissions while existing flexible attendance remains available", async () => {
+  const f = await fixture();
+  const before = (await workspace.workspace(f.owner)).businesses.find(
+    (b: any) => b.id === f.input.business_id,
+  );
+  await workspace.setBookingEnabled(f.owner, before.id, {
+    enabled: false,
+    version: before.version,
+  });
+  assert.equal((await service.catalog(f.owner)).businesses.length, 0);
+  await assert.rejects(service.preview(f.owner, f.input), /not ready/i);
+  await assert.rejects(
+    service.create(f.owner, { ...f.command, command_key: randomUUID() }),
+    /not ready/i,
+  );
+  await checkin(f);
+  assert.equal((await service.detail(f.owner, f.id)).used, 1);
+});

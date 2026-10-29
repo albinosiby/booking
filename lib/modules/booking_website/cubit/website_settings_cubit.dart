@@ -6,16 +6,18 @@ import '../../../utils/services/logo_picker_service.dart';
 import '../../workspace/models/workspace_access.dart';
 import '../../workspace/repositories/workspace_session.dart';
 import '../models/website_settings.dart';
+import '../models/website_autosave.dart';
 import '../repositories/website_repository.dart';
 import 'website_settings_state.dart';
 
 class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
-  WebsiteSettingsCubit(this.session, this.repository)
+  WebsiteSettingsCubit(this.session, this.repository, {this.autosaveDelay})
     : super(const WebsiteSettingsState()) {
     scope = workspaceAccessScope(session.state.data);
     subscription = session.snapshots.listen((_) {
       if (scope != workspaceAccessScope(session.state.data)) {
         generation++;
+        _autosaveTimer?.cancel();
         emit(
           const WebsiteSettingsState(
             loading: false,
@@ -29,9 +31,41 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
   final WebsiteRepository repository;
   late final String scope;
   late final StreamSubscription subscription;
+
+  /// Null preserves explicit-save mode for other consumers; app DI enables autosave.
+  final Duration? autosaveDelay;
+  bool get autosaveEnabled => autosaveDelay != null;
+  Timer? _autosaveTimer;
+  Future<void>? _writeInFlight;
+  String? get pendingValidation =>
+      state.draft == null ? null : websiteAutosaveError(state.draft!);
+  void _scheduleAutosave() {
+    _autosaveTimer?.cancel();
+    if (!autosaveEnabled ||
+        !owner ||
+        state.busy ||
+        state.autosaving ||
+        !state.dirty ||
+        state.draft == null) {
+      return;
+    }
+    _autosaveTimer = Timer(autosaveDelay!, () {
+      if (pendingValidation == null) unawaited(save(automatic: true));
+    });
+  }
+
+  Future<bool> flushAutosave() async {
+    _autosaveTimer?.cancel();
+    await _writeInFlight;
+    if (isClosed || !owner) return false;
+    if (state.dirty) await save();
+    return !state.dirty && !state.busy && !state.autosaving;
+  }
+
   int generation = 0;
   int photoSequence = 0;
   bool get owner =>
+      !isClosed &&
       session.state.data.isOwner &&
       session.state.data.organization != null &&
       scope == workspaceAccessScope(session.state.data);
@@ -49,13 +83,21 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
       );
       return;
     }
-    if (state.busy) return;
+    if (state.busy || state.autosaving) return;
+    _autosaveTimer?.cancel();
     final g = ++generation;
     emit(state.copyWith(loading: state.saved == null));
     try {
       final saved = await repository.settings();
       if (valid(g)) {
-        emit(WebsiteSettingsState(saved: saved, draft: saved, loading: false));
+        emit(
+          WebsiteSettingsState(
+            saved: saved,
+            draft: saved,
+            loading: false,
+            revision: state.revision + 1,
+          ),
+        );
       }
     } catch (e) {
       if (valid(g)) emit(state.copyWith(loading: false, error: failure(e)));
@@ -65,6 +107,7 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
   void update(WebsiteSettings draft) {
     if (owner && !state.busy && !state.loading) {
       emit(state.copyWith(draft: draft));
+      _scheduleAutosave();
     }
   }
 
@@ -108,13 +151,18 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
           ],
         ),
         revision: state.revision + 1,
-        message: 'Booking rules copied to all spaces. Save to apply them.',
+        message: autosaveEnabled
+            ? 'Booking rules copied. Changes save automatically.'
+            : 'Booking rules copied to all spaces. Save to apply them.',
       ),
     );
+    _scheduleAutosave();
   }
 
   /// Saves the address against the last server version, retaining other edits.
   Future<void> saveAddress() async {
+    if (_writeInFlight != null) return;
+    _autosaveTimer?.cancel();
     if (!owner ||
         state.busy ||
         state.loading ||
@@ -160,19 +208,54 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
         );
       }
     }
+    if (valid(g) && state.error == null && state.addressError == null) {
+      _scheduleAutosave();
+    }
   }
 
-  Future<void> save({String? action}) async {
+  Future<void> save({String? action, bool automatic = false}) async {
+    _autosaveTimer?.cancel();
+    if (_writeInFlight != null) {
+      if (state.busy || automatic || action == null) return;
+      await _writeInFlight;
+    }
+    if (!owner || state.busy || state.saved == null || state.draft == null) {
+      return;
+    }
+    if (autosaveEnabled && pendingValidation != null) {
+      emit(state.copyWith(error: pendingValidation));
+      return;
+    }
+    final completion = Completer<void>();
+    _writeInFlight = completion.future;
+    try {
+      await _saveNow(action: action, automatic: automatic);
+    } finally {
+      _writeInFlight = null;
+      completion.complete();
+      if (!isClosed && state.error == null) _scheduleAutosave();
+    }
+  }
+
+  Future<void> _saveNow({String? action, required bool automatic}) async {
     if (!owner || state.busy || state.saved == null || state.draft == null) {
       return;
     }
     final g = ++generation;
     var draft = state.draft!, saved = state.saved!;
-    emit(state.copyWith(busy: true));
+    final submitted = draft;
+    emit(state.copyWith(busy: !automatic, autosaving: automatic));
     void accept(WebsiteSettings result, {List<WebsiteImage>? images}) {
       saved = result;
       draft = saved.copyWith(images: images ?? draft.images);
-      emit(state.copyWith(saved: saved, draft: draft, busy: true));
+      emit(
+        state.copyWith(
+          saved: saved,
+          draft: rebaseWebsiteSave(submitted, state.draft!, draft),
+          busy: !automatic,
+          autosaving: automatic,
+        ),
+      );
     }
 
     try {
@@ -227,14 +310,17 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
         emit(
           WebsiteSettingsState(
             saved: saved,
-            draft: saved,
+            draft: rebaseWebsiteSave(submitted, state.draft!, saved),
             loading: false,
+            revision: automatic ? state.revision : state.revision + 1,
             message: action == 'publish'
                 ? 'Your booking website is published.'
                 : action == 'pause'
                 ? 'Online bookings are paused.'
                 : action == 'unpublish'
                 ? 'The website is unpublished.'
+                : automatic
+                ? null
                 : 'Website settings saved.',
           ),
         );
@@ -244,6 +330,7 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
         emit(
           state.copyWith(
             busy: false,
+            autosaving: false,
             addressError: state.addressDirty ? failure(e) : null,
             error:
                 '${failure(e)} Your remaining edits are kept here. Reload settings before retrying an uncertain save.',
@@ -265,7 +352,9 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
     String? resourceId,
     String? removeId,
   }) async {
+    if (state.autosaving) await _writeInFlight;
     if (!owner || state.busy || state.loading || state.draft == null) return;
+    _autosaveTimer?.cancel();
     final draft = state.draft!;
     if (removeId != null) {
       update(
@@ -309,6 +398,7 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
       if (!valid(g)) return;
       if (selected == null) {
         emit(state.copyWith(busy: false));
+        _scheduleAutosave();
         return;
       }
       if (selected.bytes.isEmpty || selected.bytes.length > 1024 * 1024) {
@@ -333,7 +423,9 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
             ],
           ),
           busy: false,
-          message: 'Photo selected. Save changes to apply it.',
+          message: autosaveEnabled
+              ? 'Photo selected. Saving automatically.'
+              : 'Photo selected. Save changes to apply it.',
         ),
       );
     } catch (e) {
@@ -341,10 +433,17 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
         emit(state.copyWith(busy: false, error: failure(e)));
       }
     }
+    if (valid(g) && state.error == null) _scheduleAutosave();
   }
 
   Future<void> link({bool preview = false, bool copy = false}) async {
-    if (!owner || state.busy || state.saved == null || state.dirty) return;
+    if (!owner ||
+        state.busy ||
+        state.autosaving ||
+        state.saved == null ||
+        state.dirty) {
+      return;
+    }
     final g = ++generation;
     emit(state.copyWith(busy: true));
     try {
@@ -375,6 +474,7 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
 
   @override
   Future<void> close() async {
+    _autosaveTimer?.cancel();
     generation++;
     await subscription.cancel();
     return super.close();

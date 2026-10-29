@@ -121,3 +121,8 @@ COMMIT;
 ```
 
 After permanent deletion, code rollback cannot restore a deleted member/invitation or the old ticket reference. Keep the nullable schema unless the exact records and references have been restored from a backup under review. Do not invent an owner/author replacement merely to satisfy NOT NULL. An owner can grant access again using the existing login email; that creates a new team membership, not a restoration of the deleted identity. Historical bookings/payments/attendance remain intact either way. Database backups may retain deleted team records until their normal retention period ends.
+
+
+## Removed owner linked-record repair
+
+For deletion blocked by an agent-service request or migrated login identity, apply the follow-up described in [Removed owner deletion repair](removed-owner-deletion-repair.md). It preserves both records and their original identity IDs. Removed owners can be deleted by another active owner; active owners and self-deletion remain protected. Other protected references still block deletion.

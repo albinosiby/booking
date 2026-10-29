@@ -338,10 +338,10 @@ export class AdminService {
     const status = requestStatus.safeParse(query.status);
     const { rows } = await this.db.query(
       `SELECT r.id,r.status,r.note,r.admin_note,r.user_message,r.created_at,r.updated_at,r.version,r.requested_services,r.approved_services,
-        r.organization_id,o.name AS organization_name,m.email AS user_email,m.display_name AS user_name
+        r.organization_id,o.name AS organization_name,coalesce(m.email,'') AS user_email,coalesce(m.display_name,'Removed team member') AS user_name
        FROM agent_call_requests r
        JOIN organizations o ON o.id=r.organization_id
-       JOIN memberships m ON m.id=r.membership_id
+       LEFT JOIN memberships m ON m.id=r.membership_id AND m.organization_id=r.organization_id
        WHERE ($1::text IS NULL OR r.status=$1)
        ORDER BY r.updated_at DESC LIMIT $2`,
       [status.success ? status.data : null, page(query.limit)],

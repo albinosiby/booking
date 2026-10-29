@@ -564,7 +564,7 @@ export class AdmissionService {
       else if (!this.allowed(m, "mark_attendance"))
         reason = "Attendance permission is required.";
       else if (
-        b.status !== "ready" ||
+        !["ready", "paused"].includes(b.status) ||
         !space?.enabled ||
         !plan.enabled ||
         !planSpaceIds(plan).includes(a.resource_id)
@@ -1479,7 +1479,7 @@ export class AdmissionService {
         const pool = admissionSpaces(b.configuration).find(
           (p: Row) => p.id === a.resource_id && p.enabled,
         );
-        if (!pool || b.status !== "ready")
+        if (!pool || !["ready", "paused"].includes(b.status))
           throw new BadRequestException("This space is unavailable.");
         if ("start_class" in v && v.start_class) {
           const plan = b.configuration.plans?.find(

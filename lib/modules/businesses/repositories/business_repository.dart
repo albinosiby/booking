@@ -9,6 +9,7 @@ abstract interface class BusinessRepository {
   Future<void> removeResource(String businessId, String resourceId);
   Future<void> configure(String id, BusinessConfiguration configuration);
   Future<void> activate(String id);
+  Future<void> setBookingEnabled(String id, bool enabled, int version);
 }
 
 class LocalApiBusinessRepository implements BusinessRepository {
@@ -33,4 +34,7 @@ class LocalApiBusinessRepository implements BusinessRepository {
       source.configure(id, configuration.toJson());
   @override
   Future<void> activate(String id) => source.activate(id);
+  @override
+  Future<void> setBookingEnabled(String id, bool enabled, int version) =>
+      source.setBusinessBookingEnabled(id, enabled, version);
 }
