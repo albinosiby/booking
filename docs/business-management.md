@@ -1,5 +1,7 @@
 # Profile and business management
 
+Owners can now remove a configured or draft business from its options menu. Removal archives it, preserves booking/payment history and blocks unresolved bookings or admissions. See [business removal and migration/recovery steps](business-removal.md) before releasing this feature.
+
 Profile is a navigation hub for the signed-in user's identity, organization, Businesses, Team & access, Accounts & payments, appearance and sign-out. Owner-only management actions are hidden for staff and guarded on direct routes. The customer directory and booking history are documented in [Customers](customers.md).
 
 ## Navigation

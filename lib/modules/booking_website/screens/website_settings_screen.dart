@@ -450,7 +450,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     ),
     field(
       label: 'Hero heading',
-      value: d.heroHeading,
+      value: d.effectiveHeroHeading,
       max: 120,
       helper:
           'Large text over the hero image. Empty uses “A space for your next great moment.”',
@@ -458,7 +458,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     ),
     field(
       label: 'Description',
-      value: d.description,
+      value: d.effectiveDescription,
       lines: 3,
       max: 1200,
       helper: 'Shown under the heading and used by search engines.',

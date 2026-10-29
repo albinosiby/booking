@@ -42,6 +42,9 @@ class StaffCashTransaction extends Equatable {
     required this.time,
     required this.netMinor,
     required this.cashMinor,
+    this.customer = '',
+    this.reference = '',
+    this.methods = const [],
   });
   factory StaffCashTransaction.fromJson(Map<String, dynamic> j) {
     final lines = ((j['lines'] ?? const []) as List)
@@ -56,16 +59,36 @@ class StaffCashTransaction extends Equatable {
       mine: j['mine'] == true,
       time: financeStamp((j['local_time'] ?? '') as String),
       netMinor: lines.fold(0, (a, l) => a + _int(l['amount_minor'])),
+      customer: (j['customer_name'] ?? '') as String,
+      reference: (j['reference'] ?? '') as String,
+      methods: List.unmodifiable(
+        lines.map((l) => l['method'] as String).toSet(),
+      ),
       cashMinor: lines
           .where((l) => l['is_cash'] == true)
           .fold(0, (a, l) => a + _int(l['amount_minor'])),
     );
   }
   final String id, kind, reason, space, staffName, time;
+  final String customer, reference;
+  final List<String> methods;
   final bool mine;
   final int netMinor, cashMinor;
   @override
-  List<Object?> get props => [id, kind, netMinor, cashMinor];
+  List<Object?> get props => [
+    id,
+    kind,
+    reason,
+    space,
+    staffName,
+    mine,
+    time,
+    netMinor,
+    cashMinor,
+    customer,
+    reference,
+    methods,
+  ];
 }
 
 class StaffCashDay extends Equatable {
@@ -81,11 +104,23 @@ class StaffCashDay extends Equatable {
     required this.holdingMinor,
     required this.transactions,
     required this.settlements,
+    required this.today,
+    this.handedOverMinor = 0,
+    this.receivedFromOwnerMinor = 0,
+    this.nextCursor,
+    this.nextSettlementCursor,
+    this.bankTransferMinor = 0,
   });
   factory StaffCashDay.fromJson(Map<String, dynamic> j) {
     final m = financeMap(j['by_method']);
     return StaffCashDay(
       date: j['date'] as String,
+      today: j['today'] as String,
+      handedOverMinor: (j['handed_over_minor'] as num).toInt(),
+      receivedFromOwnerMinor: (j['received_from_owner_minor'] as num).toInt(),
+      bankTransferMinor: _int(m['bank_transfer']),
+      nextCursor: (j['next_cursor'] as num?)?.toInt(),
+      nextSettlementCursor: (j['next_settlement_cursor'] as num?)?.toInt(),
       collectedMinor: _int(j['collected_minor']),
       refundedMinor: _int(j['refunded_minor']),
       expensesMinor: _int(j['expenses_minor']),
@@ -104,7 +139,9 @@ class StaffCashDay extends Equatable {
       ],
     );
   }
-  final String date;
+  final String date, today;
+  final int handedOverMinor, receivedFromOwnerMinor, bankTransferMinor;
+  final int? nextCursor, nextSettlementCursor;
   final int collectedMinor,
       refundedMinor,
       expensesMinor,
@@ -115,10 +152,47 @@ class StaffCashDay extends Equatable {
       holdingMinor;
   final List<StaffCashTransaction> transactions;
   final List<StaffCashSettlement> settlements;
+
+  StaffCashDay withHistory({
+    required List<StaffCashTransaction> transactions,
+    required List<StaffCashSettlement> settlements,
+    required int? nextCursor,
+    required int? nextSettlementCursor,
+  }) => StaffCashDay(
+    date: date,
+    today: today,
+    collectedMinor: collectedMinor,
+    refundedMinor: refundedMinor,
+    expensesMinor: expensesMinor,
+    cashMinor: cashMinor,
+    upiMinor: upiMinor,
+    cardMinor: cardMinor,
+    bankMinor: bankMinor,
+    holdingMinor: holdingMinor,
+    handedOverMinor: handedOverMinor,
+    receivedFromOwnerMinor: receivedFromOwnerMinor,
+    bankTransferMinor: bankTransferMinor,
+    transactions: List.unmodifiable(transactions),
+    settlements: List.unmodifiable(settlements),
+    nextCursor: nextCursor,
+    nextSettlementCursor: nextSettlementCursor,
+  );
   @override
   List<Object?> get props => [
     date,
+    today,
     collectedMinor,
+    refundedMinor,
+    expensesMinor,
+    cashMinor,
+    upiMinor,
+    cardMinor,
+    bankMinor,
+    handedOverMinor,
+    receivedFromOwnerMinor,
+    bankTransferMinor,
+    nextCursor,
+    nextSettlementCursor,
     holdingMinor,
     transactions,
     settlements,

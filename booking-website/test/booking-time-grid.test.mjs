@@ -165,6 +165,45 @@ test("fixed sessions retain their single-click booking behaviour", () => {
     chooseTimeCell({ start: "", duration: 0 }, at(fixed, "09:00"), null, 180),
     { start: "09:00", duration: 180 },
   );
+  assert.equal(at(fixed, "10:00").label, "Unavailable");
+});
+
+test("a free hour remains bookable when later starts would overlap the next booking", () => {
+  const unavailable = (time) => ({
+    ...available(time), available: false, status: "booked",
+  });
+  const gapSlots = [
+    { ...available("19:00"), end_options: [[60, `${date}T20:00`]] },
+    ...["19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"].map(unavailable),
+    available("21:00"),
+  ];
+  const initial = cells({ start: "", duration: 0 }, { slots: gapSlots });
+  assert.equal(at(initial, "19:00").enabled, true);
+  assert.equal(at(initial, "19:00").label, "Available");
+  for (const time of ["19:15", "19:30", "19:45", "20:00"]) {
+    assert.equal(at(initial, time).label, "Unavailable for 1 hr");
+    assert.equal(at(initial, time).enabled, false);
+  }
+  const range = chooseTimeCell({ start: "", duration: 0 }, at(initial, "19:00"), 60, 60);
+  const waiting = cells(range, { slots: gapSlots, endSlots: preloadedEnds(gapSlots[0]) });
+  assert.equal(at(waiting, "20:00").enabled, true);
+  assert.deepEqual(chooseTimeCell(range, at(waiting, "20:00"), 60, 60), {
+    start: "19:00", duration: 60,
+  });
+});
+
+test("end conflicts describe the range and pool capacity labels stay unchanged", () => {
+  const waiting = cells({ start: "09:00", duration: 0 }, {
+    endSlots: [{ ...available("11:00"), available: false, status: "booked", duration_minutes: 120 }],
+  });
+  assert.equal(at(waiting, "11:00").label, "Overlaps a booking");
+  assert.equal(at(waiting, "11:00").enabled, false);
+  const pool = cells({ start: "", duration: 0 }, {
+    pool: true,
+    slots: [{ ...available("09:00"), remaining_capacity: 3 }, slots[4]],
+  });
+  assert.equal(at(pool, "09:00").label, "3 places");
+  assert.equal(at(pool, "10:00").label, "Unavailable");
 });
 
 test("the selected end uses the API's local boundary across clock changes", () => {

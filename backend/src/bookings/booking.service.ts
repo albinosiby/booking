@@ -116,7 +116,8 @@ export class BookingService {
     const m = await this.member(actor);
     if (!this.canRead(m) && !this.allowed(m, "view_finance"))
       throw new ForbiddenException("Booking or finance access is required.");
-    const w = await this.workspace.workspace(actor);
+    // Removed businesses remain selectable for historical booking filters.
+    const w = await this.workspace.workspace(actor, true);
     await systemAccounts(this.db, m.organization_id);
     const paymentAccounts = (
       await this.db.query<Row>(
@@ -142,7 +143,7 @@ export class BookingService {
       can_finance: this.allowed(m, "view_finance"),
       filter_businesses: w.businesses.map((b: Row) => ({
         id: b.id,
-        name: b.name,
+        name: b.status === "archived" ? `${b.name} (removed)` : b.name,
         type: b.type,
         timezone: locations.find((l: Row) => l.id === b.location_id)!.timezone,
         today: localStamp(

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:eden_booking/di/injection.dart';
 import 'package:eden_booking/modules/booking_website/cubit/website_settings_cubit.dart';
 import 'package:eden_booking/modules/booking_website/models/website_autosave.dart';
+import 'package:eden_booking/modules/booking_website/models/website_content.dart';
 import 'package:eden_booking/modules/booking_website/models/website_settings.dart';
 import 'package:eden_booking/modules/booking_website/screens/website_settings_screen.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
@@ -287,6 +288,23 @@ void main() {
     );
     await tester.tap(find.text('Open designer'));
     await tester.pumpAndSettle();
+    TextFormField contentField(String label) => tester.widget<TextFormField>(
+      find.ancestor(
+        of: find.byWidgetPredicate(
+          (w) => w is InputDecorator && w.decoration.labelText == label,
+          skipOffstage: false,
+        ),
+        matching: find.byType(TextFormField, skipOffstage: false),
+      ),
+    );
+    expect(
+      contentField('Hero heading').initialValue,
+      defaultWebsiteHeroHeading,
+    );
+    expect(
+      contentField('Description').initialValue,
+      defaultWebsiteDescription('Eden Sports'),
+    );
     final field = find.byKey(const ValueKey('website-address-save'));
     expect(field, findsOneWidget);
     final address = find.byType(TextFormField).first;

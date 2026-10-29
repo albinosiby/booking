@@ -29,6 +29,13 @@ const appDestinations = [
   AppDestination('My classes', Icons.sports_outlined, Icons.sports),
 ];
 
+AppDestination appDestination(int branch, {bool staffPayments = false}) {
+  final destination = appDestinations[branch];
+  return branch == 3 && staffPayments
+      ? AppDestination('Payments', destination.icon, destination.selectedIcon)
+      : destination;
+}
+
 /// Floating primary navigation; Scaffold reserves its complete safe-area height.
 class AppBottomNavBar extends StatelessWidget {
   const AppBottomNavBar({
@@ -36,7 +43,9 @@ class AppBottomNavBar extends StatelessWidget {
     required this.index,
     required this.onTap,
     this.branches = const [0, 1, 2, 3, 4],
+    this.staffPayments = false,
   });
+  final bool staffPayments;
   final List<int> branches;
   final int index;
   final ValueChanged<int> onTap;
@@ -110,12 +119,24 @@ class AppBottomNavBar extends StatelessWidget {
                   labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                   destinations: [
                     for (final branch in branches)
-                      NavigationDestination(
-                        icon: Icon(appDestinations[branch].icon),
-                        selectedIcon: Icon(
-                          appDestinations[branch].selectedIcon,
+                      DefaultTextStyle.merge(
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                        child: NavigationDestination(
+                          icon: Icon(appDestinations[branch].icon),
+                          selectedIcon: Icon(
+                            appDestinations[branch].selectedIcon,
+                          ),
+                          label: appDestination(
+                            branch,
+                            staffPayments: staffPayments,
+                          ).label,
+                          tooltip: appDestination(
+                            branch,
+                            staffPayments: staffPayments,
+                          ).label,
                         ),
-                        label: appDestinations[branch].label,
                       ),
                   ],
                 ),

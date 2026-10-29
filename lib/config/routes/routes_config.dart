@@ -216,6 +216,7 @@ GoRouter createRouter(
           builder: (context, snapshot) => AdaptiveScaffold(
             shell: shell,
             branches: WorkspaceNavigation(snapshot.data).branches,
+            staffPayments: WorkspaceNavigation(snapshot.data).personalPayments,
             onTabSelected: workspace.revalidateRetainedPages,
           ),
         ),
@@ -258,7 +259,13 @@ GoRouter createRouter(
             routes: [
               GoRoute(
                 path: Routes.payments,
-                builder: (c, s) => const AccountsScreen(),
+                builder: (c, s) => BlocBuilder<WorkspaceCubit, WorkspaceState>(
+                  bloc: workspace,
+                  builder: (context, snapshot) =>
+                      WorkspaceNavigation(snapshot.data).personalPayments
+                      ? const StaffCashScreen(asTab: true)
+                      : const AccountsScreen(),
+                ),
               ),
             ],
           ),
@@ -297,6 +304,10 @@ GoRouter createRouter(
         ),
       ),
       GoRoute(path: '/staff-cash', builder: (c, s) => const StaffCashScreen()),
+      GoRoute(
+        path: '/accounts/overview',
+        builder: (c, s) => const AccountsScreen(back: true),
+      ),
       GoRoute(
         path: '/accounts/settings',
         builder: (c, s) => const AccountSettingsScreen(),

@@ -14,7 +14,8 @@ import '../widgets/accounts_widgets.dart';
 import '../../staff_cash/widgets/staff_cash_owner_section.dart';
 
 class AccountsScreen extends StatefulWidget {
-  const AccountsScreen({super.key});
+  const AccountsScreen({super.key, this.back = false});
+  final bool back;
   @override
   State<AccountsScreen> createState() => _AccountsScreenState();
 }
@@ -92,6 +93,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
     Widget dim(List<Widget> children) => _dim(s, children);
     return AppPage(
       title: 'Accounts',
+      back: widget.back,
       showAppBar: true,
       compactHeader: true,
       maxWidth: 760,
@@ -260,6 +262,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
     final period = financeRangeLabel(s.filter);
     return AppPage(
       title: 'Accounts',
+      back: widget.back,
       maxWidth: 1240,
       header: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

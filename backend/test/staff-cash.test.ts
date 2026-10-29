@@ -203,7 +203,15 @@ test("staff cash holding counts bookings and cash income, minus expenses, with p
   assert.equal(me.by_method.upi, 50000);
   assert.equal(me.bank_minor, 50000);
   assert.equal(me.collected_minor, 65000);
-  assert.equal(me.transactions.length >= 3, true);
+  assert.equal(me.transactions.length, 2);
+  assert.equal(
+    me.transactions.every((t) => t.mine),
+    true,
+  );
+  assert.equal(
+    me.transactions.every((t) => t.customer_name === "Walk in"),
+    true,
+  );
   await s.createEntry(staff, entry("income", 5000, cash));
   await s.createEntry(staff, entry("expense", 2000, cash));
   me = await cashSvc.me(staff, {});
@@ -229,6 +237,9 @@ test("staff cash holding counts bookings and cash income, minus expenses, with p
     )?.holding_minor,
     -2000,
   );
+  const personal = await cashSvc.me(staff, {});
+  assert.equal(personal.handed_over_minor, 8000);
+  assert.equal(personal.received_from_owner_minor, 1000);
   const history = await cashSvc.history(owner, filter);
   assert.equal(history.items.length, 2);
   await assert.rejects(() => cashSvc.settle(staff, staffId, {}));
@@ -244,4 +255,129 @@ test("reversal of a staff cash entry credits the original recorder", async () =>
     reason: "Mistake",
   });
   assert.equal((await cashSvc.me(staff, {})).cash_holding_minor, before);
+});
+
+test("collection-only staff get personal paginated payments and complete handover totals without finance access", async () => {
+  const collector = actor();
+  const invitation = await w.invite(owner, {
+    email: collector.email,
+    display_name: "Collection-only staff",
+    role: "staff",
+    permissions: ["collect_payments"],
+    assignments: [{ business_id: business, resource_ids: [space] }],
+  });
+  await w.accept(
+    collector,
+    new URL(invitation.invitation_url).searchParams.get("token")!,
+  );
+  const member = await w.member(collector);
+  // Real ledger rows in the isolated in-memory database; include admission refunds
+  // and owner-recorded reversals so attribution and summaries exercise the SQL.
+  async function ledger(
+    kind: string,
+    amount: number,
+    method = "cash",
+    by = collector.uid,
+    reverses: string | null = null,
+  ) {
+    const id = randomUUID();
+    await db.query(
+      `INSERT INTO finance_events(id,organization_id,kind,business_id,resource_id,reason,reference,occurred_at,recorded_by,reverses_id)
+      VALUES($1,$2,$3,$4,$5,'Personal payment','PAYMENT',now(),$6,$7)`,
+      [id, member.organization_id, kind, business, space, by, reverses],
+    );
+    await db.query(
+      `INSERT INTO finance_lines(id,organization_id,event_id,account_id,method,amount_minor) VALUES($1,$2,$3,$4,$5,$6)`,
+      [
+        randomUUID(),
+        member.organization_id,
+        id,
+        method === "cash" ? cash : bank,
+        method,
+        amount,
+      ],
+    );
+    return id;
+  }
+  for (let i = 0; i < 53; i++) await ledger("income", 10000);
+  await ledger("income", 20000, "upi");
+  await ledger("admission_refund", -3000);
+  const expense = await ledger("expense", -2000);
+  await ledger("reversal", 2000, "cash", owner.uid, expense);
+  const initial = await cashSvc.me(collector, {});
+  assert.equal(initial.collected_minor, 550000);
+  assert.equal(initial.refunded_minor, 3000);
+  assert.equal(initial.expenses_minor, 0);
+  assert.equal(initial.cash_holding_minor, 527000);
+  assert.equal(initial.transactions.length, 50);
+  assert.equal(initial.next_cursor, 50);
+  const next = await cashSvc.me(collector, {
+    cursor: "50",
+    date: initial.date,
+  });
+  assert.equal(next.transactions.length, 7);
+  assert.equal(next.next_cursor, null);
+  assert.equal(
+    new Set([...initial.transactions, ...next.transactions].map((t) => t.id))
+      .size,
+    57,
+  );
+  assert.equal(
+    [...initial.transactions, ...next.transactions].some(
+      (t) => t.id === expense,
+    ),
+    true,
+  );
+  assert.equal(
+    [...initial.transactions, ...next.transactions].some(
+      (t) => t.kind === "reversal" && !t.mine,
+    ),
+    true,
+  );
+  assert.equal(JSON.stringify(initial).includes("Primary HDFC"), false);
+  assert.equal("accounts" in initial, false);
+  for (let i = 0; i < 51; i++)
+    await cashSvc.settle(owner, member.id, {
+      command_key: randomUUID(),
+      direction: "collect",
+      amount_minor: 1000,
+      expected_balance_minor: 527000 - i * 1000,
+    });
+  const handed = await cashSvc.me(collector, {});
+  assert.equal(handed.handed_over_minor, 51000);
+  assert.equal(handed.received_from_owner_minor, 0);
+  assert.equal(handed.cash_holding_minor, 476000);
+  assert.equal(handed.settlements.length, 50);
+  assert.equal(handed.next_settlement_cursor, 50);
+  const older = await cashSvc.me(collector, { settlement_cursor: "50" });
+  assert.equal(older.settlements.length, 1);
+  assert.equal(older.next_settlement_cursor, null);
+  assert.equal(older.handed_over_minor, 51000);
+  assert.equal(
+    new Set([...handed.settlements, ...older.settlements].map((t) => t.id))
+      .size,
+    51,
+  );
+  const past = await cashSvc.me(collector, { date: "2020-01-01" });
+  assert.equal(past.transactions.length, 0);
+  assert.equal(past.collected_minor, 0);
+  assert.equal(past.cash_holding_minor, 476000);
+  assert.equal(past.handed_over_minor, 51000);
+  await assert.rejects(() => cashSvc.overview(collector));
+  await assert.rejects(() => cashSvc.history(collector, filter));
+  await assert.rejects(() =>
+    cashSvc.settle(collector, member.id, {
+      command_key: randomUUID(),
+      direction: "collect",
+      amount_minor: 1000,
+      expected_balance_minor: 476000,
+    }),
+  );
+  assert.equal((await cashSvc.me(collector, {})).handed_over_minor, 51000);
+  await assert.rejects(() => cashSvc.me(collector, { cursor: -1 }));
+  await db.query(
+    `UPDATE memberships SET permissions='["view_bookings"]'::jsonb WHERE id=$1`,
+    [member.id],
+  );
+  await assert.rejects(() => cashSvc.me(collector, {}));
 });

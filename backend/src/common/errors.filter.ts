@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { ZodError } from "zod";
 import { randomUUID } from "node:crypto";
+import { DomainHttpError } from "./domain-error";
 @Catch()
 export class ErrorsFilter implements ExceptionFilter {
   private readonly logger = new Logger("API");
@@ -22,6 +23,10 @@ export class ErrorsFilter implements ExceptionFilter {
         .map((i) => `${i.path.join(".")}: ${i.message}`)
         .join("; ");
       code = "VALIDATION_ERROR";
+    } else if (error instanceof DomainHttpError) {
+      status = error.getStatus();
+      message = error.message;
+      code = error.code;
     } else if (error instanceof HttpException) {
       status = error.getStatus();
       message = error.message;

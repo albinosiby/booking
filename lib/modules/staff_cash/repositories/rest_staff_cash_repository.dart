@@ -12,17 +12,27 @@ class RestStaffCashRepository implements IStaffCashRepository {
         (key) =>
             key == '*' ||
             key.startsWith('/staff-cash') ||
-            key.startsWith('/accounts'),
+            key.startsWith('/accounts') ||
+            key.startsWith('/bookings') ||
+            key.startsWith('/admissions'),
       )
       .map((_) {});
   // Cash balances must be fresh: no stale-while-revalidate for the amount owed.
   @override
-  Future<StaffCashDay> me({String? date}) async => StaffCashDay.fromJson(
+  Future<StaffCashDay> me({
+    String? date,
+    int cursor = 0,
+    int settlementCursor = 0,
+  }) async => StaffCashDay.fromJson(
     financeMap(
       await api.request(
         Uri(
           path: '/staff-cash/me',
-          queryParameters: date == null ? null : {'date': date},
+          queryParameters: {
+            'date': ?date,
+            if (cursor != 0) 'cursor': '$cursor',
+            if (settlementCursor != 0) 'settlement_cursor': '$settlementCursor',
+          },
         ).toString(),
       ),
     ),

@@ -6,6 +6,7 @@ import '../../workspace/models/workspace_state.dart';
 import '../../workspace/repositories/workspace_session.dart';
 import '../models/business_management_model.dart';
 import '../models/business_availability_action.dart';
+import '../models/business_removal_action.dart';
 import '../repositories/business_repository.dart';
 
 class BusinessManagementCubit
@@ -135,8 +136,43 @@ class BusinessManagementCubit
   }
 
   bool _changingStatus = false;
+  bool _removing = false;
+  Future<bool> removeBusiness(BusinessRemovalAction action) async {
+    if (_removing ||
+        _changingStatus ||
+        _savingOrder ||
+        state.busy ||
+        state.reordering ||
+        !state.data.isOwner) {
+      return false;
+    }
+    final business = state.data.businesses
+        .where((b) => b.id == action.id)
+        .firstOrNull;
+    if (business == null || business.version != action.version) {
+      emit(
+        state.copyWith(
+          message:
+              'Business changed. Review its latest details before removing it.',
+        ),
+      );
+      return false;
+    }
+    _removing = true;
+    try {
+      final saved = await save(
+        () => repository.remove(action.id, action.version),
+      );
+      if (!isClosed) emit(state.copyWith(snapshot: session.state));
+      return saved;
+    } finally {
+      _removing = false;
+    }
+  }
+
   Future<bool> setBookingEnabled(BusinessAvailabilityAction action) async {
     if (_changingStatus ||
+        _removing ||
         _savingOrder ||
         state.busy ||
         state.reordering ||

@@ -5,6 +5,7 @@ abstract interface class BusinessRepository {
   Future<void> add(BusinessDraft draft);
   Future<void> reorder(List<String> ids, int revision);
   Future<void> rename(String id, String name);
+  Future<void> remove(String id, int version);
   Future<void> addResource(String businessId, ResourceDraft draft);
   Future<void> removeResource(String businessId, String resourceId);
   Future<void> configure(String id, BusinessConfiguration configuration);
@@ -23,6 +24,9 @@ class LocalApiBusinessRepository implements BusinessRepository {
   @override
   Future<void> rename(String id, String name) =>
       source.renameBusiness(id, name);
+  @override
+  Future<void> remove(String id, int version) =>
+      source.removeBusiness(id, version);
   @override
   Future<void> addResource(String id, ResourceDraft draft) =>
       source.addResource(id, draft.name, draft.capacity);

@@ -138,6 +138,44 @@ const call = {
   interaction_id: "20300603/a71c352f-11:03:08-e6013eb8",
 };
 
+function gate() {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => (release = resolve));
+  return { pending, release };
+}
+
+function pausedQuote() {
+  const service = new BookingService(db, workspace);
+  const quote = service.quote.bind(service);
+  const entered = gate(),
+    resume = gate();
+  service.quote = async (...args) => {
+    entered.release();
+    await resume.pending;
+    return quote(...args);
+  };
+  return { voice: new VoiceService(db, service), entered, resume };
+}
+
+/** Pause one voice read while the booking service keeps using the real DB. */
+function pausedVoiceQuery(
+  prefix: string,
+  service = new BookingService(db, workspace),
+) {
+  const entered = gate(),
+    resume = gate();
+  const scoped = {
+    async query<T = Record<string, unknown>>(sql: string, values?: unknown[]) {
+      if (sql.startsWith(prefix)) {
+        entered.release();
+        await resume.pending;
+      }
+      return db.query<T>(sql, values);
+    },
+  } as unknown as Database;
+  return { voice: new VoiceService(scoped, service), entered, resume };
+}
+
 before(async () => {
   await db.onModuleInit?.();
 });
@@ -327,6 +365,337 @@ test("books, lists, reschedules and cancels a caller's booking", async () => {
   const after = await bookings.detail(o.owner, detail.id);
   assert.equal(after.status, "cancelled");
   assert.match(after.history.at(-1).details.reason, /call service: Rain/);
+});
+
+test("overlapping call requests recover the booking after its slot is reserved", async () => {
+  const o = await connect();
+  const request = {
+    ...call,
+    space: "Court 1",
+    date: DATE,
+    time: "19:00",
+    customer_name: "Retry Caller",
+    expected_total: 500,
+  };
+  const first = pausedQuote(),
+    second = pausedQuote();
+  const firstResult = first.voice.book(o.agent, request);
+  await first.entered.pending;
+  const secondResult = second.voice.book(o.agent, request);
+  await second.entered.pending;
+  first.resume.release();
+  const winner = await firstResult;
+  second.resume.release();
+  const recovered = await secondResult;
+  assert.equal(recovered.ok, true);
+  assert.equal(recovered.reference, winner.reference);
+  const rows = (await bookings.list(o.owner, {})).items;
+  assert.equal(rows.length, 1);
+  const detail = await bookings.detail(o.owner, rows[0].id);
+  assert.equal(
+    detail.history.filter((h: any) => h.action === "created").length,
+    1,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int AS count FROM booking_commands WHERE actor_id=$1",
+        [o.agent.uid],
+      )
+    ).rows[0].count,
+    1,
+  );
+});
+
+test(
+  "overlapping bookings recover when the winner creates the reusable customer",
+  { timeout: 15000 },
+  async () => {
+    const o = await connect();
+    const request = {
+      ...call,
+      space: "Court 1",
+      date: DATE,
+      time: "19:00",
+      customer_name: "Customer Race",
+      expected_total: 500,
+    };
+    const first = pausedQuote();
+    const service = new BookingService(db, workspace);
+    const create = service.create.bind(service);
+    let secondCustomerId: unknown,
+      createFailure = "";
+    service.create = async (...args) => {
+      secondCustomerId = (args[1] as any).customer.id;
+      try {
+        return await create(...args);
+      } catch (error) {
+        createFailure = (error as Error).message;
+        throw error;
+      }
+    };
+    const second = pausedVoiceQuery("SELECT b.customer_id", service);
+    const firstResult = first.voice.book(o.agent, request);
+    await first.entered.pending;
+    const secondResult = second.voice.book(o.agent, request);
+    // Both initial command checks and the second quote saw a free slot.
+    await second.entered.pending;
+    first.resume.release();
+    const winner = await firstResult;
+    const row = (await bookings.list(o.owner, {})).items[0];
+    second.resume.release();
+    const recovered = await secondResult;
+    assert.equal(secondCustomerId, row.customer_id);
+    assert.match(
+      createFailure,
+      /request key belongs to different booking data/,
+    );
+    assert.equal(recovered.reference, winner.reference);
+    assert.equal((await bookings.list(o.owner, {})).items.length, 1);
+    const detail = await bookings.detail(o.owner, row.id);
+    assert.equal(
+      detail.history.filter((h: any) => h.action === "created").length,
+      1,
+    );
+  },
+);
+
+test(
+  "overlapping reschedules recover after the first move changes the version",
+  { timeout: 15000 },
+  async () => {
+    const o = await connect();
+    const booked = await voice.book(o.agent, {
+      ...call,
+      space: "Court 1",
+      date: DATE,
+      time: "19:00",
+      customer_name: "Moving Caller",
+      expected_total: 500,
+    });
+    const request = {
+      ...call,
+      reference: booked.reference,
+      date: DATE,
+      time: "20:00",
+    };
+    const first = pausedQuote();
+    const service = new BookingService(db, workspace);
+    const reschedule = service.reschedule.bind(service);
+    let secondVersion: unknown,
+      moveFailure = "";
+    service.reschedule = async (...args) => {
+      secondVersion = (args[2] as any).version;
+      try {
+        return await reschedule(...args);
+      } catch (error) {
+        moveFailure = (error as Error).message;
+        throw error;
+      }
+    };
+    const second = pausedVoiceQuery(
+      "SELECT b.id FROM bookings b JOIN memberships",
+      service,
+    );
+    const firstResult = first.voice.reschedule(o.agent, request);
+    await first.entered.pending;
+    const secondResult = second.voice.reschedule(o.agent, request);
+    await second.entered.pending;
+    first.resume.release();
+    const winner = await firstResult;
+    // The second ownership lookup and quote run after the winner commits.
+    second.resume.release();
+    const recovered = await secondResult;
+    assert.equal(secondVersion, 2);
+    assert.match(moveFailure, /request key belongs to different booking data/);
+    assert.equal(recovered.reference, winner.reference);
+    assert.equal(recovered.start_time, "20:00");
+    const row = (await bookings.list(o.owner, {})).items[0];
+    const detail = await bookings.detail(o.owner, row.id);
+    assert.equal(detail.version, 2);
+    assert.equal(
+      detail.history.filter((h: any) => h.action === "rescheduled").length,
+      1,
+    );
+  },
+);
+
+test(
+  "overlapping cancellations recover after the booking leaves the upcoming list",
+  { timeout: 15000 },
+  async () => {
+    const o = await connect();
+    const booked = await voice.book(o.agent, {
+      ...call,
+      space: "Court 1",
+      date: DATE,
+      time: "19:00",
+      customer_name: "Cancelling Caller",
+      expected_total: 500,
+    });
+    const request = { ...call, reference: booked.reference, reason: "Rain" };
+    const service = new BookingService(db, workspace);
+    const status = service.status.bind(service);
+    const statusEntered = gate(),
+      statusResume = gate();
+    service.status = async (...args) => {
+      statusEntered.release();
+      await statusResume.pending;
+      return status(...args);
+    };
+    const first = new VoiceService(db, service);
+    const second = pausedVoiceQuery(
+      "SELECT b.id FROM bookings b JOIN memberships",
+    );
+    const firstResult = first.cancel(o.agent, request);
+    await statusEntered.pending;
+    const secondResult = second.voice.cancel(o.agent, request);
+    await second.entered.pending;
+    statusResume.release();
+    const winner = await firstResult;
+    second.resume.release();
+    const recovered = await secondResult;
+    assert.equal(recovered.reference, winner.reference);
+    assert.equal(recovered.status, "cancelled");
+    const row = (await bookings.list(o.owner, {})).items[0];
+    const detail = await bookings.detail(o.owner, row.id);
+    assert.equal(
+      detail.history.filter((h: any) => h.action === "cancelled").length,
+      1,
+    );
+  },
+);
+
+test(
+  "recovery does not bypass a call service permission revoked during the request",
+  { timeout: 15000 },
+  async () => {
+    const o = await connect();
+    const request = {
+      ...call,
+      space: "Court 1",
+      date: DATE,
+      time: "19:00",
+      customer_name: "Revoked Caller",
+      expected_total: 500,
+    };
+    const first = pausedQuote(),
+      second = pausedQuote();
+    const firstResult = first.voice.book(o.agent, request);
+    await first.entered.pending;
+    const secondResult = second.voice.book(o.agent, request);
+    await second.entered.pending;
+    first.resume.release();
+    await firstResult;
+    await db.query(
+      "UPDATE agent_call_requests SET approved_services=ARRAY['rescheduling'] WHERE organization_id=$1",
+      [o.agent.uid.slice(7)],
+    );
+    const denied = assert.rejects(
+      secondResult,
+      /service is not enabled for phone calls/,
+    );
+    second.resume.release();
+    await denied;
+    const rows = (await bookings.list(o.owner, {})).items;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, "confirmed");
+  },
+);
+
+test("a different call, caller or missing interaction cannot recover an occupied booking", async () => {
+  const o = await connect();
+  const request = {
+    ...call,
+    space: "Court 1",
+    date: DATE,
+    time: "19:00",
+    customer_name: "Original Caller",
+    expected_total: 500,
+  };
+  const booked = await voice.book(o.agent, request);
+  for (const changed of [
+    { interaction_id: "another-interaction" },
+    { caller_phone: "+91 90000 00000" },
+    { interaction_id: "" },
+  ]) {
+    await assert.rejects(
+      voice.book(o.agent, { ...request, ...changed }),
+      /no longer available/,
+    );
+  }
+  const rows = (await bookings.list(o.owner, {})).items;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].reference, booked.reference);
+});
+
+test("replaying an original booking describes its current space and cancellation state", async () => {
+  const o = await connect();
+  const request = {
+    ...call,
+    space: "Court 1",
+    date: DATE,
+    time: "19:00",
+    customer_name: "Current State Caller",
+    expected_total: 500,
+  };
+  const booked = await voice.book(o.agent, request);
+  const move = {
+    ...call,
+    reference: booked.reference,
+    date: DATE,
+    time: "20:00",
+    space: "Court 2",
+  };
+  await voice.reschedule(o.agent, move);
+  const replayed = await voice.book(o.agent, request);
+  assert.equal(replayed.reference, booked.reference);
+  assert.equal(replayed.start_time, "20:00");
+  assert.match(replayed.message, /Court 2/);
+  assert.doesNotMatch(replayed.message, /Court 1/);
+  await voice.cancel(o.agent, {
+    ...call,
+    reference: booked.reference,
+    reason: "Rain",
+  });
+  const afterCancellation = await voice.book(o.agent, request);
+  assert.equal(afterCancellation.ok, false);
+  assert.equal(afterCancellation.status, "cancelled");
+  assert.match(afterCancellation.message, /currently cancelled/);
+  assert.doesNotMatch(afterCancellation.message, /^Booked\./);
+  const replayedMove = await voice.reschedule(o.agent, move);
+  assert.equal(replayedMove.ok, false);
+  assert.equal(replayedMove.status, "cancelled");
+  const rows = (await bookings.list(o.owner, {})).items;
+  assert.equal(rows.length, 1);
+  const detail = await bookings.detail(o.owner, rows[0].id);
+  assert.equal(
+    detail.history.filter((h: any) => h.action === "created").length,
+    1,
+  );
+});
+
+test("a missing response after commit recovers the completed booking", async () => {
+  const o = await connect();
+  const service = new BookingService(db, workspace);
+  const create = service.create.bind(service);
+  service.create = async (...args) => {
+    await create(...args);
+    throw new Error("Response connection closed after commit");
+  };
+  const retrying = new VoiceService(db, service);
+  const result = await retrying.book(o.agent, {
+    ...call,
+    space: "Court 1",
+    date: DATE,
+    time: "19:00",
+    customer_name: "Recovered Response Caller",
+    expected_total: 500,
+  });
+  assert.equal(result.ok, true);
+  const rows = (await bookings.list(o.owner, {})).items;
+  assert.equal(rows.length, 1);
+  assert.equal(result.reference, rows[0].reference);
 });
 
 test("phone tools cannot list, reschedule or cancel bookings created by staff", async () => {

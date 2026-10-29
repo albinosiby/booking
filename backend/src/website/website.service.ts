@@ -248,7 +248,7 @@ export class WebsiteService {
         `SELECT b.id,b.name,b.type,b.status,b.configuration,wb.business_id IS NOT NULL AS enabled,
       COALESCE(wb.card_description,'') AS card_description
       FROM businesses b LEFT JOIN booking_website_businesses wb ON wb.website_id=$1 AND wb.business_id=b.id
-      WHERE b.organization_id=$2 ORDER BY b.display_order,b.id`,
+      WHERE b.organization_id=$2 AND b.status<>'archived' ORDER BY b.display_order,b.id`,
         [site.id, site.organization_id],
       )
     ).rows;
@@ -310,7 +310,7 @@ export class WebsiteService {
       }
       const businessRows = (
         await db.query<Row>(
-          "SELECT * FROM businesses WHERE organization_id=$1 AND id=ANY($2::uuid[])",
+          "SELECT * FROM businesses WHERE organization_id=$1 AND status<>'archived' AND id=ANY($2::uuid[])",
           [old.organization_id, v.business_ids],
         )
       ).rows;
@@ -388,7 +388,7 @@ export class WebsiteService {
           );
         const all = (
           await db.query<Row>(
-            "SELECT * FROM businesses WHERE organization_id=$1",
+            "SELECT * FROM businesses WHERE organization_id=$1 AND status<>'archived'",
             [old.organization_id],
           )
         ).rows;
@@ -497,7 +497,7 @@ export class WebsiteService {
       if (v.kind === "space" || v.kind === "card") {
         const b = (
           await db.query<Row>(
-            "SELECT * FROM businesses WHERE id=$1 AND organization_id=$2",
+            "SELECT * FROM businesses WHERE id=$1 AND organization_id=$2 AND status<>'archived'",
             [v.business_id, old.organization_id],
           )
         ).rows[0];

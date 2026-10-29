@@ -25,7 +25,11 @@ class FakeStaffCash implements IStaffCashRepository {
   @override
   Stream<void> get changes => const Stream.empty();
   @override
-  Future<StaffCashDay> me({String? date}) => throw UnimplementedError();
+  Future<StaffCashDay> me({
+    String? date,
+    int cursor = 0,
+    int settlementCursor = 0,
+  }) => throw UnimplementedError();
   @override
   Future<List<StaffCashMember>> overview() async => staff;
   @override

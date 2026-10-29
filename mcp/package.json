@@ -4,21 +4,27 @@
   "private": true,
   "type": "module",
   "bin": {
-    "eden-booking-mcp": "dist/main.js"
+    "eden-booking-mcp": "dist/main.js",
+    "bookingos-admin-mcp": "dist/admin-main.js",
+    "bookingos-sarvam-login": "dist/admin-login.js",
+    "bookingos-admin-bootstrap": "dist/admin-bootstrap.js"
   },
   "scripts": {
     "build": "tsc",
     "start": "node dist/main.js",
+    "start:admin": "node dist/admin-main.js",
+    "login:sarvam": "node dist/admin-login.js login",
+    "admin:bootstrap": "node dist/admin-bootstrap.js",
     "dev": "tsx src/main.ts",
-    "test": "tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
-    "zod": "^4.6.7"
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^24.19.2",
-    "tsx": "^4.23.15",
-    "typescript": "^5.9.3"
+    "@types/node": "24.19.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
   }
 }

@@ -3,6 +3,14 @@ import type { SupportService } from "../src/support/support.service";
 import type { AgentCallService } from "../src/agent-calls/agent-calls.service";
 import type { AdminService } from "../src/admin/admin.service";
 import type { AdminSarvamService } from "../src/admin/admin-sarvam.service";
+import {
+  AdminMcpError,
+  type AdminMcpService,
+} from "../src/admin/admin-mcp.service";
+import {
+  voiceScopeForRequest,
+  type AdminMcpAuthService,
+} from "../src/admin/admin-mcp-auth";
 import { panelActor } from "../src/admin/panel-auth";
 import type { WebsiteService } from "../src/website/website.service";
 import type { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
@@ -39,6 +47,8 @@ type Services = {
   notifications: NotificationService;
   admin: AdminService;
   adminSarvam: AdminSarvamService;
+  adminMcp?: AdminMcpService;
+  adminMcpAuth?: AdminMcpAuthService;
   support: SupportService;
   agentCalls: AgentCallService;
   website: WebsiteService;
@@ -67,8 +77,12 @@ type Input = {
 };
 type Route = { method: string; path: string; run: (i: Input) => unknown };
 const MAX_BODY = 3 * 1024 * 1024;
-async function body(req: Request, limit = MAX_BODY) {
-  if (!["POST", "PATCH", "PUT"].includes(req.method)) return undefined;
+async function body(req: Request, limit = MAX_BODY, allowDelete = false) {
+  if (
+    !["POST", "PATCH", "PUT"].includes(req.method) &&
+    !(allowDelete && req.method === "DELETE")
+  )
+    return undefined;
   if (!req.body) return undefined;
   if (Number(req.headers.get("content-length")) > limit)
     throw new HttpException("Request body is too large.", 413);
@@ -119,6 +133,28 @@ export function createHandler(
   const routes: Route[] = [];
   const add = (method: string, path: string, run: Route["run"]) =>
     routes.push({ method, path, run });
+  const am = services.adminMcp;
+  if (am) {
+    const prefix = "/v1/admin-mcp/voice";
+    add("GET", `${prefix}/requests`, (i) => am.list(i.actor, i.query));
+    add("GET", `${prefix}/requests/:org`, (i) => am.get(i.actor, i.params.org));
+    add("GET", `${prefix}/jobs/:org`, (i) => am.job(i.actor, i.params.org));
+    for (const operation of ["prepare", "start", "pause"] as const)
+      add("POST", `${prefix}/requests/:org/${operation}`, (i) =>
+        am[operation](i.actor, i.params.org, i.body),
+      );
+    for (const operation of [
+      "claim",
+      "checkpoint",
+      "release",
+      "credential",
+      "verify",
+      "activate",
+    ] as const)
+      add("POST", `${prefix}/jobs/:org/${operation}`, (i) =>
+        am[operation](i.actor, i.params.org, i.body),
+      );
+  }
   add("POST", "/v1/notifications/devices", (i) =>
     services.notifications.register(i.actor, i.body),
   );
@@ -344,6 +380,9 @@ export function createHandler(
   );
   add("PATCH", "/v1/businesses/:id", (i) =>
     w.renameBusiness(i.actor, i.params.id, i.body),
+  );
+  add("DELETE", "/v1/businesses/:id", (i) =>
+    w.archiveBusiness(i.actor, i.params.id, i.body),
   );
   add("POST", "/v1/businesses/:id/resources", (i) =>
     w.addResource(i.actor, i.params.id, i.body),
@@ -679,7 +718,7 @@ export function createHandler(
         return respond({
           status: "ok",
           runtime: "supabase-edge",
-          revision: "2026-10-29-business-booking-status",
+          revision: "2026-10-29-voice-retry-recovery",
         });
       }
       if (req.method === "GET" && path === "/v1/catalog")
@@ -825,21 +864,31 @@ export function createHandler(
         req.headers.get("authorization") ?? "",
       )?.[1];
       const isAdmin = path.startsWith("/v1/admin/");
+      const mcpScope = voiceScopeForRequest(req.method, path);
       if (!isAdmin && !token)
         throw new UnauthorizedException("Sign in to continue.");
       const authStarted = performance.now();
-      const input = isAdmin ? await body(req) : undefined;
+      const input = isAdmin || mcpScope ? await body(req) : undefined;
       const actor = await (
-        isAdmin
-          ? Promise.resolve().then(() =>
-              panelActor(
-                req.headers.get("x-bookingos-admin"),
-                req.method,
-                path + url.search,
-                input,
-              ),
-            )
-          : authenticate(token!)
+        mcpScope
+          ? services.adminMcpAuth
+            ? services.adminMcpAuth.authenticate(
+                req.headers.get("authorization"),
+                mcpScope,
+              )
+            : Promise.reject(
+                new HttpException("Admin MCP is not configured.", 503),
+              )
+          : isAdmin
+            ? Promise.resolve().then(() =>
+                panelActor(
+                  req.headers.get("x-bookingos-admin"),
+                  req.method,
+                  path + url.search,
+                  input,
+                ),
+              )
+            : authenticate(token!)
       ).finally(() => {
         authenticationMs = performance.now() - authStarted;
       });
@@ -859,7 +908,10 @@ export function createHandler(
       const result = await match.run({
         actor,
         params,
-        body: isAdmin ? input : await body(req),
+        body:
+          isAdmin || mcpScope
+            ? input
+            : await body(req, MAX_BODY, match.path === "/v1/businesses/:id"),
         query: Object.fromEntries(url.searchParams),
       });
       if (result instanceof Response) {
@@ -872,7 +924,11 @@ export function createHandler(
       let status = 500,
         message = "Something went wrong. Please try again.",
         code = "INTERNAL_ERROR";
-      if (error instanceof ZodError) {
+      if (error instanceof AdminMcpError) {
+        status = error.getStatus();
+        message = error.message;
+        code = error.code;
+      } else if (error instanceof ZodError) {
         status = 422;
         message = error.issues
           .map((i) => `${i.path.join(".")}: ${i.message}`)

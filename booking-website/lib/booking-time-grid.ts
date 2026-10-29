@@ -93,6 +93,7 @@ export function bookingTimeCells({
       ? (Date.parse(`${key}:00Z`) - Date.parse(`${startKey}:00Z`)) / 60000
       : 0;
     const belowMinimum = difference > 0 && difference < (minimum ?? 0);
+    // Start availability covers the whole minimum booking, not just this instant.
     const availableLabel =
       base?.status === "past"
         ? "Past"
@@ -102,9 +103,9 @@ export function bookingTimeCells({
             ? pool && base.remaining_capacity != null
               ? `${base.remaining_capacity} places`
               : "Available"
-            : pool
-              ? "Unavailable"
-              : "Booked";
+            : !pool && minimum
+              ? `Unavailable for ${minutesLabel(minimum)}`
+              : "Unavailable";
     const label = isStart
       ? "Start · tap to clear"
       : isEnd
@@ -124,7 +125,7 @@ export function bookingTimeCells({
                     : finish?.status === "booked"
                       ? pool
                         ? "Unavailable"
-                        : "Booked"
+                        : "Overlaps a booking"
                       : "Not a valid end"
           : inRange
             ? "Selected range"

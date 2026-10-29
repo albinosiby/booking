@@ -38,6 +38,11 @@ class StaffCashHoldingCard extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
+          const SizedBox(height: 8),
+          Text(
+            'Current balance · carries across days',
+            style: TextStyle(color: scheme.onPrimary),
+          ),
         ],
       ),
     );
@@ -82,12 +87,67 @@ String staffCashRemaining(int after, String currency) => after == 0
     ? 'Still to hand over ${financeMoney(after, currency)}'
     : 'Still owed to staff ${financeMoney(-after, currency)}';
 
+class StaffCashTransactionTile extends StatelessWidget {
+  const StaffCashTransactionTile({
+    super.key,
+    required this.item,
+    required this.currency,
+  });
+  final StaffCashTransaction item;
+  final String currency;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        spacing: 16,
+        runSpacing: 8,
+        children: [
+          Text(
+            item.customer.isNotEmpty
+                ? item.customer
+                : item.reason.isNotEmpty
+                ? item.reason
+                : financeLabel(item.kind),
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          Text(
+            financeMoney(item.netMinor, currency),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: item.netMinor < 0
+                  ? Theme.of(context).colorScheme.error
+                  : null,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Text(
+        [
+          if (item.reference.isNotEmpty) item.reference,
+          financeLabel(item.kind),
+          if (item.methods.isNotEmpty)
+            item.methods.map(financeLabel).join(' / '),
+          if (item.space.isNotEmpty) item.space,
+          item.time,
+          item.mine ? 'You' : item.staffName,
+        ].join(' · '),
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+    ],
+  );
+}
+
 class StaffCashSettlementTile extends StatelessWidget {
   const StaffCashSettlementTile({
     super.key,
     required this.item,
     required this.currency,
+    this.personal = false,
   });
+  final bool personal;
   final StaffCashSettlement item;
   final String currency;
   @override
@@ -97,9 +157,13 @@ class StaffCashSettlementTile extends StatelessWidget {
       item.collected ? Icons.south_west : Icons.north_east,
       color: Theme.of(context).colorScheme.primary,
     ),
-    title: Text(staffCashSettlementTitle(item, currency)),
+    title: Text(
+      personal
+          ? '${item.collected ? 'Given to owner' : 'Received from owner'} · ${financeMoney(item.amountMinor, currency)}'
+          : staffCashSettlementTitle(item, currency),
+    ),
     subtitle: Text(
-      '${staffCashRemaining(item.balanceAfterMinor, currency)} · ${financeStamp(item.settledAt.toIso8601String())}'
+      '${personal && item.balanceAfterMinor < 0 ? 'Owner still owes you ${financeMoney(-item.balanceAfterMinor, currency)}' : staffCashRemaining(item.balanceAfterMinor, currency)} · ${financeStamp(item.settledAt.toIso8601String())}'
       '${item.note.isEmpty ? '' : '\n${item.note}'}',
     ),
     isThreeLine: item.note.isNotEmpty,

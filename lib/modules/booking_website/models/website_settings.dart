@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:equatable/equatable.dart';
+import 'website_content.dart';
 
 const websitePhotoLimit = 40, websiteSpacePhotoLimit = 4;
 const websitePhotoSourceMaxBytes = 10 * 1024 * 1024;
@@ -99,6 +100,9 @@ class WebsiteBusiness extends Equatable {
     this.spaces = const [],
   });
   final String id, name, type, status, description;
+  String get effectiveDescription => description.isEmpty
+      ? defaultWebsiteBusinessDescription(type, name)
+      : description;
   final bool enabled;
   final List<WebsiteSpace> spaces;
   WebsiteBusiness copyWith({String? description, List<WebsiteSpace>? spaces}) =>
@@ -172,6 +176,10 @@ class WebsiteSettings extends Equatable {
       cancellationPolicy,
       status,
       heroHeading;
+  String get effectiveHeroHeading =>
+      heroHeading.isEmpty ? defaultWebsiteHeroHeading : heroHeading;
+  String get effectiveDescription =>
+      description.isEmpty ? defaultWebsiteDescription(title) : description;
   final bool publishLogo;
 
   /// Wildcard domain, e.g. `bookingos.online`; null when the API uses path links.

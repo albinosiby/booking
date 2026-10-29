@@ -250,7 +250,8 @@ export class AccountsService {
         "Finance or payment permission is required.",
       );
     await systemAccounts(this.db, m.organization_id);
-    const w = await this.workspace.workspace(actor),
+    // Historical businesses are retained in finance filters and reports.
+    const w = await this.workspace.workspace(actor, true),
       context = await this.context(m);
     return {
       ...context,
@@ -267,7 +268,7 @@ export class AccountsService {
       accounts: await this.accounts(m, m.role === "owner"),
       businesses: w.businesses.map((b: Row) => ({
         id: b.id,
-        name: b.name,
+        name: b.status === "archived" ? `${b.name} (removed)` : b.name,
         resources: b.resources,
       })),
       routes: (

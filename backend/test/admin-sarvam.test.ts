@@ -460,6 +460,20 @@ test("approval checks services, capabilities and number ownership before reservi
   assert.equal((await service.inventory(root)).numbers[0].assigned, true);
   await assert.rejects(admin.rotateToolKey(root, org), /automatically/);
 });
+test("an approval change stops setup before creating provider resources", async () => {
+  const before = writes;
+  await db.query(
+    "UPDATE agent_call_requests SET approved_services=$2 WHERE organization_id=$1",
+    [org, ["booking", "enquiry"]],
+  );
+  await assert.rejects(service.resume(root, org), /Approved services changed/);
+  assert.equal(writes, before);
+  assert.equal((await service.job(root, org)).step, "create");
+  await db.query(
+    "UPDATE agent_call_requests SET approved_services=$2 WHERE organization_id=$1",
+    [org, ["booking"]],
+  );
+});
 test("lost create response and expired OAuth resume without a second agent", async () => {
   loseCreation = true;
   await assert.rejects(service.resume(root, org), /did not respond/);
@@ -514,7 +528,19 @@ test("all tenant tools are verified and a lost deployment response does not dupl
   assert.deepEqual(s.approved_services, ["booking"]);
   assert.equal(s.phone_number, "+919999999991");
   const remote = agents[done.app_id];
-  assert.equal(remote.tools.length, 7);
+  assert.deepEqual(
+    remote.tools.map((tool: Json) => tool.name).sort(),
+    [
+      "bookingos_list_spaces",
+      "bookingos_check_availability",
+      "bookingos_book_slot",
+      "bookingos_call_completed",
+    ].sort(),
+  );
+  assert.doesNotMatch(
+    remote.config.llm_config.agent_config.states.main.instructions,
+    /tool:bookingos_(cancel_booking|reschedule_booking|my_bookings)/,
+  );
   assert.equal(
     remote.tools.find((t: Json) => t.name === "bookingos_call_completed")
       .connector_config.lifecycle,
@@ -578,9 +604,24 @@ test("a second organization gets its own agent and secret; suspension and tool t
     await service.resume(root, org2);
   const actualSecond = await service.job(root, org2);
   const tool = agents[actualSecond.app_id].tools.find(
-    (t: Json) => t.name === "bookingos_book_slot",
+    (t: Json) => t.name === "bookingos_check_availability",
   );
   const reference = tool.connector_config.auth.value.secret_id;
+  assert.deepEqual(
+    agents[actualSecond.app_id].tools
+      .map((candidate: Json) => candidate.name)
+      .sort(),
+    [
+      "bookingos_list_spaces",
+      "bookingos_check_availability",
+      "bookingos_call_completed",
+    ].sort(),
+  );
+  assert.doesNotMatch(
+    agents[actualSecond.app_id].config.llm_config.agent_config.states.main
+      .instructions,
+    /tool:bookingos_(book_slot|cancel_booking|reschedule_booking|my_bookings)/,
+  );
   tool.connector_config.auth.value.secret_id = "foreign-secret";
   await assert.rejects(service.resume(root, org2), /tool verification/);
   assert.equal((await calls.status(second)).enabled, false);

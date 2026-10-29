@@ -11,6 +11,7 @@ import { Database } from "../common/database";
 import { Actor } from "../common/auth.guard";
 import { BookingService } from "../bookings/booking.service";
 import { voiceAccess } from "../agent-calls/agent-call-policy";
+import type { CallService } from "../agent-calls/agent-call-policy";
 type Row = Record<string, any>;
 
 /**
@@ -346,39 +347,46 @@ export class VoiceService {
     const key = commandKey(this.org(actor), interaction_id, "book", request);
     const previous = await this.replay(actor, key, interaction_id);
     if (previous) return this.booked(previous, found);
-    const selection = this.selection(
-      found,
-      v.date,
-      parseTime(v.time),
-      v.duration_minutes,
-      v.people,
-    );
-    const quote = await this.bookings.quote(actor, {
-      selection,
-      exclude_booking_id: null,
-    });
-    if (
-      v.expected_total !== undefined &&
-      Math.round(v.expected_total * 100) !== quote.total_minor
-    )
-      throw new ConflictException(
-        `The price is now ${money(quote.total_minor, found.currency)}. Please confirm with the caller before booking.`,
+    try {
+      const selection = this.selection(
+        found,
+        v.date,
+        parseTime(v.time),
+        v.duration_minutes,
+        v.people,
       );
-    const customer = {
-      id: await this.existingCustomer(actor, phoneNumber),
-      name: v.customer_name,
-      phone: phoneNumber.replace(/[^\d+]/g, ""),
-      email: null,
-    };
-    const { id } = await this.bookings.create(actor, {
-      command_key: key,
-      selection,
-      quote_token: quote.quote_token,
-      customer,
-      notes: `Booked through the call service${v.interaction_id ? ` (call ${v.interaction_id})` : ""}.`,
-      payments: [],
-    });
-    return this.booked(await this.detail(actor, id), found);
+      const quote = await this.bookings.quote(actor, {
+        selection,
+        exclude_booking_id: null,
+      });
+      if (
+        v.expected_total !== undefined &&
+        Math.round(v.expected_total * 100) !== quote.total_minor
+      )
+        throw new ConflictException(
+          `The price is now ${money(quote.total_minor, found.currency)}. Please confirm with the caller before booking.`,
+        );
+      const customer = {
+        id: await this.existingCustomer(actor, phoneNumber),
+        name: v.customer_name,
+        phone: phoneNumber.replace(/[^\d+]/g, ""),
+        email: null,
+      };
+      const { id } = await this.bookings.create(actor, {
+        command_key: key,
+        selection,
+        quote_token: quote.quote_token,
+        customer,
+        notes: `Booked through the call service${v.interaction_id ? ` (call ${v.interaction_id})` : ""}.`,
+        payments: [],
+      });
+      return this.booked(await this.detail(actor, id), found);
+    } catch (error) {
+      return this.booked(
+        await this.recover(actor, key, interaction_id, "booking", error),
+        found,
+      );
+    }
   }
   /**
    * A Sarvam retry of the same call and request returns the first result
@@ -389,14 +397,42 @@ export class VoiceService {
     const { id } = (await this.bookings.commandResult(actor, key)) as Row;
     return id ? this.detail(actor, id) : null;
   }
+  /**
+   * Overlapping requests can both miss the initial replay check. A winner's
+   * inventory and command response commit together; recover that exact command
+   * after a losing quote/write instead of describing its booking as a conflict.
+   */
+  private async recover(
+    actor: Actor,
+    key: string,
+    call: string,
+    service: CallService,
+    error: unknown,
+  ): Promise<Row> {
+    if (!call || error instanceof ForbiddenException) throw error;
+    await voiceAccess(this.db, actor, [service]);
+    const completed = await this.replay(actor, key, call);
+    if (!completed) throw error;
+    return completed;
+  }
   private booked(
     booking: Row,
     found: Awaited<ReturnType<VoiceService["resolve"]>>,
   ) {
+    if (booking.status !== "confirmed")
+      return this.currentState(booking, found.currency);
+    const space = booking.price_snapshot?.space_name ?? found.resource.name;
     return {
       ok: true,
-      message: `Booked. Your booking reference is ${booking.reference.split("").join(" ")}. ${found.resource.name}, ${this.span(booking)}. Total ${money(booking.total_minor, found.currency)}, payable at the venue.`,
+      message: `Booked. Your booking reference is ${booking.reference.split("").join(" ")}. ${space}, ${this.span(booking)}. Total ${money(booking.total_minor, found.currency)}, payable at the venue.`,
       ...this.summary(booking, found.currency),
+    };
+  }
+  private currentState(booking: Row, currency: string) {
+    return {
+      ok: false,
+      message: `Your existing booking ${booking.reference.split("").join(" ")} is currently ${booking.status.replace(/_/g, " ")}. Please contact the venue if you need help with it.`,
+      ...this.summary(booking, currency),
     };
   }
   /** Reuses the newest customer with this phone in the agent's own businesses. */
@@ -448,6 +484,8 @@ export class VoiceService {
     return {
       reference: b.reference as string,
       status: b.status as string,
+      space: (b.price_snapshot?.space_name ?? "") as string,
+      activity: (b.price_snapshot?.option_name ?? "") as string,
       date: b.local_start.slice(0, 10) as string,
       start_time: b.local_start.slice(11, 16) as string,
       end_time: b.local_end.slice(11, 16) as string,
@@ -470,7 +508,10 @@ export class VoiceService {
       message: items.length
         ? "Upcoming bookings: " +
           items
-            .map((b) => `${b.reference.split("").join(" ")} on ${b.span}`)
+            .map(
+              (b) =>
+                `${b.reference.split("").join(" ")}: ${b.space}${b.activity ? `, ${b.activity}` : ""}, on ${b.span}`,
+            )
             .join("; ") +
           "."
         : "I could not find any upcoming call bookings for this phone number. Bookings made through other channels must be managed by venue staff.",
@@ -499,43 +540,54 @@ export class VoiceService {
     const catalog = await this.bookings.catalog(actor);
     const previous = await this.replay(actor, key, interaction_id);
     if (previous) return this.moved(previous, catalog, null);
-    const old = await this.owned(actor, v.caller_phone, v.reference);
-    const business = catalog.businesses.find(
-      (b: Row) => b.id === old.business_id,
-    );
-    const current = business?.resources.find(
-      (r: Row) => r.id === old.resource_id,
-    );
-    if (!business || !current)
-      throw new ForbiddenException("This booking cannot be changed by phone.");
-    const found = await this.resolve(actor, {
-      business: business.name,
-      space: v.space || current.name,
-      activity:
-        current.options.find((o: Row) => o.id === old.selection.option_id)
-          ?.name ?? "",
-    });
-    const selection = this.selection(
-      found,
-      v.date,
-      parseTime(v.time),
-      v.duration_minutes ?? old.selection.duration_minutes,
-      old.selection.people,
-    );
-    const quote = await this.bookings.quote(actor, {
-      selection,
-      exclude_booking_id: old.id,
-    });
-    await this.bookings.reschedule(actor, old.id, {
-      command_key: key,
-      version: old.version,
-      selection,
-      quote_token: quote.quote_token,
-      reason: `Rescheduled by the caller through the call service${v.interaction_id ? ` (call ${v.interaction_id})` : ""}.`,
-    });
-    return this.moved(await this.detail(actor, old.id), catalog, old);
+    try {
+      const old = await this.owned(actor, v.caller_phone, v.reference);
+      const business = catalog.businesses.find(
+        (b: Row) => b.id === old.business_id,
+      );
+      const current = business?.resources.find(
+        (r: Row) => r.id === old.resource_id,
+      );
+      if (!business || !current)
+        throw new ForbiddenException(
+          "This booking cannot be changed by phone.",
+        );
+      const found = await this.resolve(actor, {
+        business: business.name,
+        space: v.space || current.name,
+        activity:
+          current.options.find((o: Row) => o.id === old.selection.option_id)
+            ?.name ?? "",
+      });
+      const selection = this.selection(
+        found,
+        v.date,
+        parseTime(v.time),
+        v.duration_minutes ?? old.selection.duration_minutes,
+        old.selection.people,
+      );
+      const quote = await this.bookings.quote(actor, {
+        selection,
+        exclude_booking_id: old.id,
+      });
+      await this.bookings.reschedule(actor, old.id, {
+        command_key: key,
+        version: old.version,
+        selection,
+        quote_token: quote.quote_token,
+        reason: `Rescheduled by the caller through the call service${v.interaction_id ? ` (call ${v.interaction_id})` : ""}.`,
+      });
+      return this.moved(await this.detail(actor, old.id), catalog, old);
+    } catch (error) {
+      return this.moved(
+        await this.recover(actor, key, interaction_id, "rescheduling", error),
+        catalog,
+        null,
+      );
+    }
   }
   private moved(b: Row, catalog: Row, old: Row | null) {
+    if (b.status !== "confirmed") return this.currentState(b, catalog.currency);
     const space =
       catalog.businesses
         .flatMap((x: Row) => x.resources)
@@ -559,22 +611,30 @@ export class VoiceService {
     ]);
     const previous = await this.replay(actor, key, v.interaction_id);
     if (previous) return this.cancelled(actor, previous);
-    const b = await this.owned(actor, v.caller_phone, v.reference);
-    await this.bookings.status(actor, b.id, {
-      command_key: key,
-      version: b.version,
-      status: "cancelled",
-      reason:
-        `Cancelled by the caller through the call service${v.reason ? `: ${v.reason}` : ""}`.slice(
-          0,
-          500,
-        ),
-    });
-    return this.cancelled(actor, await this.detail(actor, b.id));
+    try {
+      const b = await this.owned(actor, v.caller_phone, v.reference);
+      await this.bookings.status(actor, b.id, {
+        command_key: key,
+        version: b.version,
+        status: "cancelled",
+        reason:
+          `Cancelled by the caller through the call service${v.reason ? `: ${v.reason}` : ""}`.slice(
+            0,
+            500,
+          ),
+      });
+      return await this.cancelled(actor, await this.detail(actor, b.id));
+    } catch (error) {
+      return this.cancelled(
+        actor,
+        await this.recover(actor, key, v.interaction_id, "cancellation", error),
+      );
+    }
   }
   private async cancelled(actor: Actor, after: Row) {
     const b = after;
     const { currency } = await this.bookings.catalog(actor);
+    if (b.status !== "cancelled") return this.currentState(b, currency);
     const refund = after.refund_due_minor
       ? ` ${money(after.refund_due_minor, currency)} already paid will be refunded by the venue.`
       : "";

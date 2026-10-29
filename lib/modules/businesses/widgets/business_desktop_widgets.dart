@@ -5,6 +5,7 @@ import 'business_icon.dart';
 import 'business_management_widgets.dart';
 import 'business_availability_menu.dart';
 import '../models/business_availability_action.dart';
+import '../models/business_removal_action.dart';
 
 /// Rounded status label: green when ready, amber when paused, neutral when
 /// setup is still needed.
@@ -81,12 +82,14 @@ class BusinessGridCard extends StatelessWidget {
     this.onRename,
     this.onConfigure,
     this.onAvailability,
+    this.onRemove,
   });
   final Business business;
   final int position;
   final String? location;
   final VoidCallback? onOpen, onRename, onConfigure;
   final ValueChanged<BusinessAvailabilityAction>? onAvailability;
+  final ValueChanged<BusinessRemovalAction>? onRemove;
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context), colors = theme.colorScheme;
@@ -112,6 +115,7 @@ class BusinessGridCard extends StatelessWidget {
                 BusinessAvailabilityMenu(
                   business: business,
                   onSelected: onAvailability,
+                  onRemove: onRemove,
                 ),
               ],
             ),

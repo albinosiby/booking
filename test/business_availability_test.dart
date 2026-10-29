@@ -147,7 +147,7 @@ void main() {
       await tester.pumpAndSettle();
       final menu = find.byKey(const ValueKey('business-menu-turf'));
       expect(menu, findsOneWidget);
-      expect(find.byKey(const ValueKey('business-menu-pool')), findsNothing);
+      expect(find.byKey(const ValueKey('business-menu-pool')), findsOneWidget);
       await tester.tap(menu);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Turn off business'));

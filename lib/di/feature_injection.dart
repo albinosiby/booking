@@ -196,7 +196,9 @@ void registerFeatureDependencies(GetIt di) {
   di.registerLazySingleton<IStaffCashRepository>(
     () => RestStaffCashRepository(di()),
   );
-  di.registerFactory<StaffCashCubit>(() => StaffCashCubit(di()));
+  di.registerFactoryParam<StaffCashCubit, WorkspaceSession, void>(
+    (session, _) => StaffCashCubit(di(), session: session),
+  );
   di.registerFactory<OwnerStaffCashCubit>(() => OwnerStaffCashCubit(di()));
   di.registerFactory<StaffCashHistoryCubit>(() => StaffCashHistoryCubit(di()));
   di.registerLazySingleton<IInvoiceRepository>(

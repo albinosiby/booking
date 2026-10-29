@@ -151,7 +151,7 @@ class _BusinessTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
-                  initialValue: business.description,
+                  initialValue: business.effectiveDescription,
                   enabled: !busy,
                   maxLines: 2,
                   maxLength: 300,

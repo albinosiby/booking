@@ -21,9 +21,13 @@ const settleSchema = z
   })
   .strict();
 const dateSchema = z
-  .object({ date: z.iso.date().optional() })
+  .object({
+    date: z.iso.date().optional(),
+    cursor: z.coerce.number().int().min(0).max(1000000).default(0),
+    settlement_cursor: z.coerce.number().int().min(0).max(1000000).default(0),
+  })
   .strict()
-  .default({});
+  .default({ cursor: 0, settlement_cursor: 0 });
 // Cash held = cash-account ledger lines attributed to the staff member (a reversal counts for whoever
 // recorded the original entry) minus cash already collected plus cash already given back.
 const HOLDING_SQL = `SELECT m.id AS membership_id,
@@ -69,31 +73,38 @@ export class StaffCashService {
     const m = await this.workspace.member(actor);
     if (m.role === "owner")
       throw new ForbiddenException("Owners use the staff cash overview.");
+    if (
+      !["collect_payments", "view_finance"].some((p) =>
+        m.permissions.includes(p),
+      )
+    )
+      throw new ForbiddenException(
+        "Payment collection or finance access is required.",
+      );
     const tz = (
       await this.db.query<Row>(
         "SELECT COALESCE((SELECT timezone FROM locations WHERE organization_id=$1 ORDER BY id LIMIT 1),'UTC') AS tz",
         [m.organization_id],
       )
     ).rows[0].tz;
-    const date =
-      v.date ??
-      (
-        await this.db.query<Row>(
-          "SELECT (now() AT TIME ZONE $1)::date::text AS d",
-          [tz],
-        )
-      ).rows[0].d;
+    const today = (
+      await this.db.query<Row>(
+        "SELECT (now() AT TIME ZONE $1)::date::text AS d",
+        [tz],
+      )
+    ).rows[0].d;
+    const date = v.date ?? today;
     const holding =
       (await this.holdings(this.db, m.organization_id, m.id)).get(m.id) ?? 0;
     const range = `e.occurred_at >= ($3::date::timestamp AT TIME ZONE $2) AND e.occurred_at < (($3::date+1)::timestamp AT TIME ZONE $2)`;
     // Totals: only the member's own entries (reversals credit the original recorder).
     const lines = (
       await this.db.query<Row>(
-        `SELECT l.method,a.kind AS account_kind,e.kind AS event_kind,sum(l.amount_minor) AS total
+        `SELECT l.method,a.kind AS account_kind,COALESCE(o.kind,e.kind) AS event_kind,sum(l.amount_minor) AS total
          FROM finance_lines l JOIN money_accounts a ON a.id=l.account_id
          JOIN finance_events e ON e.id=l.event_id LEFT JOIN finance_events o ON o.id=e.reverses_id
          WHERE e.organization_id=$1 AND e.kind<>'transfer' AND COALESCE(o.recorded_by,e.recorded_by)=$4 AND ${range}
-         GROUP BY l.method,a.kind,e.kind`,
+         GROUP BY l.method,a.kind,COALESCE(o.kind,e.kind)`,
         [m.organization_id, tz, date, m.user_id],
       )
     ).rows;
@@ -108,49 +119,72 @@ export class StaffCashService {
     for (const r of lines) {
       const t = Number(r.total);
       if (r.event_kind === "expense") expenses += -t;
-      else if (r.event_kind === "booking_refund") refunded += -t;
+      else if (["booking_refund", "admission_refund"].includes(r.event_kind))
+        refunded += -t;
       else {
         collected += t;
         by_method[r.method] = (by_method[r.method] ?? 0) + t;
         if (r.account_kind !== "cash") bank += t;
       }
     }
-    // Transactions: every entry in the member's assigned spaces for the day.
+    // Personal activity only, including owner reversals attributed to this member.
     const transactions = (
       await this.db.query<Row>(
-        `SELECT e.id,e.kind,e.reason,e.reference,e.category,r.name AS space_name,bs.name AS business_name,
+        `SELECT e.id,e.kind,e.reason,
+         COALESCE(b.reference,ad.reference,e.reference) AS reference,
+         COALESCE(b.customer_snapshot->>'name',ad.customer_snapshot->>'name','') AS customer_name,
+         r.name AS space_name,bs.name AS business_name,
          COALESCE(mm.display_name,e.recorded_by) AS staff_name,(e.recorded_by=$4) AS mine,
          (e.occurred_at AT TIME ZONE $2)::text AS local_time,
          (SELECT jsonb_agg(jsonb_build_object('method',l.method,'amount_minor',l.amount_minor,'is_cash',a.kind='cash') ORDER BY l.id)
            FROM finance_lines l JOIN money_accounts a ON a.id=l.account_id WHERE l.event_id=e.id) AS lines
-         FROM finance_events e LEFT JOIN resources r ON r.id=e.resource_id LEFT JOIN businesses bs ON bs.id=e.business_id
-         LEFT JOIN memberships mm ON mm.user_id=e.recorded_by
-         WHERE e.organization_id=$1 AND e.kind<>'transfer' AND ${range}
-          AND EXISTS(SELECT 1 FROM staff_assignments a WHERE a.membership_id=$5 AND a.business_id=e.business_id
-           AND (jsonb_array_length(a.resource_ids)=0 OR a.resource_ids ? e.resource_id::text))
-         ORDER BY e.occurred_at DESC,e.id DESC LIMIT 200`,
-        [m.organization_id, tz, date, m.user_id, m.id],
+         FROM finance_events e LEFT JOIN finance_events o ON o.id=e.reverses_id
+         LEFT JOIN booking_payments bp ON bp.id=COALESCE(e.booking_payment_id,o.booking_payment_id)
+         LEFT JOIN bookings b ON b.id=bp.booking_id
+         LEFT JOIN admission_payments ap ON ap.id=COALESCE(e.admission_payment_id,o.admission_payment_id)
+         LEFT JOIN admissions ad ON ad.id=ap.admission_id
+         LEFT JOIN resources r ON r.id=e.resource_id LEFT JOIN businesses bs ON bs.id=e.business_id
+         LEFT JOIN memberships mm ON mm.user_id=e.recorded_by AND mm.organization_id=e.organization_id
+         WHERE e.organization_id=$1 AND COALESCE(o.kind,e.kind)<>'transfer' AND ${range}
+          AND COALESCE(o.recorded_by,e.recorded_by)=$4
+         ORDER BY e.occurred_at DESC,e.id DESC LIMIT 51 OFFSET $5`,
+        [m.organization_id, tz, date, m.user_id, v.cursor],
       )
     ).rows;
     const settlements = (
       await this.db.query<Row>(
-        `SELECT s.*,$2::text AS staff_name FROM staff_cash_settlements s WHERE s.membership_id=$1 ORDER BY s.settled_at DESC,s.id LIMIT 20`,
-        [m.id, m.display_name],
+        `SELECT s.*,$2::text AS staff_name FROM staff_cash_settlements s WHERE s.membership_id=$1
+         AND s.organization_id=$3 ORDER BY s.settled_at DESC,s.id DESC LIMIT 51 OFFSET $4`,
+        [m.id, m.display_name, m.organization_id, v.settlement_cursor],
       )
     ).rows;
+    const handovers = (
+      await this.db.query<Row>(
+        `SELECT COALESCE(sum(amount_minor) FILTER (WHERE direction='collect'),0) AS given,
+         COALESCE(sum(amount_minor) FILTER (WHERE direction='give'),0) AS received
+         FROM staff_cash_settlements WHERE organization_id=$1 AND membership_id=$2`,
+        [m.organization_id, m.id],
+      )
+    ).rows[0];
     return {
       date,
+      today,
+      handed_over_minor: Number(handovers.given),
+      received_from_owner_minor: Number(handovers.received),
+      next_cursor: transactions.length > 50 ? v.cursor + 50 : null,
+      next_settlement_cursor:
+        settlements.length > 50 ? v.settlement_cursor + 50 : null,
       collected_minor: collected,
       refunded_minor: refunded,
       expenses_minor: expenses,
       by_method,
       bank_minor: bank,
       cash_holding_minor: holding,
-      transactions: transactions.map((t) => ({
+      transactions: transactions.slice(0, 50).map((t) => ({
         ...t,
         lines: (t.lines ?? []).map((l: Row) => ({ ...l })),
       })),
-      settlements: settlements.map((s) => this.settlementRow(s)),
+      settlements: settlements.slice(0, 50).map((s) => this.settlementRow(s)),
     };
   }
   async overview(actor: Actor) {

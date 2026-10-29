@@ -12,7 +12,9 @@ class AdaptiveScaffold extends StatelessWidget {
     required this.shell,
     this.onTabSelected,
     this.branches = const [0, 1, 2, 3, 4],
+    this.staffPayments = false,
   });
+  final bool staffPayments;
   final List<int> branches;
   final StatefulNavigationShell shell;
   final VoidCallback? onTabSelected;
@@ -31,6 +33,7 @@ class AdaptiveScaffold extends StatelessWidget {
               index: shell.currentIndex,
               onTap: select,
               branches: branches,
+              staffPayments: staffPayments,
             ),
           )
         : Scaffold(
@@ -40,6 +43,7 @@ class AdaptiveScaffold extends StatelessWidget {
                   index: shell.currentIndex,
                   onTap: select,
                   branches: branches,
+                  staffPayments: staffPayments,
                   extended: type == ScreenType.desktop,
                 ),
                 Expanded(child: SafeArea(left: false, child: shell)),
@@ -56,7 +60,9 @@ class AppSideNav extends StatelessWidget {
     required this.onTap,
     required this.extended,
     this.branches = const [0, 1, 2, 3, 4],
+    this.staffPayments = false,
   });
+  final bool staffPayments;
   final List<int> branches;
   final int index;
   final ValueChanged<int> onTap;
@@ -105,7 +111,7 @@ class AppSideNav extends StatelessWidget {
                 ),
               for (final i in branches) ...[
                 _NavItem(
-                  destination: appDestinations[i],
+                  destination: appDestination(i, staffPayments: staffPayments),
                   selected: i == index,
                   extended: extended,
                   onTap: () => onTap(i),

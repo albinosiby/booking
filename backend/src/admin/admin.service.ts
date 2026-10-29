@@ -538,7 +538,7 @@ export class AdminService {
         throw new ConflictException(
           "This phone number or agent is already assigned to another organization.",
         );
-      if (current.setup_state?.mode === "admin_mcp")
+      if (["admin_mcp", "codex_mcp"].includes(current.setup_state?.mode))
         throw new ConflictException(
           "This connection is managed automatically. Use its provisioning controls instead of manual configuration.",
         );
@@ -645,7 +645,7 @@ export class AdminService {
         )
       ).rows[0];
       if (!s) throw new BadRequestException("Save the connection first.");
-      if (s.setup_state?.mode === "admin_mcp")
+      if (["admin_mcp", "codex_mcp"].includes(s.setup_state?.mode))
         throw new ConflictException(
           "This key is managed automatically. Manual rotation would disconnect the agent.",
         );

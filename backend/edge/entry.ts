@@ -3,6 +3,8 @@ import { SupportService } from "../src/support/support.service";
 import { AgentCallService } from "../src/agent-calls/agent-calls.service";
 import { AdminService } from "../src/admin/admin.service";
 import { AdminSarvamService } from "../src/admin/admin-sarvam.service";
+import { AdminMcpService } from "../src/admin/admin-mcp.service";
+import { AdminMcpAuthService } from "../src/admin/admin-mcp-auth";
 import { WebsiteService } from "../src/website/website.service";
 import { SlotBlocksService } from "../src/slot-blocks/slot-blocks.service";
 import { AdmissionService } from "../src/admissions/admission.service";
@@ -51,6 +53,8 @@ export const services = {
   sarvam,
   admin,
   adminSarvam: new AdminSarvamService(db as never, admin, sarvam, workspace),
+  adminMcp: new AdminMcpService(db as never, sarvam, workspace),
+  adminMcpAuth: new AdminMcpAuthService(db as never),
   support: new SupportService(db as never, workspace),
   agentCalls: new AgentCallService(db as never, workspace, sarvam),
   voice: new VoiceService(db as never, bookings),

@@ -192,7 +192,7 @@ export class SarvamService {
     const s = await this.row(m.organization_id);
     const businesses = (
       await this.db.query<Row>(
-        "SELECT id,name,type,status FROM businesses WHERE organization_id=$1 ORDER BY name",
+        "SELECT id,name,type,status FROM businesses WHERE organization_id=$1 AND status<>'archived' ORDER BY name",
         [m.organization_id],
       )
     ).rows;
@@ -262,7 +262,7 @@ export class SarvamService {
         );
       const owned = (
         await db.query<Row>(
-          "SELECT id FROM businesses WHERE organization_id=$1 AND id = ANY($2::uuid[])",
+          "SELECT id FROM businesses WHERE organization_id=$1 AND status<>'archived' AND id = ANY($2::uuid[])",
           [m.organization_id, v.business_ids],
         )
       ).rows;

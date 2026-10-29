@@ -56,10 +56,15 @@ export class WorkspaceService {
     await this.emailTeamAccess.join(actor);
     return this.workspace(actor);
   }
-  async member(actor: Actor, owner = false, db: Queryable = this.db) {
+  async member(
+    actor: Actor,
+    owner = false,
+    db: Queryable = this.db,
+    lock = false,
+  ) {
     const m = (
       await db.query<Row>(
-        "SELECT * FROM memberships WHERE user_id=$1 AND active=true",
+        `SELECT * FROM memberships WHERE user_id=$1 AND active=true${lock ? " FOR SHARE" : ""}`,
         [actor.uid],
       )
     ).rows[0];
@@ -82,7 +87,7 @@ export class WorkspaceService {
       [randomUUID(), org, actor.uid, action, id],
     );
   }
-  async workspace(actor: Actor) {
+  async workspace(actor: Actor, includeArchived = false) {
     const member = (
       await this.db.query<Row>("SELECT * FROM memberships WHERE user_id=$1", [
         actor.uid,
@@ -106,6 +111,7 @@ export class WorkspaceService {
         `
       WITH visible AS (
         SELECT b.* FROM businesses b WHERE b.organization_id=$1
+        AND ($4::boolean OR b.status<>'archived')
         AND ($3::boolean OR EXISTS (SELECT 1 FROM staff_assignments a WHERE a.membership_id=$2 AND a.business_id=b.id))
       )
       SELECT (SELECT to_jsonb(o) FROM organizations o WHERE o.id=$1) AS organization,
@@ -114,7 +120,12 @@ export class WorkspaceService {
         COALESCE((SELECT jsonb_agg(to_jsonb(l)) FROM locations l WHERE l.organization_id=$1),'[]'::jsonb) AS locations,
         COALESCE((SELECT jsonb_agg(jsonb_build_object('business_id',r.business_id,'id',r.id,'name',r.name,'capacity',r.capacity) ORDER BY r.business_id,r.name,r.id) FROM resources r JOIN visible b ON b.id=r.business_id WHERE r.organization_id=$1),'[]'::jsonb) AS resources
     `,
-        [member.organization_id, member.id, member.role === "owner"],
+        [
+          member.organization_id,
+          member.id,
+          member.role === "owner",
+          includeArchived,
+        ],
       )
     ).rows[0];
     const org = snapshot.organization;
@@ -427,7 +438,7 @@ export class WorkspaceService {
         );
       const businesses = (
         await db.query<Row>(
-          "SELECT id FROM businesses WHERE organization_id=$1",
+          "SELECT id FROM businesses WHERE organization_id=$1 AND status<>'archived'",
           [m.organization_id],
         )
       ).rows;
@@ -462,7 +473,7 @@ export class WorkspaceService {
     const m = await this.member(actor, true, db);
     const b = (
       await db.query<Row>(
-        "SELECT * FROM businesses WHERE id=$1 AND organization_id=$2 FOR UPDATE",
+        "SELECT * FROM businesses WHERE id=$1 AND organization_id=$2 AND status<>'archived' FOR UPDATE",
         [id, m.organization_id],
       )
     ).rows[0];
@@ -614,6 +625,57 @@ export class WorkspaceService {
         [JSON.stringify(configuration), id],
       );
       await this.audit(db, actor, b.organization_id, "business.configured", id);
+      return { id };
+    });
+  }
+  async archiveBusiness(actor: Actor, id: string, input: unknown) {
+    z.uuid().parse(id);
+    const v = z
+      .object({ version: z.number().int().positive() })
+      .strict()
+      .parse(input);
+    return this.db.transaction(async (db) => {
+      const m = await this.member(actor, true, db, true);
+      // Same ordering lock as additions/reorders, then the inventory lock used
+      // by booking, admission and public-website commits. A non-key lock lets
+      // concurrent inventory writers finish their organization FK checks before
+      // we acquire their business lock, avoiding an organization/business cycle.
+      await db.query(
+        "SELECT id FROM organizations WHERE id=$1 FOR NO KEY UPDATE",
+        [m.organization_id],
+      );
+      const b = (
+        await db.query<Row>(
+          "SELECT * FROM businesses WHERE id=$1 AND organization_id=$2 FOR UPDATE",
+          [id, m.organization_id],
+        )
+      ).rows[0];
+      if (!b) throw new NotFoundException("Business not found.");
+      if (b.status === "archived") return { id };
+      if (b.version !== v.version)
+        throw new ConflictException(
+          "Business changed. Refresh before removing it.",
+        );
+      const pending = (
+        await db.query<Row>(
+          `SELECT EXISTS(SELECT 1 FROM bookings WHERE organization_id=$1 AND business_id=$2 AND status<>'cancelled' AND ends_at>now()) AS bookings,
+          EXISTS(SELECT 1 FROM admission_balances WHERE organization_id=$1 AND business_id=$2 AND status IN ('active','upcoming')) AS admissions`,
+          [m.organization_id, id],
+        )
+      ).rows[0];
+      if (pending.bookings || pending.admissions)
+        throw new ConflictException(
+          "This business has upcoming or ongoing bookings, or active or upcoming admissions. Resolve them before removing it.",
+        );
+      await db.query(
+        "UPDATE businesses SET status='archived',archived_at=now(),archived_by=$2,version=version+1 WHERE id=$1",
+        [id, actor.uid],
+      );
+      await db.query(
+        "UPDATE organizations SET business_order_revision=business_order_revision+1 WHERE id=$1",
+        [m.organization_id],
+      );
+      await this.audit(db, actor, m.organization_id, "business.archived", id);
       return { id };
     });
   }

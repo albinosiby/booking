@@ -76,7 +76,9 @@ Open Reports from the Accounts app bar. Select a month, year or custom dates and
 
 ## Staff cash handover
 
-Staff with payment access see **My cash** on the Accounts page. It shows what they collected on a chosen day (total, cash, UPI, card and amount in the bank, with no bank name), the day's transactions for their assigned spaces, and **Cash to hand over**.
+Staff with **Collect payments** access see **Payments** in the bottom navigation on phones and the sidebar on wide screens. It shows their own collections for a chosen day (total, cash, UPI, card, bank transfers, refunds and expenses), confirmed handovers to/from the owner, and **Cash to hand over**. The handover balance is current and carries across days; changing the collection date does not change it. The amounts given to and received from the owner cover all recorded handovers, including records beyond the first history page. Use **Load more activity** and **Load more handovers** for older rows.
+
+Staff with **View finance** can open **Accounts and reports** from the Payments app bar. Finance-only staff keep Accounts as their main destination and can open **My cash** there. Collection permission alone does not expose organization bank balances or other staff's activity. See [Staff Payments](staff-payments.md) for release and verification steps.
 
 Cash held counts cash from bookings, admissions and income entries, minus cash refunds and cash expenses the staff member recorded, minus cash already handed over. It carries across days. Only cash is handed over; UPI and card go straight to the bank.
 

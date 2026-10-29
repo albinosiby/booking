@@ -9,6 +9,7 @@ import '../../workspace/models/workspace.dart';
 import '../cubit/business_management_cubit.dart';
 import '../models/business_management_model.dart';
 import '../models/business_availability_action.dart';
+import '../models/business_removal_action.dart';
 import '../widgets/business_availability_menu.dart';
 import '../widgets/business_icon.dart';
 import '../widgets/business_desktop_widgets.dart';
@@ -40,6 +41,16 @@ class _BusinessManagementScreenState extends State<BusinessManagementScreen> {
           content: Text('${action.name} is ${action.enabled ? 'on' : 'off'}.'),
         ),
       );
+    }
+  }
+
+  Future<void> removeBusiness(BusinessRemovalAction action) async {
+    if (!await confirmBusinessRemoval(context, action) || !mounted) return;
+    final saved = await cubit.removeBusiness(action);
+    if (saved && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${action.name} was removed.')));
     }
   }
 
@@ -101,6 +112,7 @@ class _BusinessManagementScreenState extends State<BusinessManagementScreen> {
                   ),
                   BusinessAvailabilityMenu(
                     business: business,
+                    onRemove: s.busy || s.reordering ? null : removeBusiness,
                     onSelected: s.busy || s.reordering
                         ? null
                         : changeAvailability,
@@ -376,6 +388,7 @@ class _BusinessManagementScreenState extends State<BusinessManagementScreen> {
                       onOpen: () => context.push('/businesses/${b.id}'),
                       onRename: s.busy ? null : () => rename(b),
                       onAvailability: s.busy ? null : changeAvailability,
+                      onRemove: s.busy ? null : removeBusiness,
                       onConfigure: s.busy
                           ? null
                           : () => context.push(businessSettingsPath(b)),

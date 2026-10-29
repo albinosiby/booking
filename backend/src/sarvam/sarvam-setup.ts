@@ -184,7 +184,7 @@ export class SarvamSetup {
           "Disconnect the existing agent before connecting a different agent or workspace.",
         );
       const owned = await db.query(
-        "SELECT id FROM businesses WHERE organization_id=$1 AND id=ANY($2::uuid[])",
+        "SELECT id FROM businesses WHERE organization_id=$1 AND status<>'archived' AND id=ANY($2::uuid[])",
         [org, v.business_ids],
       );
       if (owned.rows.length !== new Set(v.business_ids).size)

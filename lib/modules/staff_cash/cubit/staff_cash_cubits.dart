@@ -5,45 +5,134 @@ import 'package:uuid/uuid.dart';
 import '../../../utils/exceptions/app_exception.dart';
 import '../models/staff_cash_models.dart';
 import '../repositories/staff_cash_repository.dart';
+import '../../workspace/repositories/workspace_session.dart';
+import '../../workspace/models/workspace_access.dart';
+import '../../workspace/models/workspace_navigation.dart';
 
 String staffCashError(Object e) => e is AppException
     ? e.message
     : 'Could not load staff cash. Please try again.';
 
 class StaffCashState extends Equatable {
-  const StaffCashState({this.day, this.loading = false, this.error});
+  const StaffCashState({
+    this.day,
+    this.loading = false,
+    this.loadingMore = false,
+    this.error,
+  });
   final StaffCashDay? day;
-  final bool loading;
+  final bool loading, loadingMore;
   final String? error;
   @override
-  List<Object?> get props => [day, loading, error];
+  List<Object?> get props => [day, loading, loadingMore, error];
 }
 
 /// Staff view: today's collections, cash still to hand over, and settlements.
 class StaffCashCubit extends Cubit<StaffCashState> {
-  StaffCashCubit(this.repository) : super(const StaffCashState()) {
-    changes = repository.changes.listen((_) => load(date: state.day?.date));
+  StaffCashCubit(this.repository, {required this.session})
+    : super(const StaffCashState()) {
+    scope = workspaceAccessScope(session.state.data);
+    access = session.snapshots.listen((_) {
+      if (isClosed) return;
+      final next = workspaceAccessScope(session.state.data);
+      if (next != scope) {
+        _generation++;
+        scope = next;
+        emit(const StaffCashState());
+        if (authorized) unawaited(load());
+      }
+    });
+    changes = repository.changes.listen((_) {
+      if (authorized) unawaited(load(date: state.day?.date));
+    });
   }
   final IStaffCashRepository repository;
-  late final StreamSubscription<void> changes;
+  final WorkspaceSession session;
+  late String scope;
+  late final StreamSubscription changes, access;
   int _generation = 0;
+  bool get authorized =>
+      !isClosed &&
+      scope == workspaceAccessScope(session.state.data) &&
+      WorkspaceNavigation(session.state.data).staffCash;
+
   Future<void> load({String? date}) async {
+    if (!authorized) return;
     final g = ++_generation;
     emit(StaffCashState(day: state.day, loading: true));
     try {
       final day = await repository.me(date: date);
-      if (!isClosed && g == _generation) emit(StaffCashState(day: day));
+      if (authorized && g == _generation) emit(StaffCashState(day: day));
     } catch (e) {
-      if (!isClosed && g == _generation) {
-        emit(StaffCashState(day: state.day, error: staffCashError(e)));
+      if (authorized && g == _generation) {
+        emit(
+          StaffCashState(
+            day: accessFailure(e) ? null : state.day,
+            error: staffCashError(e),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> loadMore({bool settlements = false}) async {
+    final old = state.day;
+    if (!authorized || state.loading || state.loadingMore || old == null) {
+      return;
+    }
+    final cursor = settlements ? old.nextSettlementCursor : old.nextCursor;
+    if (cursor == null) return;
+    final g = _generation;
+    emit(StaffCashState(day: old, loadingMore: true));
+    try {
+      final page = await repository.me(
+        date: old.date,
+        cursor: settlements ? 0 : cursor,
+        settlementCursor: settlements ? cursor : 0,
+      );
+      if (!authorized || g != _generation) return;
+      final transactions = settlements
+          ? old.transactions
+          : {
+              for (final t in [...old.transactions, ...page.transactions])
+                t.id: t,
+            }.values.toList();
+      final handovers = settlements
+          ? {
+              for (final t in [...old.settlements, ...page.settlements])
+                t.id: t,
+            }.values.toList()
+          : old.settlements;
+      emit(
+        StaffCashState(
+          day: page.withHistory(
+            transactions: transactions,
+            settlements: handovers,
+            nextCursor: settlements ? old.nextCursor : page.nextCursor,
+            nextSettlementCursor: settlements
+                ? page.nextSettlementCursor
+                : old.nextSettlementCursor,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (authorized && g == _generation) {
+        emit(
+          StaffCashState(
+            day: accessFailure(e) ? null : old,
+            error: staffCashError(e),
+          ),
+        );
       }
     }
   }
 
   @override
-  Future<void> close() {
-    changes.cancel();
-    return super.close();
+  Future<void> close() async {
+    _generation++;
+    await changes.cancel();
+    await access.cancel();
+    await super.close();
   }
 }
 

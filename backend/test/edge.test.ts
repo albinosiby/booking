@@ -100,6 +100,31 @@ test("Edge team email and session routes require authentication and preserve own
   assert.equal(f.calls[2].args[1], id);
   assert.equal(f.calls[3].args[1], id);
 });
+test("Edge business removal requires authentication and validates UUIDs before dispatch", async () => {
+  const f = fixture(),
+    body = { version: 3 };
+  assert.equal(
+    (await f.request(`/v1/businesses/${id}`, "DELETE", body, null)).status,
+    401,
+  );
+  assert.equal(
+    (await f.request("/v1/businesses/invalid", "DELETE", body)).status,
+    422,
+  );
+  assert.equal(f.calls.length, 0);
+  assert.equal(
+    (await f.request(`/v1/businesses/${id}`, "DELETE", body)).status,
+    200,
+  );
+  assert.equal(f.calls[0].method, "archiveBusiness");
+  assert.equal(f.calls[0].args[0].uid, "actor");
+  assert.equal(f.calls[0].args[1], id);
+  assert.deepEqual(f.calls[0].args[2], body);
+  f.setFailure(new ConflictException("Resolve upcoming bookings first."));
+  const blocked = await f.request(`/v1/businesses/${id}`, "DELETE", body);
+  assert.equal(blocked.status, 409);
+  assert.match(await blocked.text(), /Resolve upcoming/);
+});
 test("Edge preserves route parameters, actor and configuration payloads for all business types", async () => {
   const f = fixture();
   for (const kind of ["turf", "court", "pool", "hall"]) {
@@ -377,7 +402,7 @@ test("public health exposes a revision for deployment verification without accou
   assert.deepEqual(await response.json(), {
     status: "ok",
     runtime: "supabase-edge",
-    revision: "2026-10-24-flexible-coach-attendance",
+    revision: "2026-10-29-voice-retry-recovery",
   });
 });
 

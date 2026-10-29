@@ -69,7 +69,11 @@ String? routeRedirect(
   if (workspace.data.organization == null) {
     return path == Routes.organization ? null : navigate(Routes.organization);
   }
-  if (workspace.data.isOwner && workspace.data.businesses.isEmpty) {
+  // Additions and removals advance this revision. Removing the last business
+  // must not send an established organization back to onboarding and hide history.
+  if (workspace.data.isOwner &&
+      workspace.data.businesses.isEmpty &&
+      workspace.data.organization!.businessOrderRevision == 0) {
     return path == Routes.onboarding ? null : navigate(Routes.onboarding);
   }
   if ([

@@ -103,6 +103,15 @@ class RestWorkspaceRepository
   }
 
   @override
+  Future<void> removeBusiness(String id, int version) async {
+    await api.request(
+      '${ApiPath.businesses}/$id',
+      method: 'DELETE',
+      data: {'version': version},
+    );
+  }
+
+  @override
   Future<void> addResource(String id, String name, int capacity) async {
     await api.request(
       '${ApiPath.businesses}/$id/resources',

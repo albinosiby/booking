@@ -10,6 +10,7 @@ abstract interface class WorkspaceRepository {
   Future<void> addBusiness(Map<String, dynamic> data);
   Future<void> reorderBusinesses(List<String> ids, int revision);
   Future<void> renameBusiness(String id, String name);
+  Future<void> removeBusiness(String id, int version);
   Future<void> addResource(String id, String name, int capacity);
   Future<void> removeResource(String business, String resource);
   Future<void> configure(String id, Map<String, dynamic> data);

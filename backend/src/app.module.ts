@@ -10,6 +10,10 @@ import { AgentCallController } from "./agent-calls/agent-calls.controller";
 import { AdminService } from "./admin/admin.service";
 import { AdminController } from "./admin/admin.controller";
 import { AdminGuard } from "./admin/admin.guard";
+import { AdminMcpAuthService } from "./admin/admin-mcp-auth";
+import { AdminMcpGuard } from "./admin/admin-mcp.guard";
+import { AdminMcpController } from "./admin/admin-mcp.controller";
+import { AdminMcpService } from "./admin/admin-mcp.service";
 import { WebsiteService } from "./website/website.service";
 import {
   WebsiteSettingsController,
@@ -68,6 +72,7 @@ import {
     NotificationInstallationController,
     AdminController,
     AdminSarvamController,
+    AdminMcpController,
     WebsiteSettingsController,
     PublicWebsiteController,
     SlotBlocksController,
@@ -96,6 +101,9 @@ import {
     AdminGuard,
     AdminService,
     AdminSarvamService,
+    AdminMcpService,
+    AdminMcpAuthService,
+    AdminMcpGuard,
     SupportService,
     AgentCallService,
     WebsiteService,

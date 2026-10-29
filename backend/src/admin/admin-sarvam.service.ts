@@ -17,8 +17,11 @@ import {
 } from "../sarvam/sarvam-authoring";
 import { SarvamProvisioningRemote } from "../sarvam/sarvam-provisioning-remote";
 import { sealSecret, openSecret, hashToolKey } from "../sarvam/sarvam-secrets";
-import { serviceSelection } from "../agent-calls/agent-call-policy";
-import { BOOKING_PROMPT, TOOLS } from "../sarvam/sarvam-booking-config";
+import {
+  serviceSelection,
+  type CallService,
+} from "../agent-calls/agent-call-policy";
+import { TOOLS } from "../sarvam/sarvam-booking-config";
 import { WorkspaceService } from "../workspace/workspace.service";
 type Json = Record<string, any>;
 const identifier = z
@@ -265,7 +268,7 @@ export class AdminSarvamService {
     await this.audit(this.db, actor, "sarvam.authorized", "platform");
     return this.status(actor);
   }
-  private async remote(s: Json) {
+  private async remote(s: Json, services?: readonly CallService[]) {
     if (
       !s?.authoring_ciphertext ||
       new Date(s.expires_at).getTime() <= Date.now() + 30000
@@ -276,6 +279,7 @@ export class AdminSarvamService {
         this.provider.http,
         openSecret(s.authoring_ciphertext),
       ),
+      { services },
     );
     try {
       await r.inspect();
@@ -474,6 +478,7 @@ export class AdminSarvamService {
           secret_name: `bookingos_${org.replace(/-/g, "")}`,
           base: this.toolBase(),
           scope: [platform.sarvam_org_id, platform.workspace_id],
+          services: v.approved_services,
         };
         await db.query(
           `UPDATE sarvam_integrations SET app_id=$2,sarvam_org_id=$3,workspace_id=$4,phone_number=$5,api_key_ciphertext=$6,api_key_last4=$7,tool_key_ciphertext=$8,tool_key_hash=$9,tool_key_prefix=$10,enabled=false,verified_at=NULL,verified_by='',setup_status='connecting',setup_state=$11,setup_error='',version=version+1 WHERE organization_id=$1`,
@@ -549,7 +554,7 @@ export class AdminSarvamService {
     try {
       const r = (
         await this.db.query<Json>(
-          "SELECT status FROM agent_call_requests WHERE organization_id=$1",
+          "SELECT status,approved_services FROM agent_call_requests WHERE organization_id=$1",
           [org],
         )
       ).rows[0];
@@ -557,9 +562,19 @@ export class AdminSarvamService {
         throw new ConflictException(
           "Setup is on hold. Set the request to Setting up before resuming.",
         );
+      const state = s.setup_state,
+        services = serviceSelection.parse(
+          state.services ?? r.approved_services,
+        );
+      if (
+        JSON.stringify([...services].sort()) !==
+        JSON.stringify([...(r.approved_services ?? [])].sort())
+      )
+        throw new ConflictException(
+          "Approved services changed. Review setup before resuming.",
+        );
       platform = await this.row();
-      const remote = await this.remote(platform),
-        state = s.setup_state;
+      const remote = await this.remote(platform, services);
       if (
         state.scope[0] !== platform.sarvam_org_id ||
         state.scope[1] !== platform.workspace_id
@@ -567,7 +582,7 @@ export class AdminSarvamService {
         throw new ConflictException(
           "This setup belongs to another Sarvam workspace.",
         );
-      const next = { ...state };
+      const next = { ...state, services };
       if (state.step === "create") {
         const listed = await remote.listAgents();
         if (listed.pagination?.more)
@@ -623,7 +638,8 @@ export class AdminSarvamService {
                 agent_variables: {
                   bookingos_spaces: {
                     name: "bookingos_spaces",
-                    value: "",
+                    value:
+                      "The call service is unavailable until its live catalog has loaded. Direct callers to venue staff.",
                     description: "Live spaces loaded at call start",
                     is_agent_updatable: false,
                     needs_initial_value: true,
@@ -647,11 +663,15 @@ export class AdminSarvamService {
           state.secret_name,
           openSecret(s.tool_key_ciphertext),
         );
-        next.step = "tool_0";
+        next.step = `tool_${remote.toolIndexes[0]}`;
       } else if (/^tool_[0-6]$/.test(state.step)) {
         const index = Number(state.step.slice(5));
-        await remote.toolAt(index, s.app_id, state.base, state.secret_id);
-        next.step = index === 6 ? "prompt" : `tool_${index + 1}`;
+        if (remote.toolIndexes.includes(index))
+          await remote.toolAt(index, s.app_id, state.base, state.secret_id);
+        const following = remote.toolIndexes.find(
+          (candidate) => candidate > index,
+        );
+        next.step = following === undefined ? "prompt" : `tool_${following}`;
       } else if (state.step === "prompt") {
         await remote.enable(s.app_id);
         await remote.configureAgent(
@@ -661,14 +681,16 @@ export class AdminSarvamService {
               agent_config: {
                 states: {
                   [state.initial]: {
-                    tool_names: TOOLS.slice(1).map((t) => t[0]),
+                    tool_names: remote.toolNames.filter((name) =>
+                      TOOLS.slice(1).some((tool) => tool[0] === name),
+                    ),
                     agent_variables_in_context: ["bookingos_spaces"],
                   },
                 },
               },
             },
           },
-          BOOKING_PROMPT,
+          remote.prompt,
         );
         next.step = "verify_tools";
       } else if (state.step === "verify_tools") {
@@ -777,6 +799,8 @@ export class AdminSarvamService {
           throw new ConflictException("Setup was placed on hold.");
         if (
           !req.approved_services.length ||
+          JSON.stringify([...req.approved_services].sort()) !==
+            JSON.stringify([...services].sort()) ||
           req.approved_services.some(
             (x: string) => !req.requested_services.includes(x),
           )

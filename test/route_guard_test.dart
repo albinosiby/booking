@@ -39,6 +39,35 @@ const owner = WorkspaceState(
 );
 void main() {
   test(
+    'removing the last business preserves access to history and settings',
+    () {
+      const removed = WorkspaceState(
+        status: LoadStatus.ready,
+        data: Workspace(
+          organization: Organization(
+            id: 'org',
+            name: 'Eden',
+            phone: '',
+            currency: 'INR',
+            businessOrderRevision: 2,
+          ),
+          membership: {'role': 'owner'},
+        ),
+      );
+      for (final path in ['/home', '/bookings', '/payments', '/businesses']) {
+        expect(
+          routeRedirect(
+            signedIn,
+            removed,
+            Uri.parse(path),
+            requireVerification: true,
+          ),
+          isNull,
+        );
+      }
+    },
+  );
+  test(
     'email-based staff access opens the dashboard without an invitation route',
     () {
       final staff = WorkspaceState(

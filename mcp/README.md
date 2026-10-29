@@ -1,5 +1,10 @@
 # Booking OS MCP server
 
+For super-admin Sarvam request provisioning, use the separate
+[`bookingos-admin` server](../docs/bookingos-admin-mcp.md). It has scoped admin
+authentication, a private credential installer and resumable connection jobs.
+The owner/staff booking tools below keep their existing role and permissions.
+
 A stdio [MCP](https://modelcontextprotocol.io) server that lets an AI assistant book, reschedule and cancel reservations through the hosted `booking-api` Edge Function. It signs in as a real owner/staff account, so all server rules still apply. These include organization and staff permissions, quote tokens, price checks, inventory conflicts, version checks and idempotent command keys. It does not touch the database directly and needs no migrations.
 
 ## Tools

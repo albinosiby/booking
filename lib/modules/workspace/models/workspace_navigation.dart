@@ -9,6 +9,10 @@ class WorkspaceNavigation {
   bool get bookings =>
       any(['view_bookings', 'manage_bookings', 'collect_payments']);
   bool get finance => workspace.hasPermission('view_finance');
+  bool get payments => finance || workspace.hasPermission('collect_payments');
+  bool get personalPayments =>
+      !workspace.isOwner && workspace.hasPermission('collect_payments');
+  bool get staffCash => !workspace.isOwner && payments;
   bool get customers => bookings;
   bool get admissions => any([
     'view_bookings',
@@ -23,7 +27,7 @@ class WorkspaceNavigation {
   List<int> get branches => [
     0,
     if (bookings) ...[1, 2],
-    if (finance) 3,
+    if (payments) 3,
     if (workspace.isCoach) 5,
     4,
   ];
@@ -69,8 +73,9 @@ class WorkspaceNavigation {
         path.startsWith('/accounts/cash')) {
       return false;
     }
-    if (path == '/payments' ||
-        path.startsWith('/accounts/reports') ||
+    if (path == '/payments') return payments;
+    if (path == '/staff-cash') return staffCash;
+    if (path.startsWith('/accounts/reports') ||
         path.startsWith('/accounts/transaction')) {
       return finance;
     }

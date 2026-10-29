@@ -1,14 +1,29 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
-import { SarvamAuthoring } from "./sarvam-authoring";
+import type { CallService } from "../agent-calls/agent-call-policy";
 import {
-  BOOKING_PROMPT,
   TOOLS,
   toolConfig,
   containsConfig,
+  bookingToolIndexes,
+  bookingPromptForServices,
+  defaultBookingServices,
 } from "./sarvam-booking-config";
 type Json = Record<string, any>;
+/** Both the backend OAuth adapter and private local MCP clients can implement it. */
+export interface SarvamProvisioningClient {
+  capabilities(): Promise<Json[]>;
+  call(name: string, args: Json): Promise<Json>;
+}
 export const COMPLETION_TOOL = "bookingos_call_completed";
 export const managedToolNames = [...TOOLS.map((t) => t[0]), COMPLETION_TOOL];
+export function selectedManagedToolNames(
+  services: readonly CallService[] = defaultBookingServices,
+) {
+  return [
+    ...bookingToolIndexes(services).map((index) => TOOLS[index][0]),
+    COMPLETION_TOOL,
+  ];
+}
 export function managedToolConfig(
   index: number,
   base: string,
@@ -32,11 +47,71 @@ export function managedToolConfig(
     save_to_variables: [],
   };
 }
+export function managedToolConfigForName(
+  name: string,
+  base: string,
+  secret: string,
+): Json {
+  const index = managedToolNames.indexOf(name);
+  if (index < 0)
+    throw new BadRequestException("Unknown managed BookingOS tool.");
+  return managedToolConfig(index, base, secret);
+}
+
+/** Safe setup metadata; secretId may be a placeholder, never a credential value. */
+export function managedBookingSpecification(
+  services: readonly CallService[],
+  options: { baseUrl: string; secretId: string; language?: string },
+) {
+  const url = new URL(options.baseUrl);
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  )
+    throw new BadRequestException(
+      "Use the configured public HTTPS voice API URL.",
+    );
+  const base = options.baseUrl.replace(/\/$/, "");
+  return {
+    services: [...services],
+    language: options.language ?? null,
+    prompt: bookingPromptForServices(services, options.language),
+    tools: selectedManagedToolNames(services).map((name) => ({
+      name,
+      config: managedToolConfigForName(name, base, options.secretId),
+    })),
+    variables: {
+      bookingos_spaces: {
+        name: "bookingos_spaces",
+        type: "string",
+        value:
+          "The call service is unavailable until its live catalog has loaded. Direct callers to venue staff.",
+        description: "Live spaces loaded at call start",
+        is_agent_updatable: false,
+        needs_initial_value: true,
+        update_post_interaction: false,
+      },
+    },
+  };
+}
 /** Only known fields/operations from the authenticated workspace's advertised schemas
  * are used. Unsupported contracts stop provisioning and never silently downgrade. */
 export class SarvamProvisioningRemote {
   private tools: Json[] = [];
-  constructor(private remote: SarvamAuthoring) {}
+  readonly toolNames: string[];
+  readonly toolIndexes: number[];
+  readonly prompt: string;
+  constructor(
+    private remote: SarvamProvisioningClient,
+    options: { services?: readonly CallService[]; language?: string } = {},
+  ) {
+    this.toolIndexes = [...bookingToolIndexes(options.services), TOOLS.length];
+    this.toolNames = selectedManagedToolNames(options.services);
+    this.prompt = bookingPromptForServices(options.services, options.language);
+  }
   async inspect() {
     this.tools = await this.remote.capabilities();
     for (const name of [
@@ -53,7 +128,14 @@ export class SarvamProvisioningRemote {
         "This workspace does not expose HTTP-tool authoring. Enable the supported HTTP-tool plan in Sarvam.",
       );
     const p = this.tool("configure_agent").inputSchema?.properties ?? {};
-    if (!p.clone_from || !p.name || !p.config || !p.prompt)
+    if (
+      !p.clone_from ||
+      !p.clone_version ||
+      !p.name ||
+      !p.config ||
+      !p.prompt ||
+      (!p.agent_id && !p.app_id)
+    )
       throw new BadRequestException(
         "This workspace does not expose native cloning and managed prompt authoring.",
       );
@@ -66,6 +148,37 @@ export class SarvamProvisioningRemote {
       name: "bookingos_preflight",
       value: "preflight",
     });
+    const secretFields = this.tool("configure_secret").inputSchema?.properties;
+    if (!secretFields?.name || !secretFields.value)
+      throw new BadRequestException(
+        "Sarvam does not advertise supported private secret authoring.",
+      );
+    for (const operation of ["list", "get", "commit"])
+      this.domainArgs("agents", operation, "bookingos_preflight");
+    for (const operation of [
+      "list_connections",
+      "list_endpoints",
+      "list_deployments",
+      "get_deployment",
+    ])
+      this.domainArgs("telephony", operation, "bookingos_preflight");
+    for (const index of this.toolIndexes)
+      this.toolArguments(
+        index,
+        "bookingos_preflight",
+        "https://booking.example.test/voice/v1",
+        "secret_reference",
+      );
+    const deploymentFields =
+      this.tool("configure_deployment").inputSchema?.properties ?? {};
+    if (
+      ["app_id", "app_version", "connection_configs", "channel_direction"].some(
+        (key) => !deploymentFields[key],
+      )
+    )
+      throw new BadRequestException(
+        "Sarvam does not advertise version-bound inbound deployment authoring.",
+      );
     this.args(this.tool("configure_deployment"), {
       name: "BookingOS",
       app_id: "bookingos_preflight",
@@ -122,6 +235,15 @@ export class SarvamProvisioningRemote {
     id?: string,
     params?: Json,
   ) {
+    const { tool, args } = this.domainArgs(name, operation, id, params);
+    return this.remote.call(tool.name, args);
+  }
+  private domainArgs(
+    name: "agents" | "telephony" | "secrets",
+    operation: string,
+    id?: string,
+    params?: Json,
+  ) {
     const operations = this.tool(name).inputSchema?.properties?.operation?.enum;
     if (
       name === "telephony" &&
@@ -131,7 +253,16 @@ export class SarvamProvisioningRemote {
       operations.includes("list_phone_numbers")
     )
       operation = "list_phone_numbers";
-    return this.invoke(name, { operation, id, params, fetch_all: true });
+    const tool = this.tool(name);
+    const supported = tool.inputSchema?.properties?.operation?.enum;
+    if (!Array.isArray(supported) || !supported.includes(operation))
+      throw new BadRequestException(
+        `Sarvam ${name} does not advertise the required ${operation} operation.`,
+      );
+    return {
+      tool,
+      args: this.args(tool, { operation, id, params, fetch_all: true }),
+    };
   }
   async agent(id: string, version?: number): Promise<Json> {
     const result = await this.domain("agents", "get", id, {
@@ -154,6 +285,10 @@ export class SarvamProvisioningRemote {
     ])
       if (config[key] === undefined)
         config[key] = result[key] ?? result.details?.[key];
+    if (version !== undefined && config.app_version !== version)
+      throw new BadRequestException(
+        "Sarvam did not return the exact requested agent version.",
+      );
     return { ...result, config };
   }
   async listAgents() {
@@ -231,6 +366,10 @@ export class SarvamProvisioningRemote {
     return id;
   }
   async toolAt(index: number, app: string, base: string, secret: string) {
+    if (!this.toolIndexes.includes(index))
+      throw new BadRequestException(
+        "This tool is outside the approved call services.",
+      );
     const agent = await this.agent(app);
     const name = managedToolNames[index],
       config = managedToolConfig(index, base, secret);
@@ -242,9 +381,24 @@ export class SarvamProvisioningRemote {
         );
       return;
     }
+    const { tool, args } = this.toolArguments(index, app, base, secret);
+    await this.remote.call(tool.name, args);
+  }
+  private toolArguments(
+    index: number,
+    app: string,
+    base: string,
+    secret: string,
+  ) {
+    const name = managedToolNames[index],
+      config = managedToolConfig(index, base, secret);
     const tool =
       this.find("create_http_tool") ?? this.tool("configure_app_tool");
     const p = tool.inputSchema?.properties ?? {};
+    if (!p.name || (!p.agent_id && !p.app_id))
+      throw new BadRequestException(
+        "Sarvam does not advertise agent-scoped HTTP-tool authoring.",
+      );
     const args: Json = {
       agent_id: app,
       app_id: app,
@@ -267,13 +421,13 @@ export class SarvamProvisioningRemote {
         );
       Object.assign(args, config);
     }
-    await this.remote.call(tool.name, this.args(tool, args));
+    return { tool, args: this.args(tool, args) };
   }
   async enable(app: string) {
     const spec = this.tool("agents").inputSchema?.properties?.operation;
     if (spec?.enum?.includes("set_tools"))
       await this.domain("agents", "set_tools", app, {
-        enable: managedToolNames,
+        enable: this.toolNames,
       });
   }
   async verify(
@@ -296,16 +450,26 @@ export class SarvamProvisioningRemote {
       );
     const state = c.llm_config?.agent_config?.states?.[initial];
     if (
-      state?.instructions !== BOOKING_PROMPT ||
+      state?.instructions !== this.prompt ||
       !containsConfig(
         state.tool_names,
-        TOOLS.slice(1).map((t) => t[0]),
+        this.toolIndexes
+          .filter((index) => index > 0 && index < TOOLS.length)
+          .map((index) => TOOLS[index][0]),
       )
     )
       throw new BadRequestException(
         "Sarvam did not save the managed instructions and tools.",
       );
-    for (let i = 0; i < managedToolNames.length; i++) {
+    if (
+      (agent.tools ?? []).some(
+        (tool: Json) => !this.toolNames.includes(tool.name),
+      )
+    )
+      throw new BadRequestException(
+        "The agent contains a tool outside the approved call services.",
+      );
+    for (const i of this.toolIndexes) {
       const t = agent.tools?.find((t: Json) => t.name === managedToolNames[i]);
       if (
         !t ||

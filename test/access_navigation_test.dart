@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eden_booking/design_system/components/app_bottom_nav_bar.dart';
+import 'package:eden_booking/design_system/layouts/adaptive_scaffold.dart';
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
 import 'package:eden_booking/modules/workspace/models/workspace_navigation.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
@@ -138,7 +139,13 @@ void main() {
       }
       expect(WorkspaceNavigation(staff([])).branches, [0, 4]);
       final collector = WorkspaceNavigation(staff(['collect_payments']));
-      expect(collector.branches, [0, 1, 2, 4]);
+      expect(collector.branches, [0, 1, 2, 3, 4]);
+      expect(collector.personalPayments, isTrue);
+      expect(collector.allows('/payments'), isTrue);
+      expect(collector.allows('/staff-cash'), isTrue);
+      expect(collector.allows('/accounts/overview'), isFalse);
+      expect(collector.allows('/accounts/reports'), isFalse);
+      expect(WorkspaceNavigation(staff([])).allows('/staff-cash'), isFalse);
       expect(collector.finance, isFalse);
       expect(collector.customers, isTrue);
       expect(collector.admissions, isTrue);
@@ -226,6 +233,9 @@ void main() {
                 bottomNavigationBar: AppBottomNavBar(
                   index: branch,
                   branches: WorkspaceNavigation(staff(permissions)).branches,
+                  staffPayments: WorkspaceNavigation(
+                    staff(permissions),
+                  ).personalPayments,
                   onTap: (i) => selected = i,
                 ),
               ),
@@ -236,6 +246,10 @@ void main() {
       expect(find.text('My classes'), findsOneWidget);
       await tester.tap(find.text('Profile'));
       expect(selected, 4);
+      await show(['collect_payments'], 3);
+      expect(find.text('Payments'), findsOneWidget);
+      await tester.tap(find.text('Payments'));
+      expect(selected, 3);
       await show(['coach', 'view_finance'], 3);
       expect(find.text('Accounts'), findsOneWidget);
       await tester.tap(find.text('My classes'));
@@ -243,4 +257,70 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('collection staff see Payments in the desktop sidebar', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    int? selected;
+    final navigation = WorkspaceNavigation(
+      staff(['collect_payments', 'coach']),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Row(
+            children: [
+              AppSideNav(
+                index: 3,
+                onTap: (i) => selected = i,
+                extended: true,
+                branches: navigation.branches,
+                staffPayments: navigation.personalPayments,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Payments'), findsOneWidget);
+    expect(find.text('Accounts'), findsNothing);
+    await tester.tap(find.text('Payments'));
+    expect(selected, 3);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('coach collectors retain six destinations on a small phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final navigation = WorkspaceNavigation(
+      staff(['collect_payments', 'coach']),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.4)),
+          child: child!,
+        ),
+        home: Scaffold(
+          bottomNavigationBar: AppBottomNavBar(
+            index: 3,
+            onTap: (_) {},
+            branches: navigation.branches,
+            staffPayments: true,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Payments'), findsOneWidget);
+    expect(find.text('My classes'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
