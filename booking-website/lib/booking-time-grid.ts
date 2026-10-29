@@ -81,6 +81,19 @@ export function bookingTimeCells({
     finishKey = rangeEnd(date, start, duration, endSlots);
   const choosingEnd = !!minimum && !!start,
     waiting = choosingEnd && !duration;
+  // An available validated range also proves its interior is free. This supports
+  // older API versions until they provide interval_available on each conflict.
+  const freeRanges =
+    !pool && minimum
+      ? slots.flatMap((slot) =>
+          slot.available
+            ? (slot.end_options ?? []).map(([, end]) => ({
+                start: `${slot.date ?? date}T${slot.time}`,
+                end,
+              }))
+            : [],
+        )
+      : [];
   return [...new Set([...starts.keys(), ...ends.keys()])].sort().map((key) => {
     const base = starts.get(key),
       finish = ends.get(key),
@@ -93,19 +106,26 @@ export function bookingTimeCells({
       ? (Date.parse(`${key}:00Z`) - Date.parse(`${startKey}:00Z`)) / 60000
       : 0;
     const belowMinimum = difference > 0 && difference < (minimum ?? 0);
+    const freeInterval =
+      !pool && !!minimum && !base?.available &&
+      (base?.interval_available === true ||
+        (base?.interval_available === undefined &&
+          freeRanges.some((range) => range.start < key && key < range.end)));
     // Start availability covers the whole minimum booking, not just this instant.
     const availableLabel =
       base?.status === "past"
         ? "Past"
-        : base?.status === "blocked"
-          ? "Blocked"
-          : base?.available
-            ? pool && base.remaining_capacity != null
-              ? `${base.remaining_capacity} places`
-              : "Available"
-            : !pool && minimum
-              ? `Unavailable for ${minutesLabel(minimum)}`
-              : "Unavailable";
+        : freeInterval
+          ? "Available · cannot start"
+          : base?.status === "blocked"
+            ? "Blocked"
+            : base?.available
+              ? pool && base.remaining_capacity != null
+                ? `${base.remaining_capacity} places`
+                : "Available"
+              : !pool && minimum
+                ? `Unavailable for ${minutesLabel(minimum)}`
+                : "Unavailable";
     const label = isStart
       ? "Start · tap to clear"
       : isEnd

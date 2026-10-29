@@ -196,11 +196,35 @@ export async function bookingAvailability(
       });
     } catch (e) {
       if (!(e instanceof ConflictException)) throw e;
+      // A full-duration start can conflict even while the next grid interval is free.
+      // Report that interval separately; booking eligibility still uses the full quote.
+      let intervalAvailable: boolean | undefined;
+      if (option.minimum_duration && b.configuration.kind !== "pool_v1") {
+        try {
+          checkInventory(
+            {
+              ...q,
+              occupied_until: new Date(
+                Date.parse(q.starts_at) + 15 * 60000,
+              ).toISOString(),
+            },
+            all,
+            excludeBookingId ?? undefined,
+          );
+          intervalAvailable = true;
+        } catch (intervalError) {
+          if (!(intervalError instanceof ConflictException)) throw intervalError;
+          intervalAvailable = false;
+        }
+      }
       slots.push({
         time,
         available: false,
         status: e instanceof SlotBlockedException ? "blocked" : "booked",
         total_minor: q.total_minor,
+        ...(intervalAvailable !== undefined
+          ? { interval_available: intervalAvailable }
+          : {}),
       });
     }
   }

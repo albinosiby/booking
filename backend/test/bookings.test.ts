@@ -1423,6 +1423,27 @@ test("preloaded ends stop at the first inventory conflict and final quotes still
   );
 });
 
+test("availability distinguishes free grid intervals from valid booking starts", async () => {
+  const f = await fixture();
+  await create(f, { ...f.selection, time: "10:00" });
+  const result = await service.availability(f.owner, {
+    selection: f.selection,
+    exclude_booking_id: null,
+  });
+  for (const time of ["09:15", "09:30", "09:45"]) {
+    const slot = result.slots.find((s: any) => s.time === time)!;
+    assert.equal(slot.available, false);
+    assert.equal(slot.interval_available, true);
+  }
+  const occupied = result.slots.find((s: any) => s.time === "10:00")!;
+  assert.equal(occupied.available, false);
+  assert.equal(occupied.interval_available, false);
+  await assert.rejects(() => service.quote(f.owner, {
+    selection: { ...f.selection, time: "09:15" },
+    exclude_booking_id: null,
+  }));
+});
+
 test("discounts are signed, persisted and bounded for all business types", async () => {
   for (const type of ["badminton", "turf", "pool", "hall"]) {
     const f = await fixture(type);

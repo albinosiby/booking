@@ -81,6 +81,7 @@ export type Slot = {
   available: boolean;
   status: string;
   total_minor: number;
+  interval_available?: boolean;
   remaining_capacity?: number;
   end_options?: [number, string][];
 };

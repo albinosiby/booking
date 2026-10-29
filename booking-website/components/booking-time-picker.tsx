@@ -33,7 +33,7 @@ export function BookingTimePicker({
         <h3>{minimum ? "Choose start & end" : "Choose your time"}</h3>
         <p>
           {minimum
-            ? `Each time is a possible start for a booking of at least ${minutesLabel(minimum)}. A start is unavailable if that booking would overlap another booking or extend beyond opening hours. Choose a start, then an end. Tap a selected boundary again to clear it.`
+            ? `Minimum booking: ${minutesLabel(minimum)}. “Available · cannot start” means the time is free, but a minimum-length booking cannot start there. Choose a start, then an end. Tap a selected boundary again to clear it.`
             : "Choose an available session below."}
         </p>
         {!!minimum && (
