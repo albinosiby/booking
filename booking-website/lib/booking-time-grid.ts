@@ -116,16 +116,16 @@ export function bookingTimeCells({
       base?.status === "past"
         ? "Past"
         : freeInterval
-          ? "Available · cannot start"
+          ? "Unavailable"
           : base?.status === "blocked"
             ? "Blocked"
+            : !pool && base?.status === "booked" && base.interval_available === false
+              ? "Booked"
             : base?.available
               ? pool && base.remaining_capacity != null
                 ? `${base.remaining_capacity} places`
                 : "Available"
-              : !pool && minimum
-                ? `Unavailable for ${minutesLabel(minimum)}`
-                : "Unavailable";
+              : "Unavailable";
     const label = isStart
       ? "Start · tap to clear"
       : isEnd
@@ -142,6 +142,8 @@ export function bookingTimeCells({
                   ? "Past"
                   : finish?.status === "blocked" || base?.status === "blocked"
                     ? "Blocked"
+                    : !pool && base?.status === "booked" && base.interval_available === false
+                      ? "Booked"
                     : finish?.status === "booked"
                       ? pool
                         ? "Unavailable"

@@ -181,10 +181,10 @@ test("a free hour remains bookable when later starts would overlap the next book
   assert.equal(at(initial, "19:00").enabled, true);
   assert.equal(at(initial, "19:00").label, "Available");
   for (const time of ["19:15", "19:30", "19:45"]) {
-    assert.equal(at(initial, time).label, "Available · cannot start");
+    assert.equal(at(initial, time).label, "Unavailable");
     assert.equal(at(initial, time).enabled, false);
   }
-  assert.equal(at(initial, "20:00").label, "Unavailable for 1 hr");
+  assert.equal(at(initial, "20:00").label, "Unavailable");
   assert.equal(at(initial, "20:00").enabled, false);
   const range = chooseTimeCell({ start: "", duration: 0 }, at(initial, "19:00"), 60, 60);
   const waiting = cells(range, { slots: gapSlots, endSlots: preloadedEnds(gapSlots[0]) });
@@ -200,13 +200,21 @@ test("interval availability works without an earlier selectable start", () => {
       { ...available("19:15"), available: false, status: "booked", interval_available: true },
       { ...available("19:30"), available: false, status: "blocked", interval_available: true },
       { ...available("20:00"), available: false, status: "booked", interval_available: false },
+      { ...available("20:15"), available: false, status: "booked", interval_available: false },
     ],
   });
   for (const time of ["19:15", "19:30"]) {
-    assert.equal(at(grid, time).label, "Available · cannot start");
+    assert.equal(at(grid, time).label, "Unavailable");
     assert.equal(at(grid, time).enabled, false);
   }
-  assert.equal(at(grid, "20:00").label, "Unavailable for 1 hr");
+  assert.equal(at(grid, "20:00").label, "Booked");
+  assert.equal(at(grid, "20:00").enabled, false);
+  const waiting = cells({ start: "19:00", duration: 0 }, {
+    slots: grid.map((cell) => cell.slot),
+    endSlots: [{ ...available("20:00"), duration_minutes: 60 }],
+  });
+  assert.equal(at(waiting, "20:00").enabled, true);
+  assert.equal(at(waiting, "20:15").label, "Booked");
 });
 
 test("end conflicts describe the range and pool capacity labels stay unchanged", () => {
