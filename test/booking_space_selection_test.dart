@@ -39,6 +39,150 @@ BookingBusiness turf() => BookingBusiness(
   ],
 );
 void main() {
+  for (final dark in [false, true]) {
+    for (final width in [320.0, 900.0, 1200.0]) {
+      testWidgets(
+        'pool booking choices stay inside Space as full-width elevated buttons at $width; dark=$dark',
+        (tester) async {
+          tester.view.physicalSize = Size(width, 1200);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          const business = BookingBusiness(
+            id: 'pool-business',
+            name: 'Swimming',
+            type: 'pool',
+            timezone: 'Asia/Kolkata',
+            today: '2030-06-04',
+            spaces: [
+              BookingSpace(
+                id: 'pool',
+                name: 'Pool 1',
+                capacity: 20,
+                options: [
+                  BookingOption(
+                    id: 'regular',
+                    name: 'Single visit',
+                    kind: 'hourly',
+                    durations: [60],
+                    defaultDuration: 60,
+                  ),
+                  BookingOption(
+                    id: 'group',
+                    name: 'School group',
+                    kind: 'group',
+                    durations: [60],
+                    defaultDuration: 60,
+                    groupMode: 'at_least',
+                    groupPeople: 15,
+                  ),
+                ],
+              ),
+            ],
+          );
+          final model = BookingFormModel(
+            catalog: const BookingCatalog(businesses: [business]),
+            draft: BookingDraft(
+              businessId: business.id,
+              spaceId: 'pool',
+              optionId: 'regular',
+            ),
+            poolMode: PoolBookingMode.swimming,
+            loading: false,
+          );
+          String? option;
+          PoolBookingMode? mode;
+          Future<void> pump(BookingFormModel value) => tester.pumpWidget(
+            ScreenUtilInit(
+              designSize: const Size(390, 844),
+              builder: (_, _) => MaterialApp(
+                theme: dark ? darkTheme() : lightTheme(),
+                home: MediaQuery(
+                  data: MediaQueryData(
+                    textScaler: TextScaler.linear(width == 320 ? 1.7 : 1),
+                  ),
+                  child: Scaffold(
+                    body: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: BookingSpaceSelection(
+                          model: value,
+                          businesses: const [business],
+                          onBusiness: (_) {},
+                          onSport: (_) {},
+                          onSpace: (_) {},
+                          onOption: (id) => option = id,
+                          onPoolMode: (value) => mode = value,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await pump(model);
+          final buttons = [
+            for (final label in [
+              'Regular admission',
+              'Group offer',
+              'Swimming plan',
+              'Coaching',
+            ])
+              find.widgetWithText(ElevatedButton, label),
+          ];
+          expect(find.text('Single visit'), findsNothing);
+          expect(find.byType(ChoiceChip), findsNothing);
+          expect(find.text('Booking option'), findsOneWidget);
+          expect(
+            find.text(
+              'School group\n${model.visibleOptions.last.groupExplanation}',
+            ),
+            findsOneWidget,
+          );
+          for (final (i, button) in buttons.indexed) {
+            expect(button, findsOneWidget);
+            expect(
+              find.ancestor(
+                of: button,
+                matching: find.byType(BookingFormSection),
+              ),
+              findsOneWidget,
+            );
+            expect(tester.getSize(button).width, closeTo(width - 64, .01));
+            if (i > 0) {
+              expect(
+                tester.getTopLeft(button).dy,
+                greaterThan(tester.getBottomLeft(buttons[i - 1]).dy),
+              );
+            }
+            final colors = (dark ? darkTheme() : lightTheme()).colorScheme;
+            final color = tester
+                .widget<ElevatedButton>(button)
+                .style!
+                .backgroundColor!
+                .resolve({});
+            expect(color == colors.primary, i == 2);
+          }
+          await tester.ensureVisible(buttons[1]);
+          await tester.tap(buttons[1]);
+          expect(option, 'group');
+          await tester.ensureVisible(buttons[0]);
+          await tester.tap(buttons[0]);
+          expect(option, 'regular');
+          await tester.ensureVisible(buttons[3]);
+          await tester.tap(buttons[3]);
+          expect(mode, PoolBookingMode.coaching);
+          await pump(model.copyWith(saving: true));
+          for (final button in buttons) {
+            expect(tester.widget<ElevatedButton>(button).onPressed, isNull);
+          }
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   test(
     'ground names are shown once, full ground follows halves, and stored names are retained',
     () {

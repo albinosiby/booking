@@ -273,7 +273,11 @@ class FirebaseNotificationRepository implements NotificationRepository {
     if (_auth.currentUser?.id != notification.userId) return;
     await _local.show(
       id: notification.eventId.hashCode & 0x7fffffff,
-      title: notification.title ?? 'Booking updated',
+      title:
+          notification.title ??
+          (notification.cashCollection
+              ? 'Cash collection confirmed'
+              : 'Booking updated'),
       body: notification.body ?? 'Open Booking OS for details.',
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(

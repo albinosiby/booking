@@ -6,6 +6,7 @@ import '../../accounts/models/accounts_models.dart';
 import '../cubit/staff_cash_cubits.dart';
 import '../models/staff_cash_models.dart';
 import 'staff_cash_widgets.dart';
+import 'staff_cash_settlement_sheet.dart';
 
 /// Owner section on the Accounts page: cash each staff member holds, with collect/give.
 class StaffCashOwnerSection extends StatefulWidget {
@@ -25,91 +26,16 @@ class _StaffCashOwnerSectionState extends State<StaffCashOwnerSection> {
 
   Future<void> _settle(StaffCashMember m) async {
     final collect = m.holdingMinor > 0;
-    final input = TextEditingController(
-      text: (m.holdingMinor.abs() / 100).toStringAsFixed(2),
-    );
-    final note = TextEditingController();
-    final key = GlobalKey<FormState>();
-    final ok = await showModalBottomSheet<bool>(
+    final input = await showAdaptiveSheet<StaffCashHandoverInput>(
       context: context,
-      isScrollControlled: true,
-      builder: (d) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          20 + MediaQuery.of(d).viewInsets.bottom,
-        ),
-        child: StatefulBuilder(
-          builder: (d, set) {
-            final minor = financeOpeningMinor(input.text.trim());
-            final valid =
-                minor != null && minor > 0 && minor <= m.holdingMinor.abs();
-            final after = valid
-                ? m.holdingMinor + (collect ? -minor : minor)
-                : m.holdingMinor;
-            return Form(
-              key: key,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    collect
-                        ? 'Collect cash from ${m.name}'
-                        : 'Give cash to ${m.name}',
-                    style: Theme.of(d).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${collect ? 'Staff holds' : 'Owner owes'} ${financeMoney(m.holdingMinor.abs(), widget.currency)}',
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: input,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: collect ? 'Amount collected' : 'Amount given',
-                      errorText: valid || input.text.isEmpty
-                          ? null
-                          : 'Enter an amount up to ${financeMoney(m.holdingMinor.abs(), widget.currency)}',
-                    ),
-                    onChanged: (_) => set(() {}),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: note,
-                    maxLength: 300,
-                    decoration: const InputDecoration(
-                      labelText: 'Note (optional)',
-                    ),
-                  ),
-                  Text(
-                    'Remaining: ${staffCashRemaining(after, widget.currency)}',
-                    style: Theme.of(d).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  AppButton(
-                    label: collect ? 'Confirm collected' : 'Confirm given',
-                    onPressed: valid ? () => Navigator.pop(d, true) : null,
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
+      scrollable: false,
+      showClose: false,
+      builder: (_) =>
+          StaffCashSettlementSheet(member: m, currency: widget.currency),
     );
-    final minor = financeOpeningMinor(input.text.trim());
-    final text = note.text.trim();
-    input.dispose();
-    note.dispose();
-    if (ok != true || minor == null) return;
-    final after = await cubit.settle(m, minor, note: text);
+    if (input == null || !mounted) return;
+    final minor = input.amountMinor;
+    final after = await cubit.settle(m, minor, note: input.note);
     if (!mounted) return;
     final err = cubit.state.error;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -117,7 +43,7 @@ class _StaffCashOwnerSectionState extends State<StaffCashOwnerSection> {
         content: Text(
           after == null
               ? err ?? 'Could not record handover.'
-              : staffCashRemaining(after, widget.currency),
+              : '${collect ? 'Collected' : 'Gave'} ${financeMoney(minor, widget.currency)} ${collect ? 'from' : 'to'} ${m.name} successfully. ${staffCashRemaining(after, widget.currency)}',
         ),
       ),
     );

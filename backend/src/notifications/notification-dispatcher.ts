@@ -1,15 +1,24 @@
 import { randomUUID } from "node:crypto";
 import type { Database } from "../common/database";
 import { PushFailure, PushSender } from "./fcm-sender";
-import type { BookingNotificationDetails } from "./notification-content";
+import type {
+  BookingNotificationDetails,
+  StaffCashNotificationDetails,
+} from "./notification-content";
 import { notificationDetailsSql } from "./notification-events";
 
-// Mirrors BookingService access checks; this is evaluated again on every retry.
+// Booking scope and cash-handover participants are checked again on every retry.
 const eligible = `m.active AND m.user_id=d.user_id AND m.organization_id=e.organization_id
  AND m.user_id NOT LIKE 'sarvam:%'
- AND (m.role='owner' OR (m.permissions ? 'manage_bookings' AND EXISTS (
- SELECT 1 FROM staff_assignments a WHERE a.membership_id=m.id AND a.business_id=e.business_id
- AND a.organization_id=e.organization_id AND (jsonb_array_length(a.resource_ids)=0 OR a.resource_ids ? e.resource_id::text))))`;
+ AND (
+  (e.kind='staff_cash_collected' AND s.id IS NOT NULL AND s.direction='collect' AND
+   ((m.user_id=s.settled_by AND m.role='owner') OR
+    (m.id=s.membership_id AND m.role<>'owner' AND (m.permissions ? 'collect_payments' OR m.permissions ? 'view_finance'))))
+  OR
+  (e.kind<>'staff_cash_collected' AND (m.role='owner' OR (m.permissions ? 'manage_bookings' AND EXISTS (
+    SELECT 1 FROM staff_assignments a WHERE a.membership_id=m.id AND a.business_id=e.business_id
+    AND a.organization_id=e.organization_id AND (jsonb_array_length(a.resource_ids)=0 OR a.resource_ids ? e.resource_id::text)))))
+ )`;
 type Delivery = {
   event_id: string;
   device_id: string;
@@ -20,7 +29,10 @@ type Target = {
   version: number;
   kind: string;
   reference: string;
-  booking_id: string;
+  booking_id: string | null;
+  settlement_id: string | null;
+  cash_details: StaffCashNotificationDetails | null;
+  for_staff: boolean;
   details: BookingNotificationDetails | null;
 };
 
@@ -78,6 +90,7 @@ export class NotificationDispatcher {
         await db.query(
           `INSERT INTO notification_deliveries(event_id,device_id,recipient_user_id)
           SELECT e.id,d.id,d.user_id FROM booking_notification_events e
+          LEFT JOIN staff_cash_settlements s ON s.id=e.settlement_id AND s.organization_id=e.organization_id
           JOIN notification_devices d ON d.enabled AND d.bound_at<=e.created_at AND d.last_seen_at>now()-interval '60 days'
           JOIN memberships m ON m.user_id=d.user_id
           WHERE e.id=$1 AND e.created_at>now()-interval '24 hours' AND ${eligible}
@@ -97,17 +110,19 @@ export class NotificationDispatcher {
   ): Promise<"sent" | "skipped" | "retry" | "dead"> {
     const target = (
       await this.db.query<Target>(
-        `SELECT d.token,d.version,e.kind,e.reference,e.booking_id,
+        `SELECT d.token,d.version,e.kind,e.reference,e.booking_id,e.settlement_id,e.cash_details,(m.id=s.membership_id) AS for_staff,
         COALESCE(h.details->'notification',CASE WHEN b.resource_id=e.resource_id
           THEN ${notificationDetailsSql} END) AS details
       FROM notification_deliveries n JOIN booking_notification_events e ON e.id=n.event_id
-      JOIN booking_history h ON h.id=e.history_id
-      JOIN bookings b ON b.id=e.booking_id AND b.organization_id=e.organization_id
+      LEFT JOIN staff_cash_settlements s ON s.id=e.settlement_id AND s.organization_id=e.organization_id
+      LEFT JOIN booking_history h ON h.id=e.history_id
+      LEFT JOIN bookings b ON b.id=e.booking_id AND b.organization_id=e.organization_id
       JOIN notification_devices d ON d.id=n.device_id
       JOIN memberships m ON m.user_id=d.user_id
       WHERE n.event_id=$1 AND n.device_id=$2 AND n.lease_id=$3 AND n.state='processing'
       AND d.enabled AND n.recipient_user_id=d.user_id AND d.bound_at<=e.created_at
-      AND d.last_seen_at>now()-interval '60 days' AND e.created_at>now()-interval '24 hours' AND ${eligible}`,
+      AND d.last_seen_at>now()-interval '60 days' AND e.created_at>now()-interval '24 hours'
+      AND (e.kind='staff_cash_collected' OR b.id IS NOT NULL) AND ${eligible}`,
         [item.event_id, item.device_id, lease],
       )
     ).rows[0];
@@ -120,6 +135,9 @@ export class NotificationDispatcher {
         token: target.token,
         eventId: item.event_id,
         bookingId: target.booking_id,
+        settlementId: target.settlement_id,
+        cashDetails: target.cash_details,
+        forStaff: target.for_staff,
         userId: item.recipient_user_id,
         kind: target.kind,
         reference: target.reference,

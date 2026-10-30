@@ -175,13 +175,16 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
     notifications.consume();
     if (auth.state.user?.id != pending.userId ||
         auth.state.user?.passwordRecovery == true ||
-        !workspace.state.data.hasPermission('manage_bookings')) {
+        !(pending.cashCollection
+            ? workspace.state.data.hasPermission('collect_payments') ||
+                  workspace.state.data.hasPermission('view_finance')
+            : workspace.state.data.hasPermission('manage_bookings'))) {
       return;
     }
     // BookingDetail's repository fetch enforces current organization/resource access.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && auth.state.user?.id == pending.userId) {
-        router.go('/booking/${pending.bookingId}');
+        router.go(pending.route);
       }
     });
   }

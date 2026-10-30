@@ -14,10 +14,12 @@ class BookingSpaceSelection extends StatelessWidget {
     required this.onSport,
     required this.onSpace,
     required this.onOption,
+    this.onPoolMode,
   });
   final BookingFormModel model;
   final List<BookingBusiness> businesses;
   final ValueChanged<String> onBusiness, onSport, onSpace, onOption;
+  final ValueChanged<PoolBookingMode>? onPoolMode;
 
   Widget spaceCard(
     BookingFormModel s,
@@ -107,7 +109,10 @@ class BookingSpaceSelection extends StatelessWidget {
             ],
           ),
         ],
-        if (s.poolMode == PoolBookingMode.singleVisit &&
+        if (s.business?.type == 'pool' && s.space != null) ...[
+          heading('Booking option'),
+          _PoolBookingOptions(model: s, onOption: onOption, onMode: onPoolMode),
+        ] else if (s.poolMode == PoolBookingMode.singleVisit &&
             s.visibleOptions.length > 1) ...[
           heading('Booking option'),
           _ChoiceLayout(
@@ -129,6 +134,138 @@ class BookingSpaceSelection extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _PoolBookingOptions extends StatelessWidget {
+  const _PoolBookingOptions({
+    required this.model,
+    required this.onOption,
+    this.onMode,
+  });
+  final BookingFormModel model;
+  final ValueChanged<String> onOption;
+  final ValueChanged<PoolBookingMode>? onMode;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (final option in model.visibleOptions) ...[
+        _BookingOptionButton(
+          key: ValueKey('booking-option-${option.id}'),
+          title: option.groupMode == null ? 'Regular admission' : 'Group offer',
+          subtitle: option.groupMode == null
+              ? null
+              : [
+                  if (option.name != 'Group offer') option.name,
+                  if (option.groupExplanation.isNotEmpty)
+                    option.groupExplanation,
+                ].join('\n'),
+          icon: option.groupMode == null
+              ? Icons.schedule_outlined
+              : Icons.local_offer_outlined,
+          selected:
+              model.poolMode == PoolBookingMode.singleVisit &&
+              model.draft.optionId == option.id,
+          onPressed: model.locked ? null : () => onOption(option.id),
+        ),
+        const SizedBox(height: 10),
+      ],
+      if (onMode != null && model.original == null) ...[
+        _BookingOptionButton(
+          key: const ValueKey('booking-mode-swimming'),
+          title: 'Swimming plan',
+          icon: Icons.pool_outlined,
+          selected: model.poolMode == PoolBookingMode.swimming,
+          onPressed: model.locked
+              ? null
+              : () => onMode!(PoolBookingMode.swimming),
+        ),
+        const SizedBox(height: 10),
+        _BookingOptionButton(
+          key: const ValueKey('booking-mode-coaching'),
+          title: 'Coaching',
+          icon: Icons.sports_outlined,
+          selected: model.poolMode == PoolBookingMode.coaching,
+          onPressed: model.locked
+              ? null
+              : () => onMode!(PoolBookingMode.coaching),
+        ),
+      ],
+    ],
+  );
+}
+
+class _BookingOptionButton extends StatelessWidget {
+  const _BookingOptionButton({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.selected,
+    this.subtitle,
+    this.onPressed,
+  });
+  final String title;
+  final String? subtitle;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context), colors = theme.colorScheme;
+    return Semantics(
+      selected: selected,
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: selected
+                ? colors.primary
+                : colors.surfaceContainerLow,
+            foregroundColor: selected ? colors.onPrimary : colors.onSurface,
+            surfaceTintColor: Colors.transparent,
+            elevation: selected ? 3 : 1,
+            shadowColor: colors.shadow.withValues(alpha: .18),
+            minimumSize: const Size(0, 56),
+            padding: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            textStyle: theme.textTheme.labelLarge,
+          ),
+          onPressed: onPressed,
+          child: Row(
+            children: [
+              Icon(icon, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title),
+                    if (subtitle?.isNotEmpty == true) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle!,
+                        style: const TextStyle(fontWeight: FontWeight.normal),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Icon(
+                selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

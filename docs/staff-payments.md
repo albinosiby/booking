@@ -10,7 +10,7 @@ personal Payments page first and can reach Accounts and reports from its app bar
 The page shows:
 
 - Current cash to hand over, or cash the owner owes the staff member when negative.
-- All recorded cash given to the owner and received from the owner.
+- All recorded cash given to the owner.
 - Collections by payment method, refunds and expenses for the selected date.
 - Personal payment activity, including booking/admission customer and reference,
   method, location, time and owner-recorded corrections attributed to the staff member.
@@ -26,6 +26,11 @@ staff members' activity are excluded from personal responses.
 Only the owner confirms receiving/giving cash through Accounts → Staff cash to
 collect. Partial handovers are supported. Existing balance checks, command-key
 idempotency, audit events, and protection against over-collection remain in place.
+After a confirmed collection, the owner's success message names the amount and
+staff member. The collecting owner and involved staff member receive a phone
+notification with the confirmed amount and remaining balance. This additional
+push feature requires the migration and release sequence in
+[Cash collection notifications](staff-cash-notifications.md).
 Handovers do not create another income entry or change the organization's account
 balances. Digital receipts routed to the business bank are excluded from cash held.
 
@@ -66,7 +71,7 @@ refunds and reversed expenses retain their correct summary categories.
 
 ## Release
 
-No new database migration, environment secret or payment provider is required.
+The staff Payments page itself requires no new database migration, environment secret or payment provider.
 The existing user-applied
 `supabase/migrations/20261026100000_staff_cash_settlements.sql` is a prerequisite.
 Do not rerun or apply migrations automatically. No live schema change was made.

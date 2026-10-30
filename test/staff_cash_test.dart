@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:eden_booking/di/injection.dart';
+import 'package:eden_booking/modules/staff_cash/widgets/staff_cash_owner_section.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eden_booking/modules/staff_cash/cubit/staff_cash_cubits.dart';
 import 'package:eden_booking/modules/staff_cash/models/staff_cash_models.dart';
@@ -46,6 +49,38 @@ class FakeStaffCash implements IStaffCashRepository {
 }
 
 void main() {
+  testWidgets(
+    'owner collection success names the actual amount only after confirmation',
+    (tester) async {
+      final repo = FakeStaffCash();
+      await getIt.reset();
+      getIt.registerFactory<OwnerStaffCashCubit>(
+        () => OwnerStaffCashCubit(repo),
+      );
+      addTearDown(getIt.reset);
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: StaffCashOwnerSection(currency: 'INR')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Collect'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, '80.00');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Collected ₹ 80.00'), findsNothing);
+      await tester.tap(find.text('Confirm collected'));
+      await tester.pumpAndSettle();
+      expect(repo.last?.amountMinor, 8000);
+      expect(
+        find.textContaining('Collected ₹ 80.00 from Asha successfully.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Still to hand over ₹ 100.00'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   test('partial collect leaves the remainder visible to the owner', () async {
     final repo = FakeStaffCash();
     final cubit = OwnerStaffCashCubit(repo);

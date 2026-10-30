@@ -2,12 +2,17 @@ import { createSign } from "node:crypto";
 import {
   bookingNotificationBody,
   type BookingNotificationDetails,
+  staffCashNotificationBody,
+  type StaffCashNotificationDetails,
 } from "./notification-content";
 
 export type PushMessage = {
   token: string;
   eventId: string;
-  bookingId: string;
+  bookingId: string | null;
+  settlementId?: string | null;
+  cashDetails?: StaffCashNotificationDetails | null;
+  forStaff?: boolean;
   userId: string;
   kind: string;
   reference: string;
@@ -107,9 +112,21 @@ export class FcmSender implements PushSender {
         created: "Order placed",
         cancelled: "Order cancelled",
         rescheduled: "Order rescheduled",
+        staff_cash_collected: "Cash collection confirmed",
       } as Record<string, string>
     )[m.kind];
     if (!title) throw new PushFailure("INVALID_EVENT", false);
+    let body: string;
+    try {
+      if (m.kind === "staff_cash_collected" && !m.settlementId)
+        throw new Error();
+      body =
+        m.kind === "staff_cash_collected"
+          ? staffCashNotificationBody(m.cashDetails!, m.forStaff === true)
+          : bookingNotificationBody(m.reference, m.details);
+    } catch {
+      throw new PushFailure("INVALID_EVENT", false);
+    }
     const key = this.credentials();
     const access = await this.accessToken();
     let response: Response;
@@ -128,11 +145,13 @@ export class FcmSender implements PushSender {
               token: m.token,
               notification: {
                 title,
-                body: bookingNotificationBody(m.reference, m.details),
+                body,
               },
               data: {
                 event_id: m.eventId,
-                booking_id: m.bookingId,
+                ...(m.kind === "staff_cash_collected"
+                  ? { settlement_id: m.settlementId! }
+                  : { booking_id: m.bookingId! }),
                 event_type: m.kind,
                 recipient_user_id: m.userId,
               },

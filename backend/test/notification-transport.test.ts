@@ -219,7 +219,113 @@ test("hosted migration creates only private RLS tables and grants the restricted
       /permission denied/,
     );
     await sql.exec("RESET ROLE");
+    await sql.exec(
+      "CREATE TABLE booking_app.staff_cash_settlements(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES booking_app.organizations(id))",
+    );
+    await sql.exec(
+      readFileSync(
+        "../supabase/migrations/20261029143630_staff_cash_collection_notifications.sql",
+        "utf8",
+      ),
+    );
+    assert.equal(
+      (await sql.query("SELECT name FROM booking_app.schema_migrations")).rows
+        .length,
+      2,
+    );
+    await sql.exec("SET ROLE anon");
+    await assert.rejects(
+      () =>
+        sql.query(
+          "SELECT cash_details FROM booking_app.booking_notification_events",
+        ),
+      /permission denied/,
+    );
+    await sql.exec("RESET ROLE;SET ROLE authenticated");
+    await assert.rejects(
+      () =>
+        sql.query(
+          "SELECT cash_details FROM booking_app.booking_notification_events",
+        ),
+      /permission denied/,
+    );
+    await sql.exec("RESET ROLE;SET ROLE booking_api");
+    await sql.query(
+      "SELECT cash_details,settlement_id FROM booking_app.booking_notification_events",
+    );
+    await sql.exec("RESET ROLE");
+    const orgA = randomUUID(),
+      orgB = randomUUID(),
+      settlement = randomUUID();
+    await sql.query(
+      "INSERT INTO booking_app.organizations(id) VALUES($1),($2)",
+      [orgA, orgB],
+    );
+    await sql.query(
+      "INSERT INTO booking_app.staff_cash_settlements(id,organization_id) VALUES($1,$2)",
+      [settlement, orgA],
+    );
+    await assert.rejects(
+      () =>
+        sql.query(
+          `INSERT INTO booking_app.booking_notification_events(id,settlement_id,organization_id,kind,reference,cash_details)
+      VALUES($1,$2,$3,'staff_cash_collected','Cash','{}')`,
+          [randomUUID(), settlement, orgB],
+        ),
+      /foreign key/,
+    );
+    await sql.query(
+      `INSERT INTO booking_app.booking_notification_events(id,settlement_id,organization_id,kind,reference,cash_details)
+      VALUES($1,$2,$3,'staff_cash_collected','Cash','{}')`,
+      [randomUUID(), settlement, orgA],
+    );
+    await assert.rejects(
+      () =>
+        sql.query(
+          `INSERT INTO booking_app.booking_notification_events(id,organization_id,kind,reference)
+      VALUES($1,$2,'created','Invalid booking source')`,
+          [randomUUID(), orgA],
+        ),
+      /check constraint/,
+    );
   } finally {
     await sql.close();
   }
 });
+
+test("FCM cash confirmations include the exact amount, safe payment route data and stable event ID", async () =>
+  withCredentials(async () => {
+    let delivered = false;
+    const sender = new FcmSender((async (url, options) => {
+      if (String(url).includes("oauth2.googleapis.com"))
+        return Response.json({
+          access_token: "fixture-token",
+          expires_in: 3600,
+        });
+      const body = JSON.parse(options!.body as string).message;
+      assert.equal(body.notification.title, "Cash collection confirmed");
+      assert.match(body.notification.body, /₹1,500.00 from you/);
+      assert.equal(body.data.settlement_id, message.eventId);
+      assert.equal(body.data.event_type, "staff_cash_collected");
+      assert.equal(body.data.booking_id, undefined);
+      assert.equal(body.data.amount_minor, undefined);
+      assert.equal(body.android.notification.tag, message.eventId);
+      delivered = true;
+      return Response.json({ name: "sent" });
+    }) as typeof fetch);
+    await sender.send({
+      ...message,
+      kind: "staff_cash_collected",
+      bookingId: null,
+      settlementId: message.eventId,
+      forStaff: true,
+      cashDetails: {
+        amount_minor: 150000,
+        balance_after_minor: 25000,
+        currency: "INR",
+        staff_name: "Asha",
+        collector_name: "Albino",
+      },
+    });
+    assert.equal(delivered, true);
+  }));

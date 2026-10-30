@@ -144,7 +144,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     }
   }
 
-  Widget poolOptions(BookingFormModel s, {bool enabled = true}) => Padding(
+  Widget courtOptions(BookingFormModel s, {bool enabled = true}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,12 +156,8 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
             for (final mode in PoolBookingMode.values)
               ChoiceChip(
                 label: Text(switch (mode) {
-                  PoolBookingMode.singleVisit =>
-                    s.business?.type == 'pool'
-                        ? 'Single visit'
-                        : 'Court booking',
-                  PoolBookingMode.swimming =>
-                    s.business?.type == 'pool' ? 'Swimming plan' : 'Court plan',
+                  PoolBookingMode.singleVisit => 'Court booking',
+                  PoolBookingMode.swimming => 'Court plan',
                   PoolBookingMode.coaching => 'Coaching',
                 }),
                 selected: s.poolMode == mode,
@@ -303,8 +299,34 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         onBusiness: (id) => location(id),
         onSport: cubit.chooseSport,
         onSpace: (id) => location(id, space: true),
-        onOption: cubit.chooseOption,
+        onOption: bookingOption,
+        onPoolMode: s.original == null && s.business?.type == 'pool'
+            ? poolMode
+            : null,
       );
+
+  Future<void> bookingOption(String id) async {
+    final s = cubit.state, a = admission;
+    if (switchingPool ||
+        s.locked ||
+        a?.state.loading == true ||
+        a?.state.busy == true ||
+        a?.state.locked == true) {
+      return;
+    }
+    if (s.poolMode != PoolBookingMode.singleVisit) {
+      await poolMode(PoolBookingMode.singleVisit);
+      if (!mounted ||
+          cubit.isClosed ||
+          cubit.state.poolMode != PoolBookingMode.singleVisit ||
+          cubit.state.draft.businessId != s.draft.businessId ||
+          cubit.state.draft.spaceId != s.draft.spaceId) {
+        return;
+      }
+    }
+    cubit.chooseOption(id);
+  }
+
   Widget timeSection(BookingFormModel s) => BookingFormSection(
     number: 3,
     title: 'Date & time',
@@ -836,8 +858,9 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     spaceSection(s, a),
     if (s.original == null &&
         admissionBusinessTypes.contains(s.business?.type) &&
+        s.business?.type != 'pool' &&
         s.space != null)
-      poolOptions(s, enabled: !locked && a?.loading != true),
+      courtOptions(s, enabled: !locked && a?.loading != true),
     if (a == null) timeSection(s) else admissionSection(s, a),
   ];
 

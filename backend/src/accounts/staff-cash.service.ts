@@ -10,6 +10,7 @@ import { z } from "zod";
 import { Database, Queryable } from "../common/database";
 import { Actor } from "../common/auth.guard";
 import { WorkspaceService } from "../workspace/workspace.service";
+import { enqueueStaffCashNotification } from "../notifications/notification-events";
 type Row = Record<string, any>;
 const settleSchema = z
   .object({
@@ -289,6 +290,7 @@ export class StaffCashService {
         `staff_cash_${v.direction}`,
         id,
       );
+      await enqueueStaffCashNotification(db, id);
       return { id, balance_after_minor: after };
     });
   }

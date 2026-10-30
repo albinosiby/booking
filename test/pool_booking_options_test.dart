@@ -161,6 +161,15 @@ void main() {
                       defaultDuration: 60,
                       minimumDuration: 60,
                     ),
+                    BookingOption(
+                      id: 'group',
+                      name: 'Group offer',
+                      kind: 'group',
+                      durations: [60],
+                      defaultDuration: 60,
+                      groupMode: 'at_least',
+                      groupPeople: 15,
+                    ),
                   ],
                 ),
               ],
@@ -210,14 +219,16 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        expect(find.text('Single visit'), findsNothing);
+        expect(find.byType(ChoiceChip), findsNothing);
         booking.chooseCustomer(
           const BookingCustomer(name: 'Anjali', phone: '9876543210'),
         );
         await tester.pumpAndSettle();
         await tester.ensureVisible(
-          find.widgetWithText(ChoiceChip, 'Swimming plan'),
+          find.widgetWithText(ElevatedButton, 'Swimming plan'),
         );
-        await tester.tap(find.widgetWithText(ChoiceChip, 'Swimming plan'));
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Swimming plan'));
         await tester.pumpAndSettle();
         expect(find.text('New booking'), findsOneWidget);
         expect(find.text('Customer'), findsOneWidget);
@@ -264,14 +275,18 @@ void main() {
         expect(tester.takeException(), isNull);
         final previous = admission;
         final metadataReads = r.catalogReads;
-        await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'Coaching'));
+        await tester.ensureVisible(
+          find.widgetWithText(ElevatedButton, 'Coaching'),
+        );
         expect(
           tester
-              .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Coaching'))
-              .onSelected,
+              .widget<ElevatedButton>(
+                find.widgetWithText(ElevatedButton, 'Coaching'),
+              )
+              .onPressed,
           isNotNull,
         );
-        await tester.tap(find.widgetWithText(ChoiceChip, 'Coaching'));
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Coaching'));
         await tester.pumpAndSettle();
         expect(find.text('Change pool option?'), findsNothing);
         expect(booking.state.poolMode, PoolBookingMode.coaching);
@@ -304,27 +319,43 @@ void main() {
         await tester.pumpAndSettle();
         expect(admission.state.draft.payments.single.accountId, 'bank1');
         await tester.ensureVisible(
-          find.widgetWithText(ChoiceChip, 'Single visit'),
+          find.widgetWithText(ElevatedButton, 'Regular admission'),
         );
-        await tester.tap(find.widgetWithText(ChoiceChip, 'Single visit'));
+        await tester.tap(
+          find.widgetWithText(ElevatedButton, 'Regular admission'),
+        );
         await tester.pumpAndSettle();
         expect(find.text('Change pool option?'), findsOneWidget);
         await tester.tap(find.text('Keep editing'));
         await tester.pumpAndSettle();
         expect(admission.state.draft.payments.length, 1);
-        await tester.tap(find.widgetWithText(ChoiceChip, 'Single visit'));
+        await tester.ensureVisible(
+          find.widgetWithText(ElevatedButton, 'Group offer'),
+        );
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Group offer'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Change option'));
         await tester.pumpAndSettle();
         expect(find.text('New booking'), findsOneWidget);
         expect(booking.state.draft.customer.name, 'Anjali');
         expect(booking.state.draft.payments, isEmpty);
+        expect(booking.state.poolMode, PoolBookingMode.singleVisit);
+        expect(booking.state.draft.optionId, 'group');
+        expect(booking.state.draft.people, '15');
         expect(find.text('Date & time'), findsOneWidget);
         expect(find.text('Expiry date'), findsNothing);
         await tester.ensureVisible(
-          find.widgetWithText(ChoiceChip, 'Swimming plan'),
+          find.widgetWithText(ElevatedButton, 'Regular admission'),
         );
-        await tester.tap(find.widgetWithText(ChoiceChip, 'Swimming plan'));
+        await tester.tap(
+          find.widgetWithText(ElevatedButton, 'Regular admission'),
+        );
+        await tester.pumpAndSettle();
+        expect(booking.state.draft.optionId, 'hourly');
+        await tester.ensureVisible(
+          find.widgetWithText(ElevatedButton, 'Swimming plan'),
+        );
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Swimming plan'));
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('Review admission'));
         await tester.tap(find.text('Review admission'));

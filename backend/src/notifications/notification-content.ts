@@ -6,6 +6,34 @@ export type BookingNotificationDetails = {
   timezone?: string | null;
 };
 
+export type StaffCashNotificationDetails = {
+  amount_minor: number;
+  balance_after_minor: number;
+  currency: string;
+  staff_name: string;
+  collector_name: string;
+};
+
+export function staffCashNotificationBody(
+  details: StaffCashNotificationDetails,
+  forStaff: boolean,
+) {
+  if (
+    !Number.isSafeInteger(details?.amount_minor) ||
+    details.amount_minor <= 0 ||
+    !Number.isSafeInteger(details.balance_after_minor) ||
+    details.balance_after_minor < 0 ||
+    !/^[A-Z]{3}$/.test(details.currency)
+  )
+    throw new Error("Invalid cash notification snapshot");
+  const money = (minor: number) =>
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: details.currency,
+    }).format(minor / 100);
+  return `${forStaff ? `${label(details.collector_name, "The owner")} collected` : "You collected"} ${money(details.amount_minor)} from ${forStaff ? "you" : label(details.staff_name, "staff")}.\nRemaining to hand over: ${money(details.balance_after_minor)}.`;
+}
+
 // Keep user-provided names on a single line and bound the push payload size.
 function label(value: unknown, fallback: string) {
   if (typeof value !== "string") return fallback;

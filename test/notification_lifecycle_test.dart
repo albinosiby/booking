@@ -108,6 +108,51 @@ class PushFake implements NotificationRepository {
 
 void main() {
   test(
+    'cash confirmation parses a settlement, deduplicates delivery and opens Payments for the signed-in recipient',
+    () async {
+      final auth = NotificationAuthFake(), repo = PushFake();
+      final cubit = NotificationCubit(repo, auth);
+      await cubit.start();
+      await drain();
+      final payload = {
+        'event_id': '00000000-0000-4000-8000-000000000001',
+        'settlement_id': '00000000-0000-4000-8000-000000000003',
+        'recipient_user_id': 'a',
+        'event_type': 'staff_cash_collected',
+      };
+      final cash = BookingNotification.fromData(
+        payload,
+        title: 'Cash collection confirmed',
+        body: '₹1,500.00 collected',
+      )!;
+      expect(cash.route, '/payments');
+      expect(cash.bookingId, isEmpty);
+      expect(
+        BookingNotification.fromData(cash.toData())?.settlementId,
+        cash.settlementId,
+      );
+      expect(
+        BookingNotification.fromData({...payload, 'settlement_id': 'invalid'}),
+        isNull,
+      );
+      repo.foreground.add(cash);
+      repo.foreground.add(cash);
+      await drain();
+      expect(repo.shown.length, 1);
+      repo.opened.add(cash);
+      await drain();
+      expect(cubit.state.pending?.route, '/payments');
+      auth.change(userB);
+      await drain();
+      repo.opened.add(cash);
+      await drain();
+      expect(cubit.state.pending, isNull);
+      await cubit.close();
+      await auth.events.close();
+    },
+  );
+
+  test(
     'initialization and late auth refresh cannot re-register during logout',
     () async {
       final auth = NotificationAuthFake(),

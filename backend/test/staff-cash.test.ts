@@ -7,6 +7,9 @@ import ExcelJS from "exceljs";
 import { Database } from "../src/common/database";
 import { WorkspaceService } from "../src/workspace/workspace.service";
 import { AccountsService } from "../src/accounts/accounts.service";
+import { NotificationService } from "../src/notifications/notification.service";
+import { NotificationDispatcher } from "../src/notifications/notification-dispatcher";
+import { PushFailure, type PushMessage } from "../src/notifications/fcm-sender";
 import { StaffCashService } from "../src/accounts/staff-cash.service";
 import { BookingService } from "../src/bookings/booking.service";
 import { CourtService } from "../src/court/court.service";
@@ -380,4 +383,166 @@ test("collection-only staff get personal paginated payments and complete handove
     [member.id],
   );
   await assert.rejects(() => cashSvc.me(collector, {}));
+});
+
+test("confirmed cash handovers atomically notify only the collecting owner and involved staff, once per command", async () => {
+  const cashier = actor(),
+    observer = actor(),
+    secondOwner = actor();
+  for (const person of [cashier, observer]) {
+    const invite = await w.invite(owner, {
+      email: person.email,
+      display_name: "Cashier Asha",
+      role: "staff",
+      permissions: ["collect_payments", "record_expenses"],
+      assignments: [{ business_id: business, resource_ids: [space] }],
+    });
+    await w.accept(
+      person,
+      new URL(invite.invitation_url).searchParams.get("token")!,
+    );
+  }
+  const member = await w.member(cashier);
+  await db.query(
+    `INSERT INTO memberships(id,organization_id,user_id,email,display_name,role,permissions)
+    VALUES($1,$2,$3,$4,'Other owner','owner','[]')`,
+    [randomUUID(), member.organization_id, secondOwner.uid, secondOwner.email],
+  );
+  const deviceService = new NotificationService(db);
+  for (const person of [owner, cashier, observer, other, secondOwner])
+    await deviceService.register(person, {
+      installation_id: randomUUID(),
+      installation_secret:
+        randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", ""),
+      token: randomUUID() + randomUUID(),
+      platform: "android",
+    });
+  await s.createEntry(cashier, entry("income", 100000, cash));
+  const command = {
+    command_key: randomUUID(),
+    direction: "collect",
+    amount_minor: 25000,
+    expected_balance_minor: 100000,
+    note: "",
+  };
+  const result = await cashSvc.settle(owner, member.id, command);
+  assert.deepEqual(await cashSvc.settle(owner, member.id, command), result);
+  const events = await db.query<{ cash_details: any }>(
+    `SELECT cash_details FROM booking_notification_events WHERE settlement_id=$1`,
+    [result.id],
+  );
+  assert.equal(events.rows.length, 1);
+  assert.equal(events.rows[0].cash_details.amount_minor, 25000);
+  assert.equal(events.rows[0].cash_details.balance_after_minor, 75000);
+  assert.equal(events.rows[0].cash_details.currency, "INR");
+  await db.query(
+    `UPDATE memberships SET display_name='Renamed cashier' WHERE id=$1`,
+    [member.id],
+  );
+  const sent: PushMessage[] = [];
+  const dispatcher = new NotificationDispatcher(db, {
+    send: async (m) => {
+      sent.push(m);
+    },
+  });
+  for (let i = 0; i < 4; i++) await dispatcher.dispatch(40);
+  const ours = sent.filter((m) => m.eventId === result.id);
+  assert.equal(ours.length, 2);
+  assert.deepEqual(
+    new Set(ours.map((m) => m.userId)),
+    new Set([owner.uid, cashier.uid]),
+  );
+  assert.equal(ours.find((m) => m.userId === cashier.uid)?.forStaff, true);
+  assert.equal(ours[0].cashDetails?.staff_name, "Cashier Asha");
+  await dispatcher.dispatch(40);
+  assert.equal(sent.filter((m) => m.eventId === result.id).length, 2);
+  // A failure writing the outbox must roll the financial handover back too.
+  await db.query(`CREATE FUNCTION reject_cash_push() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.kind='staff_cash_collected' THEN RAISE EXCEPTION 'notification fixture failure'; END IF; RETURN NEW; END $$`);
+  await db.query(
+    `CREATE TRIGGER reject_cash_push BEFORE INSERT ON booking_notification_events FOR EACH ROW EXECUTE FUNCTION reject_cash_push()`,
+  );
+  const failedKey = randomUUID();
+  try {
+    await assert.rejects(
+      () =>
+        cashSvc.settle(owner, member.id, {
+          ...command,
+          command_key: failedKey,
+          amount_minor: 1000,
+          expected_balance_minor: 75000,
+        }),
+      /notification fixture failure/,
+    );
+  } finally {
+    await db.query(
+      "DROP TRIGGER reject_cash_push ON booking_notification_events",
+    );
+    await db.query("DROP FUNCTION reject_cash_push()");
+  }
+  assert.equal(
+    (
+      await db.query(
+        "SELECT id FROM staff_cash_settlements WHERE command_key=$1",
+        [failedKey],
+      )
+    ).rows.length,
+    0,
+  );
+  assert.equal((await cashSvc.me(cashier, {})).cash_holding_minor, 75000);
+  const second = await cashSvc.settle(owner, member.id, {
+    ...command,
+    command_key: randomUUID(),
+    amount_minor: 1000,
+    expected_balance_minor: 75000,
+  });
+  const attempts: PushMessage[] = [];
+  const retrying = new NotificationDispatcher(db, {
+    send: async (m) => {
+      if (m.eventId !== second.id) return;
+      attempts.push(m);
+      if (m.userId === cashier.uid) throw new PushFailure("FCM_NETWORK", true);
+    },
+  });
+  await retrying.dispatch(40);
+  await db.query(`UPDATE memberships SET permissions='[]' WHERE id=$1`, [
+    member.id,
+  ]);
+  await db.query(
+    `UPDATE notification_deliveries SET next_attempt_at=now() WHERE event_id=$1`,
+    [second.id],
+  );
+  await retrying.dispatch(40);
+  assert.equal(attempts.filter((m) => m.userId === cashier.uid).length, 1);
+  assert.equal(
+    (
+      await db.query<{ state: string }>(
+        `SELECT state FROM notification_deliveries WHERE event_id=$1 AND recipient_user_id=$2`,
+        [second.id, cashier.uid],
+      )
+    ).rows[0].state,
+    "skipped",
+  );
+  // Giving money back is not a collection event.
+  await db.query(
+    `UPDATE memberships SET permissions='["collect_payments","record_expenses"]' WHERE id=$1`,
+    [member.id],
+  );
+  await s.createEntry(cashier, entry("expense", 90000, cash));
+  const given = await cashSvc.settle(owner, member.id, {
+    ...command,
+    command_key: randomUUID(),
+    direction: "give",
+    amount_minor: 5000,
+    expected_balance_minor: -16000,
+  });
+  assert.equal(
+    (
+      await db.query(
+        "SELECT id FROM booking_notification_events WHERE settlement_id=$1",
+        [given.id],
+      )
+    ).rows.length,
+    0,
+  );
 });

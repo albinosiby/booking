@@ -195,7 +195,6 @@ class _StaffCashScreenState extends State<StaffCashScreen> {
               amounts(
                 [
                   ('Given to owner · all time', d.handedOverMinor),
-                  ('Received from owner · all time', d.receivedFromOwnerMinor),
                 ],
                 currency,
                 minimumWidth: 230,

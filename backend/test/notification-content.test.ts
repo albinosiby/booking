@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bookingNotificationBody } from "../src/notifications/notification-content";
+import {
+  bookingNotificationBody,
+  staffCashNotificationBody,
+} from "../src/notifications/notification-content";
 
 test("notification dates follow the venue timezone and include the end date across midnight", () => {
   assert.equal(
@@ -49,4 +52,28 @@ test("notification labels preserve Unicode names, remove injected lines and boun
     80,
   );
   assert.ok(Buffer.byteLength(body, "utf8") < 1000);
+});
+
+test("cash confirmation names the exact amount and remaining balance for each participant", () => {
+  const details = {
+    amount_minor: 150000,
+    balance_after_minor: 25000,
+    currency: "INR",
+    staff_name: "Asha\nStaff",
+    collector_name: "Albino",
+  };
+  assert.equal(
+    staffCashNotificationBody(details, true),
+    "Albino collected ₹1,500.00 from you.\nRemaining to hand over: ₹250.00.",
+  );
+  assert.equal(
+    staffCashNotificationBody(details, false),
+    "You collected ₹1,500.00 from Asha Staff.\nRemaining to hand over: ₹250.00.",
+  );
+  assert.throws(() =>
+    staffCashNotificationBody({ ...details, amount_minor: NaN }, true),
+  );
+  assert.throws(() =>
+    staffCashNotificationBody({ ...details, balance_after_minor: -1 }, true),
+  );
 });

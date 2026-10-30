@@ -3,6 +3,12 @@ import '../../accounts/models/accounts_models.dart';
 
 int _int(Object? v) => (v as num?)?.toInt() ?? 0;
 
+class StaffCashHandoverInput {
+  const StaffCashHandoverInput(this.amountMinor, this.note);
+  final int amountMinor;
+  final String note;
+}
+
 class StaffCashSettlement extends Equatable {
   const StaffCashSettlement({
     required this.id,
