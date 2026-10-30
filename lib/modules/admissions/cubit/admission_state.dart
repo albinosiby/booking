@@ -20,6 +20,7 @@ class AdmissionState extends Equatable {
     this.loading = false,
     this.busy = false,
     this.locked = false,
+    this.renewAndCollect = false,
     this.error,
     this.savedId,
     this.overview = const AdmissionOverview(),
@@ -43,6 +44,7 @@ class AdmissionState extends Equatable {
   final String? status, error, savedId;
   final int? next;
   final bool loading, busy, locked;
+  final bool renewAndCollect;
   AdmissionState copyWith({
     AdmissionCatalog? catalog,
     List<Admission>? items,
@@ -58,6 +60,7 @@ class AdmissionState extends Equatable {
     bool? loading,
     bool? busy,
     bool? locked,
+    bool? renewAndCollect,
     String? error,
     String? savedId,
     AdmissionOverview? overview,
@@ -79,6 +82,7 @@ class AdmissionState extends Equatable {
     loading: loading ?? this.loading,
     busy: busy ?? this.busy,
     locked: locked ?? this.locked,
+    renewAndCollect: renewAndCollect ?? this.renewAndCollect,
     error: error,
     savedId: savedId ?? this.savedId,
     overview: overview ?? this.overview,
@@ -127,6 +131,7 @@ class AdmissionState extends Equatable {
     loading,
     busy,
     locked,
+    renewAndCollect,
     error,
     savedId,
     overview,

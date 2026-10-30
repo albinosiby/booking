@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { SiteHeader } from "./site-header";
+import { PoweredByBookingOs } from "./bookingos-brand";
 import { SpaceGallery } from "./space-gallery";
 import { BookingHero } from "./booking-hero";
 import { BookingTimePicker } from "./booking-time-picker";
@@ -748,9 +749,7 @@ export function BookingPage({
         )}
         <footer className="site-footer">
           <span>Booking directly with {site.title}</span>
-          <span>
-            Powered by <strong>Booking OS</strong>
-          </span>
+          <PoweredByBookingOs />
         </footer>
       </main>
       {b.mode === "slots" && business && (

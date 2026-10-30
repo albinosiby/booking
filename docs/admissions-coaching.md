@@ -69,11 +69,13 @@ Profile → Plans & Coaching manages customer purchases of configured swimming a
 - **Coaching:** configured class duration, seats, pool and snapshotted coach apply. Matching plan/pool/start/end reservations share a class capacity. Independent overlapping classes cannot use the same coach. Calendar displays each student's reservation so attendance can be marked individually. Dedicated named batches and bulk roster attendance are not included.
 - **Completed:** all units used. The final flexible visit remains valid until its end; repeat visits on that final attendance date remain subject to capacity and expiry. No later-date attendance can be added.
 - **Expired:** the location-local date is later than the inclusive expiry date. Unused units remain visible but cannot be used. Visits must end within validity. Existing day/month/year expiry calculations are retained, including clamping month/year boundaries.
-- **Renew:** completed/expired admissions can be renewed once. Renewal creates a separate admission using the current enabled plan and pricing, preserving the customer and previous history. No unused balance or money is automatically transferred. Each renewed admission can itself be renewed later.
+- **Renew & collect:** completed/expired admissions show a combined primary action to staff with both subscription-management and payment-collection permission. It opens the renewal form with the customer/current plan selected and the new plan's full fee prefilled. The default collection follows changes to the selected plan or agreed fee until the collected amount is explicitly edited. Staff can record a partial payment and review the remaining balance; positive-fee combined renewals require a positive collection. Zero-fee renewals create no payment. Review shows the new validity dates and payment breakdown, and **Renew & collect** confirms both in the existing atomic enrollment transaction. Closing before confirmation writes nothing. Uncertain confirmation retries use the same command key. The previous term's outstanding dues remain separate and accessible through membership details (**Collect previous dues**). Staff with management permission alone retain the ordinary **Renew** flow. Renewal creates a separate admission using the current enabled plan and pricing, preserving customer/history; each renewed admission can itself be renewed later. This UI change needs no migration or backend API change.
 - **Corrections:** owners can change recorded attendance with a reason. Clearing flexible attendance restores its date credit only when no other present visit remains on that date. Fixed usage is independent of attendance. Owners can restore credit for an ended fixed session, then schedule one makeup session before expiry; the original stays in history. Future fixed sessions can be cancelled or rescheduled with a reason and fresh capacity checks.
 - **Cancellation:** future reservations are cancelled/released. Historical attendance and payment dues remain. Refunds are explicit owner-recorded transactions, never automatic.
 
 All reservation views and availability use the existing booking inventory. Admission sessions have a zero visit price: the plan is charged once on the admission. Collections/refunds post into the existing money accounts and financial reports as `admission_collection` / `admission_refund`. Dues can be collected after completion or expiry. No payment gateway or customer self-service login is introduced.
+
+**Combined renewal verification (2026-10-30):** 45 Flutter tests and three backend tests passed. Coverage includes the 320/1440-pixel renewal form, Home navigation and permission-specific actions, fee changes and partial collection, zero-fee renewals, no writes before confirmation, uncertain retries, payment-failure rollback, exactly-once collection and preservation of previous dues. Flutter analysis passed. Tests use isolated local fixtures; release the updated Flutter web/native client to enable this UI. No migration or live deployment was performed.
 
 ## Permissions and architecture
 
@@ -131,8 +133,11 @@ the old term; they are not transferred or silently forgiven.
 
 Home shows **Expired members · action needed** for memberships whose inclusive
 expiry date has passed in the business timezone, including tracked plans whose
-attendance is already completed. **Renew** opens the renewal form, **Collect
-amount** opens payment collection, and **View membership** opens the details.
+attendance is already completed. **Renew & collect** opens the renewal form with
+the new fee prefilled when both permissions are present. The queue shows the old
+balance as **Previous plan due**; **View membership** opens its details for
+separate collection. Staff who can only renew retain **Renew**; collection-only
+staff retain **Collect amount** for the existing balance.
 Renewed, cancelled and deleted terms leave this queue. The queue loads 50 rows at
 a time, supports retry/refresh and refreshes on return, on app resume and once a
 minute while foregrounded. Business/resource permissions still apply. Amounts

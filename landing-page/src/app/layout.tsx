@@ -9,12 +9,12 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/_landing/images/bookingos-app-icon.png",
+        url: "/_landing/images/bookingos-app-icon.png?v=20261030",
         type: "image/png",
         sizes: "192x192",
       },
     ],
-    apple: "/_landing/images/bookingos-app-icon.png",
+    apple: "/_landing/images/bookingos-app-icon.png?v=20261030",
   },
 };
 

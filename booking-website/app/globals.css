@@ -750,6 +750,9 @@ button:not(:disabled):active {
   height: 100%;
   object-fit: contain;
 }
+.brand-logo-fallback {
+  background: transparent;
+}
 .venue-contact {
   display: flex;
   align-items: center;
@@ -2615,15 +2618,17 @@ h1 {
   color: var(--teal);
   margin: auto;
 }
-.brand-symbol {
-  font-size: 58px;
-  color: var(--navy);
-  font-weight: 800;
-  letter-spacing: -8px;
+.bookingos-mark {
+  display: inline-block;
+  object-fit: contain;
+  flex-shrink: 0;
+  vertical-align: middle;
 }
-.brand-symbol span {
-  color: var(--teal);
-  font-size: 30px;
+.bookingos-powered {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 @keyframes spin {
   to {

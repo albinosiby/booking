@@ -433,6 +433,76 @@ test("fixed sessions reserve capacity and count when ended regardless of presenc
   );
   assert.equal(a.used, 1);
 });
+test("renew and collect is atomic, preserves previous dues and cannot duplicate the new payment", async () => {
+  const f = await fixture();
+  await db.query(
+    "UPDATE admissions SET starts_on=current_date-10,expires_on=current_date-1 WHERE id=$1",
+    [f.id],
+  );
+  const old = await service.detail(f.owner, f.id);
+  const payment = {
+    method: "cash",
+    amount_minor: f.q.total_minor,
+    reference: "Renewal fee",
+    received_at: new Date().toISOString(),
+  };
+  const renewal = {
+    ...f.input,
+    customer: { ...f.input.customer, id: old.customer_id },
+    renewed_from: f.id,
+    payments: [payment],
+  };
+  const excess = {
+    ...renewal,
+    payments: [{ ...payment, amount_minor: payment.amount_minor + 1 }],
+  };
+  const invalid = await service.preview(f.owner, excess);
+  await assert.rejects(
+    () =>
+      service.create(f.owner, {
+        ...excess,
+        preview_token: invalid.preview_token,
+        command_key: randomUUID(),
+      }),
+    /exceeds/,
+  );
+  assert.equal(
+    (
+      await db.query<any>(
+        "SELECT count(*)::int n FROM admissions WHERE renewed_from=$1",
+        [f.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+  const quote = await service.preview(f.owner, renewal);
+  const command = {
+    ...renewal,
+    preview_token: quote.preview_token,
+    command_key: randomUUID(),
+  };
+  const created = await service.create(f.owner, command);
+  assert.deepEqual(await service.create(f.owner, command), created);
+  const current = await service.detail(f.owner, created.id);
+  assert.equal(current.renewed_from, f.id);
+  assert.equal(current.net_paid_minor, quote.total_minor);
+  assert.equal(current.balance_minor, 0);
+  assert.equal(current.payments.length, 1);
+  assert.equal(
+    (await service.detail(f.owner, f.id)).balance_minor,
+    old.balance_minor,
+  );
+  assert.equal(
+    (
+      await db.query<any>(
+        "SELECT count(*)::int n FROM finance_events e JOIN admission_payments p ON p.id=e.admission_payment_id WHERE p.admission_id=$1",
+        [created.id],
+      )
+    ).rows[0].n,
+    1,
+  );
+});
+
 test("expired plans block check-in and renew as a separate admission with fresh balance", async () => {
   const f = await fixture();
   await db.query(

@@ -377,10 +377,13 @@ class AdmissionCubit extends Cubit<AdmissionState> {
       ? state.catalog
       : null;
 
+  String? _renewalDefaultPaymentId;
+
   Future<void> loadForm({
     AdmissionCatalog? cachedCatalog,
     DateTime? cachedAt,
     String? renewalId,
+    bool collectOnRenewal = false,
     String? formKind,
     BookingCustomer? customer,
     bool strictLocation = false,
@@ -394,6 +397,7 @@ class AdmissionCubit extends Cubit<AdmissionState> {
     _readPending = false;
     _readTimer?.cancel();
     final g = ++generation;
+    _renewalDefaultPaymentId = null;
     emit(AdmissionState(loading: true, formKind: formKind));
     try {
       final c = cachedCatalog ?? await repository.catalog();
@@ -402,6 +406,17 @@ class AdmissionCubit extends Cubit<AdmissionState> {
       if (!valid(g)) return;
       if (!c.canManage) {
         throw const AppException('Booking management permission is required.');
+      }
+      if (collectOnRenewal && !c.canCollect) {
+        throw const AppException(
+          'Payment collection permission is required.',
+          code: 'FORBIDDEN',
+        );
+      }
+      if (collectOnRenewal && (a == null || !a.canRenew)) {
+        throw const AppException(
+          'Choose an expired or completed plan that has not been renewed.',
+        );
       }
       final b =
           c.businesses
@@ -453,8 +468,10 @@ class AdmissionCubit extends Cubit<AdmissionState> {
           loading: false,
           detail: a,
           formKind: effectiveKind,
+          renewAndCollect: collectOnRenewal,
         ),
       );
+      _syncRenewalCollection();
     } catch (e) {
       if (valid(g)) {
         emit(
@@ -482,6 +499,7 @@ class AdmissionCubit extends Cubit<AdmissionState> {
       return;
     }
     update(state.draft.copyWith(amount: value));
+    _syncRenewalCollection();
   }
 
   void customerPhone(String value) {
@@ -597,6 +615,36 @@ class AdmissionCubit extends Cubit<AdmissionState> {
         duration: p.duration ?? state.pool?.defaultDuration,
       ),
     );
+    _syncRenewalCollection();
+  }
+
+  /// Follow the selected fee until the user explicitly edits the collected amount.
+  /// These entries remain a local draft until the existing atomic create command.
+  void _syncRenewalCollection() {
+    if (!state.renewAndCollect ||
+        !state.catalog.canCollect ||
+        state.plan == null) {
+      return;
+    }
+    final total = state.planAmount;
+    if (total == null) return;
+    if (state.draft.payments.isEmpty && total > 0) {
+      startCollection(total);
+      return;
+    }
+    final id = _renewalDefaultPaymentId;
+    if (id == null) return;
+    update(
+      state.draft.copyWith(
+        payments: [
+          for (final payment in state.draft.payments)
+            if (payment.id != id)
+              payment
+            else if (total > 0)
+              payment.copyWith(amount: (total / 100).toStringAsFixed(2)),
+        ],
+      ),
+    );
   }
 
   Future<void> deleteMembership(String reason) async {
@@ -640,15 +688,13 @@ class AdmissionCubit extends Cubit<AdmissionState> {
   /// Starts an optional collection; [minor] prefills the amount when known.
   void startCollection([int? minor]) {
     if (!state.catalog.canCollect || state.draft.payments.isNotEmpty) return;
-    update(
-      state.draft.copyWith(
-        payments: [
-          BookingPaymentDraft(
-            amount: minor == null ? '' : (minor / 100).toStringAsFixed(2),
-          ),
-        ],
-      ),
+    final payment = BookingPaymentDraft(
+      amount: minor == null ? '' : (minor / 100).toStringAsFixed(2),
     );
+    if (state.renewAndCollect && minor == state.planAmount) {
+      _renewalDefaultPaymentId = payment.id;
+    }
+    update(state.draft.copyWith(payments: [payment]));
   }
 
   void payBalance(String id) {
@@ -664,18 +710,32 @@ class AdmissionCubit extends Cubit<AdmissionState> {
   void paymentUpdate(
     String id,
     BookingPaymentDraft Function(BookingPaymentDraft) change,
-  ) => update(
-    state.draft.copyWith(
-      payments: List.unmodifiable(
-        state.draft.payments.map((p) => p.id == id ? change(p) : p),
+  ) {
+    final previous = state.draft.payments.where((p) => p.id == id).firstOrNull;
+    if (previous == null) return;
+    final next = change(previous);
+    if (id == _renewalDefaultPaymentId && next.amount != previous.amount) {
+      _renewalDefaultPaymentId = null;
+    }
+    update(
+      state.draft.copyWith(
+        payments: List.unmodifiable(
+          state.draft.payments.map((p) => p.id == id ? next : p),
+        ),
       ),
-    ),
-  );
+    );
+  }
+
   Future<void> review() async {
     if (state.busy || state.locked || !authorized) return;
     final d = state.draft;
     String? error = d.customer.validate();
     error ??= state.planAmountError;
+    if (state.renewAndCollect &&
+        (state.planAmount ?? 0) > 0 &&
+        state.paymentEntry.received <= 0) {
+      error ??= 'Enter the payment collected for the new plan.';
+    }
     if (d.amount != null && !state.catalog.canCollect) {
       error =
           'Payment collection permission is required to change the plan amount.';
@@ -708,7 +768,17 @@ class AdmissionCubit extends Cubit<AdmissionState> {
     try {
       final p = await repository.preview(d);
       if (valid(g)) {
-        if (state.paymentEntry.received > p.total) {
+        if (state.renewAndCollect &&
+            p.total > 0 &&
+            state.paymentEntry.received <= 0) {
+          emit(
+            state.copyWith(
+              busy: false,
+              clearPreview: true,
+              error: 'Enter the payment collected for the new plan.',
+            ),
+          );
+        } else if (state.paymentEntry.received > p.total) {
           emit(
             state.copyWith(
               busy: false,

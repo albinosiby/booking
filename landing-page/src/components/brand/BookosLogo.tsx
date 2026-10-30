@@ -1,7 +1,7 @@
 import { clsx } from "clsx";
 import Image from "next/image";
 
-export const BOOKOS_MARK = "/_landing/images/bookingos-mark.png";
+export const BOOKOS_MARK = "/_landing/images/bookingos-mark.png?v=20261030";
 
 const sizes = { sm: 28, md: 36, lg: 44 } as const;
 

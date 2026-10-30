@@ -139,7 +139,12 @@ export function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className="brand">
       <span className="brand-mark" aria-hidden="true">
-        <img src={adminPath("/booking-os-logo.png")} width={36} height={36} alt="" />
+        <img
+          src={adminPath("/booking-os-logo.png?v=20261030")}
+          width={36}
+          height={36}
+          alt=""
+        />
       </span>
       {!compact && (
         <span className="brand-word">

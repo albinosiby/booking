@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Business, Website } from "../lib/types";
 import { Icon } from "./icons";
 import { SiteHeader } from "./site-header";
+import { BookingOsMark, PoweredByBookingOs } from "./bookingos-brand";
 import { SpaceIllustration } from "./space-illustration";
 import { SocialLinks } from "./social-links";
 import { imageLink, siteLink } from "../lib/site-links";
@@ -44,7 +45,7 @@ export function OrganisationHome({
   if (!site)
     return (
       <main className="unavailable-page">
-        <Icon name="calendar" size={32} />
+        <BookingOsMark size={64} />
         <h1>This website isn’t available yet.</h1>
         <p>Check the organisation’s link or contact the venue.</p>
       </main>
@@ -228,7 +229,7 @@ export function OrganisationHome({
       <footer className="home-footer">
         <span>{site.title}</span>
         <SocialLinks links={site.social_links} compact />
-        <span>Find your space. Make it your time.</span>
+        <PoweredByBookingOs />
       </footer>
     </>
   );

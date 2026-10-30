@@ -111,7 +111,7 @@ class _ExpiredMembersSectionState extends State<ExpiredMembersSection>
                       Text('Expired ${admission.expiry}'),
                       if (widget.showAmounts)
                         Text(
-                          'Amount due: ${bookingMoney(admission.balance, widget.currency)}',
+                          '${widget.canRenew && widget.canCollect && admission.canRenew ? 'Previous plan due' : 'Amount due'}: ${bookingMoney(admission.balance, widget.currency)}',
                         ),
                       Wrap(
                         spacing: 10,
@@ -120,12 +120,16 @@ class _ExpiredMembersSectionState extends State<ExpiredMembersSection>
                           if (widget.canRenew && admission.canRenew)
                             FilledButton.icon(
                               onPressed: () => open(
-                                '/admissions/new?renewal_id=${admission.id}',
+                                '/admissions/new?renewal_id=${admission.id}${widget.canCollect ? '&collect=true' : ''}',
                               ),
                               icon: const Icon(Icons.autorenew),
-                              label: const Text('Renew'),
+                              label: Text(
+                                widget.canCollect ? 'Renew & collect' : 'Renew',
+                              ),
                             ),
-                          if (widget.canCollect && admission.balance > 0)
+                          if (widget.canCollect &&
+                              admission.balance > 0 &&
+                              !(widget.canRenew && admission.canRenew))
                             OutlinedButton.icon(
                               onPressed: () => open(
                                 '/admissions/${admission.id}?collect=true',

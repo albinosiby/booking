@@ -15,6 +15,7 @@ class AdmissionFormScreen extends StatefulWidget {
   const AdmissionFormScreen({
     super.key,
     this.renewalId,
+    this.collectOnRenewal = false,
     this.businessId,
     this.poolId,
     this.planId,
@@ -28,6 +29,7 @@ class AdmissionFormScreen extends StatefulWidget {
   final AdmissionCubit? controller;
   final Widget? header;
   final bool fixedLocation;
+  final bool collectOnRenewal;
   final String? formKind;
   @override
   State<AdmissionFormScreen> createState() => _AdmissionFormScreenState();
@@ -140,6 +142,12 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
+        if (s.renewAndCollect) ...[
+          SizedBox(height: 8.h),
+          const Text(
+            'Payment is for the new plan. Earlier outstanding fees remain on the previous plan.',
+          ),
+        ],
         SizedBox(height: 12.h),
         ...location(s, enabled),
         if (s.availablePlans.isNotEmpty)
@@ -165,14 +173,18 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
   );
 
   Widget reviewButton(AdmissionState s, bool enabled) => AppButton(
-    label: 'Review admission',
+    label: s.renewAndCollect ? 'Review renewal' : 'Review admission',
     busy: s.busy,
     onPressed: enabled && s.availablePlans.isNotEmpty ? cubit.review : null,
   );
 
   List<Widget> confirm(AdmissionState s) => [
     AppButton(
-      label: 'Confirm admission',
+      label: s.renewAndCollect
+          ? s.paymentEntry.received > 0
+                ? 'Renew & collect'
+                : 'Renew plan'
+          : 'Confirm admission',
       busy: s.busy,
       onPressed: s.busy ? null : cubit.create,
     ),
@@ -232,6 +244,7 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
     if (widget.controller == null) {
       cubit.loadForm(
         renewalId: widget.renewalId,
+        collectOnRenewal: widget.collectOnRenewal,
         businessId: widget.businessId,
         poolId: widget.poolId,
         planId: widget.planId,
@@ -261,7 +274,9 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
       return PopScope(
         canPop: !s.busy && !s.locked,
         child: AppPage(
-          title: widget.renewalId != null
+          title: s.renewAndCollect
+              ? 'Renew & collect'
+              : widget.renewalId != null
               ? 'Renew admission'
               : widget.formKind == null && widget.planId == null
               ? 'New admission'
@@ -277,7 +292,9 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
           back: true,
           scrollId: 'admission-form',
           maxWidth: wide ? 1200 : 620,
-          subtitle: s.formKind == 'coaching'
+          subtitle: s.renewAndCollect
+              ? 'Review the new validity dates and record the payment received.'
+              : s.formKind == 'coaching'
               ? 'Enroll a student in a coaching plan.'
               : s.formKind == 'plans'
               ? 'Enroll a customer in a swimming or court access plan.'

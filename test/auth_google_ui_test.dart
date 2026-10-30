@@ -98,7 +98,7 @@ Future<void> mountAuth(
   );
   await tester.pumpAndSettle();
   for (final asset in [
-    'assets/branding/booking_os_launcher.png',
+    'assets/branding/booking_os_mark.png',
     if (find.byType(GoogleSignInButton).evaluate().isNotEmpty)
       'assets/auth/google-g.png',
   ]) {

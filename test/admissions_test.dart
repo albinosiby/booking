@@ -328,7 +328,7 @@ void main() {
         app(const AdmissionDetailScreen(id: 'admission')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Renew plan'), findsOneWidget);
+      expect(find.text('Renew & collect'), findsOneWidget);
       expect(find.textContaining('7 unused'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

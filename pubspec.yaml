@@ -41,4 +41,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/auth/google-g.png
-    - assets/branding/booking_os_launcher.png
+    - assets/branding/booking_os_mark.png

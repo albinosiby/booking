@@ -372,6 +372,7 @@ GoRouter createRouter(
               ? s.uri.queryParameters['kind']
               : null,
           renewalId: s.uri.queryParameters['renewal_id'],
+          collectOnRenewal: s.uri.queryParameters['collect'] == 'true',
           businessId: s.uri.queryParameters['business_id'],
           poolId: s.uri.queryParameters['space_id'],
           planId: s.uri.queryParameters['plan_id'],

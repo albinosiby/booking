@@ -204,7 +204,10 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
   }
 
   Future<void> renew(Admission a) async {
-    await context.push('/admissions/new?renewal_id=${a.id}');
+    final collect = cubit.state.catalog.canCollect;
+    await context.push(
+      '/admissions/new?renewal_id=${a.id}${collect ? '&collect=true' : ''}',
+    );
     if (mounted) cubit.loadDetail(widget.id);
   }
 
@@ -498,7 +501,7 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
     ],
     if (a.canRenew && s.catalog.canManage) ...[
       AppButton(
-        label: 'Renew plan',
+        label: s.catalog.canCollect ? 'Renew & collect' : 'Renew plan',
         icon: Icons.autorenew,
         onPressed: enabled ? () => renew(a) : null,
       ),
@@ -518,7 +521,11 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
           OutlinedButton.icon(
             onPressed: enabled ? () => payment(false) : null,
             icon: const Icon(Icons.payments_outlined, size: 18),
-            label: const Text('Collect payment'),
+            label: Text(
+              a.canRenew && s.catalog.canManage
+                  ? 'Collect previous dues'
+                  : 'Collect payment',
+            ),
           ),
         if (a.paid > 0 && s.catalog.owner)
           OutlinedButton.icon(

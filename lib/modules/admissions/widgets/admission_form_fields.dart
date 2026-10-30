@@ -299,6 +299,9 @@ class AdmissionPaymentFields extends StatelessWidget {
         enabled = !s.loading && !s.busy && !s.locked && s.preview == null,
         total = s.paymentEntry.total,
         theme = Theme.of(context);
+    if (s.renewAndCollect && total == 0 && d.payments.isEmpty) {
+      return const Text('This renewal has no fee. No payment is required.');
+    }
     if (d.payments.isEmpty) {
       // Payment is optional: offer quick full/half collection or confirm unpaid.
       return Column(
@@ -311,7 +314,9 @@ class AdmissionPaymentFields extends StatelessWidget {
             ),
           SizedBox(height: 4.h),
           Text(
-            'Collect now, in full or part, or confirm unpaid and collect later.',
+            s.renewAndCollect
+                ? 'Choose the payment collected for the new plan, in full or part.'
+                : 'Collect now, in full or part, or confirm unpaid and collect later.',
             style: theme.textTheme.bodySmall,
           ),
           SizedBox(height: 14.h),

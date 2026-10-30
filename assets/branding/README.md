@@ -1,23 +1,47 @@
-# Booking OS logo
+# BookingOS logo
 
-Lime B monogram with a booking check, on the existing near-black brand background.
+The green B/check tile supplied by the user on 30 October 2026 is the project logo.
 
-- `booking_os_mark.png`: original transparent foreground, generated with the built-in image-generation tool.
-- `booking_os_launcher.png`: opaque 1024px master for legacy Android, iOS and web icons.
-- `../../flutter_launcher_icons.yaml`: platform icon configuration, including adaptive foreground padding and Android monochrome/themed icons.
+- `booking_os_source.png`: unchanged original attachment (1286 × 1223 RGBA).
+- `booking_os_mark.png`: transparent 1024px square, with the complete artwork centred at its original aspect ratio.
+- `booking_os_launcher.png`: opaque 1024px master composited on #0F0F0F for iOS, legacy Android and web installation icons.
+- `booking_os_monochrome.png`: B/check alpha silhouette for Android themed icons. Notification icons use a tightly framed version of this silhouette because Android tints their alpha channel.
+- The other numbered design explorations are historical assets and are not referenced by the application.
 
-Regenerate platform assets from the repository root:
+Regenerate every copy from the repository root, in this order:
 
 ```sh
 dart run scripts/prepare_branding.dart
 dart run flutter_launcher_icons
-cp web/icons/Icon-192.png admin-panel/public/booking-os-logo.png
 ```
 
-The preparation script only resizes and composites the original onto #0F0F0F; it does not redraw the generated mark. The foreground is kept transparent for adaptive Android icons. iOS icons are opaque and OS masks provide the final rounded shape.
+The preparation script preserves the full-colour artwork without stretching, cropping or redrawing it. It prepares the masters, website copies, native splash images and notification masks. The launcher generator then writes the Android/iOS launcher and web installation icons using `flutter_launcher_icons.yaml`. No new package is needed.
 
-The web loading screen uses `web/icons/Icon-192.png`. The Flutter dashboard sidebar uses the launcher master through `AssetPath.bookingLogo`, matching authentication screens. The admin dashboard uses the copied 192px icon from its own public directory so it also works independently of the Flutter app. The container packages that public directory with the admin server. Rebuild and deploy the relevant web applications to publish logo changes; changing these files does not update an already deployed site.
+## Branding locations
 
-Generation prompt:
+| Surface | Shared asset / integration |
+| --- | --- |
+| Flutter authentication and app navigation | `AssetPath.bookingLogo` → `booking_os_mark.png` |
+| Flutter web loading screen, favicon and installed PWA | `web/index.html`, `web/favicon.png`, `web/icons/`, `web/manifest.json` |
+| Android launcher and themed launcher | `mipmap-*/ic_launcher.png`, adaptive foreground and monochrome resources |
+| Android notifications and native startup | `drawable-*/ic_stat_booking.png`, `launch_logo.png`, launch backgrounds and Android 12+ launch themes |
+| iOS launcher and native startup | `AppIcon.appiconset`, `LaunchImage.imageset`, `LaunchScreen.storyboard` |
+| Marketing header, footer and product mockups | `BookosLogo` / `BookosMark` → `landing-page/public/_landing/images/bookingos-mark.png` |
+| Marketing favicon / Apple touch icon | `landing-page/public/_landing/images/bookingos-app-icon.png` |
+| Admin login/navigation and browser icons | `admin-panel/public/booking-os-logo.png`, shared `Brand` and layout metadata |
+| Booking website generic, loading, error and unavailable pages | shared `BookingOsMark` |
+| Venue header without a published custom logo | shared `BookingOsMark` fallback |
+| Venue homepage and booking-page product attribution | shared `PoweredByBookingOs` |
+| Booking website default browser icon | `booking-website/assets/bookingos-icon.png` |
 
-> Use case: logo-brand. Create one premium, exceptionally clean app logo mark for Booking OS, a mobile business booking and accounts app. Asset: square 1024x1024 transparent PNG, only the standalone foreground symbol. Design: a confident geometric uppercase B monogram with two generous rounded internal counters, subtly integrating a single bold booking-confirmation check into its lower bowl. Simple intentional geometry, rounded corners, even visual weight, strong recognisable silhouette at 32px. Flat solid bright lime green #5DD62C only, actual transparent background and transparent negative spaces. The mark will sit on a near-black #0F0F0F launcher background. Center the complete mark within the middle 60% of the image, generous transparent margins, no edge clipping. Professional brand identity, crisp vector-like edges. No words, no lettering other than the abstract B monogram, no watermark, no mockup, no phone, no shadows, no gradients, no 3D, no enclosing rounded-square tile.
+Venue/organisation profile logos, published website logos, invoice identity and customer-uploaded photos retain their own branding. A published venue logo continues to take precedence over the BookingOS browser-icon fallback. Functional booking/calendar icons are not product logos.
+
+## Release and recovery
+
+Rebuild and deploy the existing Railway frontend service to publish the web changes. Static marketing/admin logo references use a new version query to refresh cached copies; the public booking asset import receives a content hash. Native app icons and startup screens require a new Android/iOS build and normal distribution. Nothing is installed automatically. There is no API deployment or database migration for this branding change.
+
+To recover, redeploy the preceding frontend release and distribute the preceding native app build. Keep the supplied original in version control so future asset regeneration remains reproducible.
+
+## Verification
+
+All 17 focused Flutter branding/authentication tests passed, including phone, tablet, desktop, light/dark and large-text layouts. Targeted Flutter analysis is clean. All three web projects passed TypeScript checking; all 19 public booking website tests passed. Local HTTP checks confirmed rendered logo references, favicon metadata and successful image responses on marketing, admin login and generic booking pages. Android resources compiled with AAPT2, and the iOS launch storyboard passed XML validation. Generated colour and monochrome icons were inspected at small sizes. Full native app builds and physical-device startup/notification checks are not included in these results.

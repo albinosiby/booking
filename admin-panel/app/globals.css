@@ -267,7 +267,7 @@ small {
   width: 36px;
   height: 36px;
   border-radius: 11px;
-  background: var(--brand);
+  background: transparent;
   color: white;
   overflow: hidden;
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Icon } from "./icons";
+import { BookingOsMark } from "./bookingos-brand";
 import type { Website } from "../lib/types";
 import { logoLink, siteLink } from "../lib/site-links";
 
@@ -16,11 +17,15 @@ export function SiteHeader({
     <header className="site-header">
       <div className="header-inner">
         <Link className="site-brand" href={siteLink(base, "", preview)}>
-          <span className="brand-logo">
+          <span
+            className={
+              site.has_logo ? "brand-logo" : "brand-logo brand-logo-fallback"
+            }
+          >
             {site.has_logo ? (
               <img src={logoLink(site.slug, preview)} alt="" />
             ) : (
-              <Icon name="calendar" size={23} />
+              <BookingOsMark size={42} decorative />
             )}
           </span>
           <span>{site.title}</span>

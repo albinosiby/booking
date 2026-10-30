@@ -213,7 +213,7 @@ void main() {
       expect(repository.deletedReason, 'Member left');
       expect(find.textContaining('Membership deleted.'), findsOneWidget);
       expect(find.text('Collect payment'), findsOneWidget);
-      expect(find.text('Renew plan'), findsNothing);
+      expect(find.text('Renew & collect'), findsNothing);
       expect(
         find.textContaining('Membership deleted · history'),
         findsOneWidget,
@@ -246,8 +246,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Collect payment'));
-    await tester.tap(find.text('Collect payment'));
+    await tester.ensureVisible(find.text('Collect previous dues'));
+    await tester.tap(find.text('Collect previous dues'));
     await tester.pumpAndSettle();
     Finder amountFields() => find.descendant(
       of: find.byWidgetPredicate(
@@ -288,6 +288,42 @@ void main() {
     ]);
     expect(tester.takeException(), isNull);
   });
+  for (final canRenew in [false, true]) {
+    testWidgets(
+      'Home preserves the ${canRenew ? 'renew-only' : 'collection-only'} permission flow',
+      (tester) async {
+        final repository = MembershipRepositoryFake();
+        await tester.pumpWidget(
+          ScreenUtilInit(
+            designSize: const Size(390, 844),
+            builder: (_, _) => MaterialApp(
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: ExpiredMembersSection(
+                    repository: repository,
+                    canRenew: canRenew,
+                    canCollect: !canRenew,
+                    showAmounts: true,
+                    currency: 'INR',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Renew & collect'), findsNothing);
+        expect(find.text('Renew'), canRenew ? findsOneWidget : findsNothing);
+        expect(
+          find.text('Collect amount'),
+          canRenew ? findsNothing : findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
   for (final width in [320.0, 1280.0]) {
     testWidgets(
       'Home expiry actions fit $width and open renewal and collection',
@@ -343,16 +379,18 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('Expired members · action needed'), findsOneWidget);
-        await tester.ensureVisible(find.text('Renew'));
-        await tester.tap(find.text('Renew'));
+        await tester.ensureVisible(find.text('Renew & collect'));
+        await tester.tap(find.text('Renew & collect'));
         await tester.pumpAndSettle();
         expect(destination?.queryParameters['renewal_id'], 'membership');
+        expect(destination?.queryParameters['collect'], 'true');
         router.pop();
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('Collect amount'));
-        await tester.tap(find.text('Collect amount'));
+        expect(find.text('Collect amount'), findsNothing);
+        await tester.ensureVisible(find.text('View membership'));
+        await tester.tap(find.text('View membership'));
         await tester.pumpAndSettle();
-        expect(destination?.queryParameters['collect'], 'true');
+        expect(destination?.path, '/admissions/membership');
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
         router.dispose();

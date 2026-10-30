@@ -185,7 +185,7 @@ void main() {
       AdmissionsFake()..record = example(status: 'expired', remaining: 7),
       const AdmissionDetailScreen(id: 'admission'),
     );
-    expect(find.text('Renew plan'), findsOneWidget);
+    expect(find.text('Renew & collect'), findsOneWidget);
     expect(find.textContaining('7 unused'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
