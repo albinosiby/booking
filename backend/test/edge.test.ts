@@ -402,7 +402,7 @@ test("public health exposes a revision for deployment verification without accou
   assert.deepEqual(await response.json(), {
     status: "ok",
     runtime: "supabase-edge",
-    revision: "2026-10-30-permanent-business-deletion",
+    revision: "2026-10-30-agreed-admission-amount",
   });
 });
 

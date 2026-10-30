@@ -64,6 +64,11 @@ class TestWebsiteRepository implements WebsiteRepository {
             : 'https://eden-sports.bookingos.online',
       );
   WebsiteSettings value;
+  @override
+  Future<Uint8List> photoBytes(String id, {bool refresh = false}) async =>
+      value.images.firstWhere((image) => image.id == id).bytes ?? Uint8List(0);
+  @override
+  void clearPhotoCache() {}
   int reads = 0, saves = 0, uploads = 0, picks = 0, removals = 0;
   String? saveError;
   String? pickError;

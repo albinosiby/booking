@@ -718,7 +718,7 @@ export function createHandler(
         return respond({
           status: "ok",
           runtime: "supabase-edge",
-          revision: "2026-10-30-permanent-business-deletion",
+          revision: "2026-10-30-agreed-admission-amount",
         });
       }
       if (req.method === "GET" && path === "/v1/catalog")

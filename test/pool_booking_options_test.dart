@@ -358,8 +358,24 @@ void main() {
         await tester.tap(find.widgetWithText(ElevatedButton, 'Swimming plan'));
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('Review admission'));
+        final fee = find.descendant(
+          of: find.byKey(const ValueKey('admission-plan-amount-swim')),
+          matching: find.byType(TextFormField),
+        );
+        await tester.ensureVisible(fee);
+        await tester.enterText(fee, '2300');
+        await tester.pumpAndSettle();
+        final collect = find.byKey(const ValueKey('admission-collect-full'));
+        await tester.ensureVisible(collect);
+        await tester.tap(collect);
+        await tester.pumpAndSettle();
+        expect(admission.state.draft.amountMinor, 230000);
+        expect(admission.state.paymentEntry.received, 230000);
+        expect(admission.state.paymentEntry.remaining, 0);
+        await tester.ensureVisible(find.text('Review admission'));
         await tester.tap(find.text('Review admission'));
         await tester.pumpAndSettle();
+        expect(admission.state.preview!.total, 230000);
         expect(find.text('New booking'), findsOneWidget);
         expect(find.text('Customer'), findsOneWidget);
         expect(find.text('Space'), findsOneWidget);

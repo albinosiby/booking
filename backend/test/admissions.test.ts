@@ -128,6 +128,200 @@ async function checkin(f: any) {
     version: a.version,
   });
 }
+for (const kind of ["swimming", "coaching"]) {
+  test(`${kind}: agreed fee is saved and fully collecting 2300 leaves no configured-price balance`, async () => {
+    const f = await fixture("flexible", kind);
+    const input = {
+      ...f.input,
+      plan_amount_minor: 230000,
+      payments: [
+        {
+          method: "cash",
+          amount_minor: 230000,
+          reference: "",
+          received_at: new Date().toISOString(),
+        },
+      ],
+    };
+    const q = await service.preview(f.owner, input);
+    assert.equal(q.total_minor, 230000);
+    assert.equal(q.plan.price_minor, 230000);
+    assert.equal(q.plan.configured_price_minor, f.q.total_minor);
+    const request = {
+      ...input,
+      command_key: randomUUID(),
+      preview_token: q.preview_token,
+    };
+    const created = await service.create(f.owner, request);
+    assert.deepEqual(await service.create(f.owner, request), created);
+    const a = await service.detail(f.owner, created.id);
+    assert.equal(a.total_minor, 230000);
+    assert.equal(a.net_paid_minor, 230000);
+    assert.equal(a.balance_minor, 0);
+    assert.equal(a.plan_snapshot.configured_price_minor, f.q.total_minor);
+    const audit = a.history.find((h: any) => h.action === "created");
+    assert.equal(audit.details.agreed_amount_minor, 230000);
+    assert.equal(audit.details.configured_amount_minor, f.q.total_minor);
+    const ledger = (
+      await db.query<any>(
+        `SELECT l.amount_minor FROM finance_lines l JOIN finance_events e ON e.id=l.event_id
+      JOIN admission_payments p ON p.id=e.admission_payment_id WHERE p.admission_id=$1 AND l.amount_minor>0`,
+        [created.id],
+      )
+    ).rows;
+    assert.deepEqual(
+      ledger.map((r: any) => Number(r.amount_minor)),
+      [230000],
+    );
+    assert.equal(
+      (await service.preview(f.owner, f.input)).total_minor,
+      f.q.total_minor,
+    );
+  });
+}
+
+test("agreed fee supports partial, unpaid and zero-fee admissions and rejects overcollection", async () => {
+  const f = await fixture();
+  for (const [fee, paid] of [
+    [230000, 100000],
+    [230000, 0],
+    [0, 0],
+  ]) {
+    const input = {
+      ...f.input,
+      plan_amount_minor: fee,
+      payments: paid
+        ? [
+            {
+              method: "cash",
+              amount_minor: paid,
+              reference: "",
+              received_at: new Date().toISOString(),
+            },
+          ]
+        : [],
+    };
+    const q = await service.preview(f.owner, input);
+    const created = await service.create(f.owner, {
+      ...input,
+      command_key: randomUUID(),
+      preview_token: q.preview_token,
+    });
+    let a = await service.detail(f.owner, created.id);
+    assert.equal(a.balance_minor, fee - paid);
+    if (paid) {
+      await assert.rejects(
+        () =>
+          service.payments(f.owner, created.id, {
+            command_key: randomUUID(),
+            version: a.version,
+            kind: "collection",
+            reason: "",
+            payments: [
+              {
+                method: "cash",
+                amount_minor: fee - paid + 1,
+                reference: "",
+                received_at: new Date().toISOString(),
+              },
+            ],
+          }),
+        /balance|amount|exceed/i,
+      );
+      await service.payments(f.owner, created.id, {
+        command_key: randomUUID(),
+        version: a.version,
+        kind: "collection",
+        reason: "",
+        payments: [
+          {
+            method: "cash",
+            amount_minor: fee - paid,
+            reference: "",
+            received_at: new Date().toISOString(),
+          },
+        ],
+      });
+      a = await service.detail(f.owner, created.id);
+      assert.equal(a.net_paid_minor, fee);
+      assert.equal(a.balance_minor, 0);
+    }
+  }
+});
+
+test("agreed fee validates minor units, binds preview and command keys, and requires collection permission", async () => {
+  const f = await fixture();
+  for (const value of [-1, 0.5, "230000", null, 100000001])
+    await assert.rejects(() =>
+      service.preview(f.owner, { ...f.input, plan_amount_minor: value }),
+    );
+  const input = { ...f.input, plan_amount_minor: 230000 };
+  const q = await service.preview(f.owner, input);
+  await assert.rejects(
+    () =>
+      service.create(f.owner, {
+        ...input,
+        plan_amount_minor: 220000,
+        command_key: randomUUID(),
+        preview_token: q.preview_token,
+      }),
+    /changed/i,
+  );
+  const b = (await workspace.workspace(f.owner)).businesses[0];
+  const staff = {
+      uid: randomUUID(),
+      email: randomUUID() + "@example.com",
+      name: "Staff",
+    },
+    membership = randomUUID();
+  await db.query(
+    "INSERT INTO memberships(id,organization_id,user_id,email,display_name,role,permissions) VALUES($1,$2,$3,$4,$5,'staff',$6)",
+    [
+      membership,
+      b.organization_id,
+      staff.uid,
+      staff.email,
+      staff.name,
+      JSON.stringify(["manage_subscriptions"]),
+    ],
+  );
+  await db.query(
+    "INSERT INTO staff_assignments(membership_id,organization_id,business_id) VALUES($1,$2,$3)",
+    [membership, b.organization_id, b.id],
+  );
+  await assert.rejects(
+    () => service.preview(staff, input),
+    /collection permission/i,
+  );
+  await assert.rejects(
+    () =>
+      service.create(staff, {
+        ...input,
+        command_key: randomUUID(),
+        preview_token: q.preview_token,
+      }),
+    /collection permission/i,
+  );
+  assert.equal(
+    (await service.preview(staff, f.input)).total_minor,
+    f.q.total_minor,
+  );
+  await db.query("UPDATE memberships SET permissions=$1 WHERE id=$2", [
+    JSON.stringify(["manage_subscriptions", "collect_payments"]),
+    membership,
+  ]);
+  const authorized = await service.preview(staff, input);
+  const request = {
+    ...input,
+    command_key: randomUUID(),
+    preview_token: authorized.preview_token,
+  };
+  await service.create(staff, request);
+  await assert.rejects(
+    () => service.create(staff, { ...request, plan_amount_minor: 220000 }),
+    /different data/i,
+  );
+});
 test("calendar expiry and insufficient fixed schedules", () => {
   assert.equal(
     expiryFrom({ expiry_mode: "after_months", expiry_months: 1 }, "2028-01-31"),
@@ -195,7 +389,8 @@ test("flexible attendance is idempotent, counts once per date, uses shared inven
   assert.equal(
     (
       await db.query<any>(
-        "SELECT count(*)::int n FROM finance_events WHERE admission_payment_id IS NOT NULL",
+        "SELECT count(*)::int n FROM finance_events e JOIN admission_payments p ON p.id=e.admission_payment_id WHERE p.admission_id=$1",
+        [f.id],
       )
     ).rows[0].n,
     1,

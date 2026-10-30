@@ -735,6 +735,14 @@ export class AdmissionService {
       throw new BadRequestException(
         "Choose an enabled space and plan with a price.",
       );
+    if (
+      v.plan_amount_minor !== undefined &&
+      !this.allowed(m, "collect_payments")
+    )
+      throw new ForbiddenException(
+        "Payment collection permission is required to change the plan amount.",
+      );
+    const agreedAmount = v.plan_amount_minor ?? plan.price_minor;
     if ((plan.track_attendance !== false) !== (v.mode !== "membership"))
       throw new BadRequestException(
         "Use the tracking mode configured for this plan. Reload the plan before enrolling.",
@@ -830,6 +838,8 @@ export class AdmissionService {
     }
     const snapshot = {
       ...plan,
+      configured_price_minor: plan.price_minor,
+      price_minor: agreedAmount,
       allowance: v.mode === "membership" ? 0 : plan.allowance,
       track_attendance: v.mode !== "membership",
       coach_name: coachName(
@@ -843,7 +853,7 @@ export class AdmissionService {
       business_name: b.name,
       timezone: b.timezone,
       expires_on: expires,
-      total_minor: plan.price_minor,
+      total_minor: agreedAmount,
       sessions,
     };
     return {
@@ -1034,7 +1044,7 @@ export class AdmissionService {
         const q = await this.previewIn(db, m, b, v);
         if (q.preview_token !== preview_token)
           throw new ConflictException(
-            "The plan or schedule changed. Review again before confirming.",
+            "The plan, amount or schedule changed. Review again before confirming.",
           );
         let customerId = v.customer.id;
         if (customerId) {
@@ -1127,6 +1137,8 @@ export class AdmissionService {
             mode: v.mode,
             allowance: q.plan.allowance,
             expires_on: q.expires_on,
+            configured_amount_minor: q.plan.configured_price_minor,
+            agreed_amount_minor: q.total_minor,
           },
         );
         return { id };

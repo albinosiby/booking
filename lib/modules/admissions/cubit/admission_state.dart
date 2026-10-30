@@ -98,8 +98,15 @@ class AdmissionState extends Equatable {
                 (draft.duration - minimumVisitDuration) % 30 == 0
           : plan?.duration == null || draft.duration == plan!.duration);
   String? get expiry => preview?.expiry ?? plan?.expiryFor(draft.start);
+  int? get planAmount => draft.amount == null ? plan?.total : draft.amountMinor;
+  String get planAmountText =>
+      draft.amount ?? ((plan?.total ?? 0) / 100).toStringAsFixed(2);
+  String? get planAmountError =>
+      draft.amount != null && draft.amountMinor == null
+      ? 'Enter a valid plan amount (0–1,000,000, up to two decimal places).'
+      : null;
   BookingPaymentEntryModel get paymentEntry => BookingPaymentEntryModel(
-    total: preview?.total ?? plan?.total,
+    total: preview?.total ?? planAmount,
     payments: draft.payments,
   );
   AdmissionPlan? get plan =>

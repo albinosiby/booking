@@ -244,6 +244,46 @@ class AdmissionReviewSummary extends StatelessWidget {
   }
 }
 
+class AdmissionPlanAmountField extends StatelessWidget {
+  const AdmissionPlanAmountField({
+    super.key,
+    required this.cubit,
+    required this.state,
+  });
+  final AdmissionCubit cubit;
+  final AdmissionState state;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      ConfigurationField(
+        key: ValueKey('admission-plan-amount-${state.draft.planId}'),
+        label: 'Plan amount (${state.catalog.currency})',
+        value: state.planAmountText,
+        numeric: true,
+        enabled:
+            state.catalog.canCollect &&
+            !state.loading &&
+            !state.busy &&
+            !state.locked &&
+            state.preview == null,
+        onChanged: cubit.planAmount,
+      ),
+      SizedBox(height: 6.h),
+      Text(
+        state.planAmountError ??
+            'Enter the final fee agreed with the customer.',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: state.planAmountError == null
+              ? null
+              : Theme.of(context).colorScheme.error,
+        ),
+      ),
+    ],
+  );
+}
+
 class AdmissionPaymentFields extends StatelessWidget {
   const AdmissionPaymentFields({
     super.key,

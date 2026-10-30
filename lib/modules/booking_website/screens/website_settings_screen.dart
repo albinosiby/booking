@@ -755,72 +755,76 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
     ),
   );
 
-  Widget editor(WebsiteSettingsState s, WebsiteSettings d) => Form(
-    key: form,
-    child: SingleChildScrollView(
-      key: const PageStorageKey('website-editor-content'),
-      controller: editorScroll,
-      primary: false,
-      padding: const EdgeInsets.only(bottom: 28),
-      child: KeyedSubtree(
-        key: ValueKey(s.revision),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (s.error != null) ...[
-              AppCard(
-                child: AppErrorWidget(
-                  message: s.error!,
-                  onRetry: s.busy ? null : cubit.load,
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-            if (s.message != null) ...[
-              Semantics(
-                liveRegion: true,
-                child: Text(
-                  s.message!,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
+  Widget editor(WebsiteSettingsState s, WebsiteSettings d) =>
+      BlocProvider.value(
+        value: cubit,
+        child: Form(
+          key: form,
+          child: SingleChildScrollView(
+            key: const PageStorageKey('website-editor-content'),
+            controller: editorScroll,
+            primary: false,
+            padding: const EdgeInsets.only(bottom: 28),
+            child: KeyedSubtree(
+              key: ValueKey(s.revision),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (s.error != null) ...[
+                    AppCard(
+                      child: AppErrorWidget(
+                        message: s.error!,
+                        onRetry: s.busy ? null : cubit.load,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                  if (s.message != null) ...[
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        s.message!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  header(s, d),
+                  const SizedBox(height: 24),
+                  address(s, d),
+                  const SizedBox(height: 20),
+                  brand(s, d),
+                  const SizedBox(height: 20),
+                  editorSection(
+                    2,
+                    WebsiteSpacesSettings(
+                      embedded: true,
+                      settings: d,
+                      busy: s.busy,
+                      onToggleBusiness: cubit.toggleBusiness,
+                      onBusiness: (id, b) => cubit.updateBusiness(id, (_) => b),
+                      onSpace: cubit.updateSpace,
+                      onCopyRules: cubit.copyRulesToAll,
+                      onUpload: (kind, businessId, resourceId) => selectPhoto(
+                        kind: kind,
+                        businessId: businessId,
+                        resourceId: resourceId,
+                      ),
+                      onRemovePhoto: (id) => cubit.photo(removeId: id),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            header(s, d),
-            const SizedBox(height: 24),
-            address(s, d),
-            const SizedBox(height: 20),
-            brand(s, d),
-            const SizedBox(height: 20),
-            editorSection(
-              2,
-              WebsiteSpacesSettings(
-                embedded: true,
-                settings: d,
-                busy: s.busy,
-                onToggleBusiness: cubit.toggleBusiness,
-                onBusiness: (id, b) => cubit.updateBusiness(id, (_) => b),
-                onSpace: cubit.updateSpace,
-                onCopyRules: cubit.copyRulesToAll,
-                onUpload: (kind, businessId, resourceId) => selectPhoto(
-                  kind: kind,
-                  businessId: businessId,
-                  resourceId: resourceId,
-                ),
-                onRemovePhoto: (id) => cubit.photo(removeId: id),
+                  const SizedBox(height: 20),
+                  social(d),
+                  const SizedBox(height: 20),
+                  policies(d),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-            social(d),
-            const SizedBox(height: 20),
-            policies(d),
-          ],
+          ),
         ),
-      ),
-    ),
-  );
+      );
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(

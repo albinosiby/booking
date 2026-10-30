@@ -17,6 +17,7 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
     subscription = session.snapshots.listen((_) {
       if (scope != workspaceAccessScope(session.state.data)) {
         generation++;
+        repository.clearPhotoCache();
         _autosaveTimer?.cancel();
         emit(
           const WebsiteSettingsState(
@@ -476,6 +477,7 @@ class WebsiteSettingsCubit extends Cubit<WebsiteSettingsState> {
   Future<void> close() async {
     _autosaveTimer?.cancel();
     generation++;
+    repository.clearPhotoCache();
     await subscription.cancel();
     return super.close();
   }

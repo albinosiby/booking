@@ -472,6 +472,18 @@ class AdmissionCubit extends Cubit<AdmissionState> {
     }
   }
 
+  void planAmount(String value) {
+    if (!state.catalog.canCollect ||
+        state.loading ||
+        state.busy ||
+        state.locked ||
+        state.preview != null ||
+        state.plan == null) {
+      return;
+    }
+    update(state.draft.copyWith(amount: value));
+  }
+
   void customerPhone(String value) {
     update(
       state.draft.copyWith(
@@ -663,6 +675,11 @@ class AdmissionCubit extends Cubit<AdmissionState> {
     if (state.busy || state.locked || !authorized) return;
     final d = state.draft;
     String? error = d.customer.validate();
+    error ??= state.planAmountError;
+    if (d.amount != null && !state.catalog.canCollect) {
+      error =
+          'Payment collection permission is required to change the plan amount.';
+    }
     if (d.planId == null ||
         d.poolId == null ||
         !state.availablePlans.any((p) => p.id == d.planId)) {

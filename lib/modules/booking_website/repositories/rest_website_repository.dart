@@ -19,8 +19,11 @@ class RestWebsiteRepository implements WebsiteRepository {
   RestWebsiteRepository(this.api);
   final RestApiService api;
   final _imageBytes = <String, Uint8List>{};
+  final _imageLoads = <String, Future<Uint8List>>{};
+  Set<String> _imageIds = {};
+  int _imageEpoch = 0;
   String? _imageScope;
-  Future<WebsiteSettings> _map(dynamic value) async {
+  WebsiteSettings _map(dynamic value) {
     final v = Map<String, dynamic>.from(value as Map);
     final businesses = (v['businesses'] as List)
         .map((raw) {
@@ -52,31 +55,23 @@ class RestWebsiteRepository implements WebsiteRepository {
         })
         .toList(growable: false);
     if (_imageScope != v['id']) {
-      _imageBytes.clear();
+      clearPhotoCache();
       _imageScope = v['id'] as String?;
     }
-    final images = await Future.wait(
-      (v['images'] as List? ?? []).map((raw) async {
-        final id = raw['id'] as String;
-        final bytes =
-            _imageBytes[id] ??
-            Uint8List.fromList(
-              await api.bytes(
-                '/booking-website/images/$id',
-                errorMessage: 'Could not load the website photo.',
-              ),
-            ).asUnmodifiableView();
-        _imageBytes[id] = bytes;
-        return WebsiteImage(
-          id: id,
-          kind: raw['kind'] as String,
-          businessId: raw['business_id'] as String?,
-          resourceId: raw['resource_id'] as String?,
-          bytes: bytes,
-        );
-      }),
-    );
-    _imageBytes.removeWhere((id, _) => !images.any((i) => i.id == id));
+    // Persisted settings contain metadata only. Preview bytes must never change
+    // model equality, dirty tracking or the outcome of a save/publication call.
+    final images = (v['images'] as List? ?? [])
+        .map(
+          (raw) => WebsiteImage(
+            id: raw['id'] as String,
+            kind: raw['kind'] as String,
+            businessId: raw['business_id'] as String?,
+            resourceId: raw['resource_id'] as String?,
+          ),
+        )
+        .toList(growable: false);
+    _imageIds = images.map((image) => image.id).toSet();
+    _imageBytes.removeWhere((id, _) => !_imageIds.contains(id));
     return WebsiteSettings(
       version: v['version'] as int,
       slug: v['slug'] as String,
@@ -105,6 +100,64 @@ class RestWebsiteRepository implements WebsiteRepository {
       url: v['url'] as String?,
       images: List.unmodifiable(images),
     );
+  }
+
+  @override
+  void clearPhotoCache() {
+    _imageEpoch++;
+    _imageBytes.clear();
+    _imageLoads.clear();
+    _imageIds = {};
+    _imageScope = null;
+  }
+
+  void _cachePhoto(String id, Uint8List bytes) {
+    _imageBytes.remove(id);
+    _imageBytes[id] = bytes;
+    // Bound original-image retention to 8 MiB for this editor session.
+    while (_imageBytes.values.fold<int>(0, (n, b) => n + b.length) >
+        8 * 1024 * 1024) {
+      _imageBytes.remove(_imageBytes.keys.first);
+    }
+  }
+
+  @override
+  Future<Uint8List> photoBytes(String id, {bool refresh = false}) {
+    if (!_imageIds.contains(id)) {
+      return Future.error(
+        const AppException('This website photo is no longer available.'),
+      );
+    }
+    final pending = _imageLoads[id];
+    if (pending != null) return pending;
+    final cached = _imageBytes[id];
+    if (!refresh && cached != null) {
+      _cachePhoto(id, cached);
+      return Future.value(cached);
+    }
+    final epoch = _imageEpoch;
+    final request = Future<Uint8List>.microtask(() async {
+      try {
+        final bytes = Uint8List.fromList(
+          await api.bytes(
+            '/booking-website/images/$id',
+            errorMessage: 'Could not load the website photo.',
+          ),
+        ).asUnmodifiableView();
+        if (epoch != _imageEpoch || !_imageIds.contains(id)) {
+          throw const AppException(
+            'Your website changed. Reopen the photo.',
+            code: 'CANCELLED',
+          );
+        }
+        _cachePhoto(id, bytes);
+        return bytes;
+      } finally {
+        if (epoch == _imageEpoch) _imageLoads.remove(id);
+      }
+    });
+    _imageLoads[id] = request;
+    return request;
   }
 
   @override
@@ -184,20 +237,37 @@ class RestWebsiteRepository implements WebsiteRepository {
     required String kind,
     String? businessId,
     String? resourceId,
-  }) async => _map(
-    await api.request(
-      '/booking-website/images',
-      method: 'POST',
-      data: {
-        'version': version,
-        'kind': kind,
-        'business_id': ?businessId,
-        'resource_id': ?resourceId,
-        'content_type': image.contentType,
-        'base64': base64Encode(image.bytes),
-      },
-    ),
-  );
+  }) async {
+    final previousIds = _imageIds;
+    final result = _map(
+      await api.request(
+        '/booking-website/images',
+        method: 'POST',
+        data: {
+          'version': version,
+          'kind': kind,
+          'business_id': ?businessId,
+          'resource_id': ?resourceId,
+          'content_type': image.contentType,
+          'base64': base64Encode(image.bytes),
+        },
+      ),
+    );
+    for (final saved in result.images) {
+      if (!previousIds.contains(saved.id) &&
+          saved.kind == kind &&
+          saved.businessId == businessId &&
+          saved.resourceId == resourceId) {
+        // Keep the just-uploaded preview without downloading its bytes again.
+        _cachePhoto(
+          saved.id,
+          Uint8List.fromList(image.bytes).asUnmodifiableView(),
+        );
+      }
+    }
+    return result;
+  }
+
   @override
   Future<WebsiteSettings> removeImage(String id, int version) async => _map(
     await api.request(

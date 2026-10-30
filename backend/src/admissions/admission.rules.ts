@@ -21,6 +21,7 @@ export const enrollmentSchema = z
     duration_minutes: z.number().int().min(30).max(1440),
     customer: customerSchema,
     payments: z.array(paymentSchema).max(20),
+    plan_amount_minor: z.number().int().min(0).max(100000000).optional(),
     renewed_from: z.uuid().nullable().default(null),
   })
   .strict();

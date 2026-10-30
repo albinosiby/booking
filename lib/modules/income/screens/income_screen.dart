@@ -288,12 +288,6 @@ class _IncomeScreenState extends State<IncomeScreen> {
             onPressed: s.loading ? null : () => cubit.load(refresh: true),
             icon: const Icon(Icons.refresh),
           ),
-          if (catalog?.canManage == true)
-            IconButton(
-              tooltip: 'Manage categories',
-              onPressed: manageCategories,
-              icon: const Icon(Icons.category_outlined),
-            ),
         ],
         floatingActionButton: catalog?.canIncome == true
             ? FloatingActionButton.extended(

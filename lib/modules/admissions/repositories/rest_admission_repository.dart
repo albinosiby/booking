@@ -1,5 +1,6 @@
 import '../../bookings/repositories/booking_repository.dart';
 import '../../../utils/services/rest_api_service.dart';
+import '../../../utils/exceptions/app_exception.dart';
 import '../../bookings/models/booking_models.dart';
 import '../models/admission_models.dart';
 import 'admission_repository.dart';
@@ -245,22 +246,29 @@ class RestAdmissionRepository
   @override
   Future<Admission> detail(String id) async =>
       decode(await api.retainedRead('/admissions/$id'));
-  Map<String, dynamic> body(AdmissionDraft d) => {
-    'business_id': d.businessId,
-    'resource_id': d.poolId,
-    'plan_id': d.planId,
-    'starts_on': d.start,
-    'mode': d.mode,
-    'weekdays': d.mode == 'fixed' ? d.weekdays : <int>[],
-    'time': d.time,
-    'duration_minutes': d.duration,
-    'customer': d.customer.toJson(),
-    'payments': d.payments
-        .where((p) => !p.isBlank)
-        .map((p) => p.toJson())
-        .toList(),
-    'renewed_from': d.renewedFrom,
-  };
+  Map<String, dynamic> body(AdmissionDraft d) {
+    if (d.amount != null && d.amountMinor == null) {
+      throw const AppException('Enter a valid plan amount.');
+    }
+    return {
+      'business_id': d.businessId,
+      'resource_id': d.poolId,
+      'plan_id': d.planId,
+      'starts_on': d.start,
+      'mode': d.mode,
+      'weekdays': d.mode == 'fixed' ? d.weekdays : <int>[],
+      'time': d.time,
+      'duration_minutes': d.duration,
+      'customer': d.customer.toJson(),
+      'payments': d.payments
+          .where((p) => !p.isBlank)
+          .map((p) => p.toJson())
+          .toList(),
+      'renewed_from': d.renewedFrom,
+      if (d.amount != null) 'plan_amount_minor': d.amountMinor,
+    };
+  }
+
   @override
   Future<AdmissionPreview> preview(AdmissionDraft d) async {
     final j = await api.request(

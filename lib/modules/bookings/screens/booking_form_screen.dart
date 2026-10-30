@@ -648,9 +648,13 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     children: [
       if (a.loading)
         const Text('Loading payment settings…')
-      else if (a.catalog.canCollect)
-        AdmissionPaymentFields(cubit: admission!, state: a)
-      else
+      else if (a.catalog.canCollect) ...[
+        if (a.plan != null) ...[
+          AdmissionPlanAmountField(cubit: admission!, state: a),
+          const SizedBox(height: 12),
+        ],
+        AdmissionPaymentFields(cubit: admission!, state: a),
+      ] else
         const Text(
           'You can confirm unpaid. Payment collection requires permission.',
         ),
@@ -670,7 +674,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
               children: [
                 const Text('TOTAL'),
                 Text(
-                  a.plan == null
+                  a.plan == null || a.paymentEntry.total == null
                       ? '—'
                       : bookingMoney(
                           a.paymentEntry.total ?? 0,

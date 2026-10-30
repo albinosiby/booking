@@ -240,12 +240,6 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             onPressed: s.loading ? null : () => cubit.load(refresh: true),
             icon: const Icon(Icons.refresh),
           ),
-          if (catalog?.canManage == true)
-            IconButton(
-              tooltip: 'Manage categories',
-              onPressed: manageCategories,
-              icon: const Icon(Icons.category_outlined),
-            ),
         ],
         floatingActionButton: catalog?.canExpense == true
             ? FloatingActionButton.extended(

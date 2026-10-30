@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../../../utils/helpers/validation.dart';
 import '../../bookings/models/booking_models.dart';
 
 class AdmissionPool extends Equatable {
@@ -325,8 +326,15 @@ class AdmissionDraft extends Equatable {
     this.weekdays = const [],
     this.payments = const [],
     this.renewedFrom,
+    this.amount,
   });
   final String? businessId, poolId, planId, renewedFrom;
+
+  /// Null uses the configured price; an explicitly empty value is invalid.
+  final String? amount;
+  int? get amountMinor => amount == null || amount!.trim().length > 13
+      ? null
+      : Validation.priceMinor(amount!);
   final String mode, start, time;
   final int duration;
   final BookingCustomer customer;
@@ -344,6 +352,8 @@ class AdmissionDraft extends Equatable {
     List<int>? weekdays,
     List<BookingPaymentDraft>? payments,
     bool resetPlan = false,
+    String? amount,
+    bool resetAmount = false,
   }) => AdmissionDraft(
     businessId: businessId ?? this.businessId,
     poolId: poolId ?? this.poolId,
@@ -356,6 +366,10 @@ class AdmissionDraft extends Equatable {
     weekdays: weekdays ?? this.weekdays,
     payments: payments ?? this.payments,
     renewedFrom: renewedFrom,
+    amount:
+        resetAmount || resetPlan || (planId != null && planId != this.planId)
+        ? null
+        : amount ?? this.amount,
   );
   @override
   List<Object?> get props => [
@@ -370,5 +384,6 @@ class AdmissionDraft extends Equatable {
     weekdays,
     payments,
     renewedFrom,
+    amount,
   ];
 }

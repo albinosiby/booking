@@ -27,3 +27,28 @@ The admission footer uses Review admission / Confirm admission / Retry confirmat
 ## Loading optimization
 
 Pool plan metadata is warmed after the priority booking reads using the existing two-worker background queue, only for authorized users with an activated pool. This warm-up loads metadata only; it does not fetch previews, reservations, invoices or reports. Adjacent Swimming plan/Coaching switches reuse the already authorized typed catalog for up to 20 seconds, preserving its original fetch timestamp and avoiding a fresh loading frame. Expired/denied catalog state is not reused. Availability, preview and final confirmation remain server-validated. No API deployment, migration or APK build is required.
+
+## Agreed plan and coaching amount
+
+In New booking → Swimming plan/Coaching → Payments, authorized collectors can edit **Plan amount** before review. It starts at the configured fee. Entering 2300 for a configured 2500 plan sets the final payable fee to 2300; collecting 2300 leaves no balance. There is no separate discount control. Collect full, half, other amount, split payments, Pay balance, review totals and outstanding balances use that agreed fee. A 1000 collection against a 2300 fee leaves 1300 due. Existing payment entries are not silently rewritten if the fee is reduced; overpayments must be corrected before review.
+
+The field accepts amounts from zero through 1,000,000 currency units with at most two decimal places. Blank, negative, nonnumeric, over-precision and out-of-range entries cannot reach review. A new plan or space resets the override to its configured fee. Customer/date edits retain the agreed fee. Review and uncertain confirmation lock fee editing along with the other command data; use Edit admission details before changing a reviewed amount. Staff without payment-collection permission retain configured pricing and cannot submit an override.
+
+The API accepts optional integer `plan_amount_minor` on `/v1/admissions/preview` and `/v1/admissions`. Omitting it preserves configured pricing for existing clients. Preview and final creation independently verify current owner/collection permissions and business/space scope. The requested amount is bound into the preview token and idempotent command. `admissions.total_minor` saves the agreed fee, while the existing JSON plan snapshot stores `configured_price_minor` and the charged `price_minor`; creation/renewal audit details retain both configured and agreed amounts. Payment collection limits and refunds continue to use actual balances and recorded receipts. The configured business plan price is not changed.
+
+No SQL migration is required. Release the rebuilt booking-api before the client so it accepts the optional amount field. The field is shown in the New booking flow; standalone admission forms keep their existing UI. Test with full, partial, unpaid, zero-fee and split collections, invalid amounts, changed permissions and modified preview/command payloads. No test admission or financial transaction should be created in the live database for release checks.
+
+### Release and recovery
+
+The agreed-fee change is prepared locally; it has not been published to Supabase or Railway. The user will publish the web app. Use this order:
+
+1. Keep a copy of the currently deployed `booking-api` source and the current Railway deployment revision for recovery.
+2. In Supabase → Edge Functions → booking-api → Code, replace the source with `supabase/functions/booking-api/index.ts` and deploy. Keep the existing custom authentication configuration (`verify_jwt = false`); the handler validates owner/staff tokens and permissions. See [Supabase deployment](supabase-only.md#build-and-browser-deployment).
+3. Read `https://scwwkaywewecspsrskft.supabase.co/functions/v1/booking-api/health` and confirm revision `2026-10-30-agreed-admission-amount`.
+4. Publish the updated repository through the existing Railway service using its root Dockerfile and existing variables. See [Railway deployment](railway-deployment.md). Open `/app/`, then New booking → Swimming plan/Coaching → Payments, and check that Plan amount starts at the configured fee. Edit the fee and inspect the collection/review totals without confirming a live admission.
+
+To recover, restore the preceding Railway deployment first, then restore the saved API source if needed. Existing clients omit the optional fee field and remain compatible with the new API. Preserve saved admissions and receipts; no schema or data rollback is required.
+
+Local validation: 38 admission/court backend tests passed. The Edge suites passed 52 tests with one existing BUG-22 TODO for malformed URL encoding. The focused Flutter suites passed all 17 tests covering agreed amounts, collection balances, option switching and both themes.
+
+Targeted Flutter analysis is clean. After adding fee-entry assertions to the complete New booking confirmation flow, all three pool-option tests passed again, including light and dark themes. An additional run of the older standalone admission suite passed its first three unit tests but stalled during its existing 320px widget test; it was stopped without claiming a full-suite pass.

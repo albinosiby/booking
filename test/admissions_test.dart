@@ -127,7 +127,7 @@ class AdmissionsFake extends Fake implements AdmissionRepository {
   Future<AdmissionPreview> preview(AdmissionDraft d) async => AdmissionPreview(
     'token',
     '2030-07-31',
-    300000,
+    d.amountMinor ?? 300000,
     d.mode == 'fixed' ? ['2030-06-05T06:00 – 2030-06-05T07:00'] : [],
   );
   @override

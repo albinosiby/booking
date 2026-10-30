@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../cubit/website_photo_cubit.dart';
+import '../cubit/website_settings_cubit.dart';
 import '../models/website_settings.dart';
 import 'website_photo_upload_tile.dart';
 
@@ -27,11 +30,11 @@ class WebsitePhotoTile extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(12.r),
             child: image.bytes == null
-                ? SizedBox(
+                ? _SavedPhoto(
+                    key: ValueKey(image.id),
+                    id: image.id,
                     height: h,
-                    child: const Center(
-                      child: Icon(Icons.broken_image_outlined),
-                    ),
+                    wide: wide,
                   )
                 : Image.memory(
                     image.bytes!,
@@ -60,6 +63,81 @@ class WebsitePhotoTile extends StatelessWidget {
             label: const Text('Remove photo'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SavedPhoto extends StatelessWidget {
+  const _SavedPhoto({
+    super.key,
+    required this.id,
+    required this.height,
+    required this.wide,
+  });
+  final String id;
+  final double height;
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    final editor = context.read<WebsiteSettingsCubit>();
+    return BlocProvider(
+      create: (_) =>
+          WebsitePhotoCubit(editor.session, editor.repository, id)..load(),
+      child: BlocBuilder<WebsitePhotoCubit, WebsitePhotoState>(
+        builder: (context, state) {
+          final photos = context.read<WebsitePhotoCubit>();
+          Widget failed(String message) => SizedBox(
+            height: height,
+            child: Center(
+              child: SingleChildScrollView(
+                key: PageStorageKey('website-photo-error-scroll-$id'),
+                primary: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.broken_image_outlined),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    TextButton(
+                      onPressed: () => photos.load(refresh: true),
+                      child: const Text('Retry photo'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+          if (state.loading) {
+            return SizedBox(
+              height: height,
+              child: Center(
+                child: Semantics(
+                  label: 'Loading photo',
+                  child: const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ),
+            );
+          }
+          if (state.bytes == null) {
+            return failed(state.error ?? 'Could not load this photo.');
+          }
+          return Image.memory(
+            state.bytes!,
+            height: height,
+            fit: BoxFit.cover,
+            cacheWidth: wide ? 1000 : 320,
+            errorBuilder: (_, _, _) => failed('Could not display this photo.'),
+          );
+        },
       ),
     );
   }
@@ -103,7 +181,8 @@ class WebsitePhotoSlot extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: ExpansionTile(
           key: PageStorageKey('website-photo-panel-$sectionId'),
-          maintainState: true,
+          // Pending selections live in the editor draft, so collapsed panels
+          // need not mount previews or download saved photos.
           expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
           tilePadding: EdgeInsets.zero,
           childrenPadding: const EdgeInsets.only(top: 12),
@@ -185,7 +264,6 @@ class WebsiteSpaceGallery extends StatelessWidget {
         .toList();
     return ExpansionTile(
       key: PageStorageKey('website-photo-panel-space-$businessId-$spaceId'),
-      maintainState: true,
       expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
       tilePadding: EdgeInsets.zero,
       childrenPadding: const EdgeInsets.only(top: 12, bottom: 12),
@@ -260,15 +338,15 @@ class WebsiteUnusedPhotos extends StatelessWidget {
         )
         .toList();
     if (unused.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return ExpansionTile(
+      key: const PageStorageKey('website-unused-photos'),
+      tilePadding: EdgeInsets.zero,
+      title: Text(
+        'Photos of removed spaces',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      subtitle: Text('${unused.length} photos hidden from visitors'),
       children: [
-        const SizedBox(height: 20),
-        Text(
-          'Photos of removed spaces',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
         const Text(
           'These photos are hidden from visitors. Remove them to free up space.',
         ),

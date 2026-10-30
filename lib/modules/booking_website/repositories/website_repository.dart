@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import '../models/website_settings.dart';
 import '../../../utils/services/logo_picker_service.dart';
 
@@ -6,6 +7,10 @@ abstract interface class WebsiteRepository {
   Future<WebsiteSettings> save(WebsiteSettings draft);
   Future<WebsiteSettings> publication(String action, int version);
   Future<String> preview();
+
+  /// Loads one saved photo on demand, independently of settings and mutations.
+  Future<Uint8List> photoBytes(String id, {bool refresh = false});
+  void clearPhotoCache();
 
   /// Selects and prepares a bounded JPEG locally; does not persist anything.
   Future<LogoSelection?> pickImage();
