@@ -382,7 +382,7 @@ export function createHandler(
     w.renameBusiness(i.actor, i.params.id, i.body),
   );
   add("DELETE", "/v1/businesses/:id", (i) =>
-    w.archiveBusiness(i.actor, i.params.id, i.body),
+    w.deleteBusiness(i.actor, i.params.id, i.body),
   );
   add("POST", "/v1/businesses/:id/resources", (i) =>
     w.addResource(i.actor, i.params.id, i.body),
@@ -718,7 +718,7 @@ export function createHandler(
         return respond({
           status: "ok",
           runtime: "supabase-edge",
-          revision: "2026-10-29-voice-retry-recovery",
+          revision: "2026-10-30-permanent-business-deletion",
         });
       }
       if (req.method === "GET" && path === "/v1/catalog")

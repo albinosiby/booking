@@ -116,7 +116,7 @@ test("Edge business removal requires authentication and validates UUIDs before d
     (await f.request(`/v1/businesses/${id}`, "DELETE", body)).status,
     200,
   );
-  assert.equal(f.calls[0].method, "archiveBusiness");
+  assert.equal(f.calls[0].method, "deleteBusiness");
   assert.equal(f.calls[0].args[0].uid, "actor");
   assert.equal(f.calls[0].args[1], id);
   assert.deepEqual(f.calls[0].args[2], body);
@@ -402,7 +402,7 @@ test("public health exposes a revision for deployment verification without accou
   assert.deepEqual(await response.json(), {
     status: "ok",
     runtime: "supabase-edge",
-    revision: "2026-10-29-voice-retry-recovery",
+    revision: "2026-10-30-permanent-business-deletion",
   });
 });
 

@@ -58,7 +58,7 @@ class BusinessAvailabilityMenu extends StatelessWidget {
                   color: Theme.of(context).colorScheme.error,
                 ),
                 const SizedBox(width: 10),
-                const Flexible(child: Text('Remove business')),
+                const Flexible(child: Text('Delete business')),
               ],
             ),
           ),
@@ -74,11 +74,11 @@ Future<bool> confirmBusinessRemoval(
     await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove business?'),
+        title: const Text('Permanently delete business?'),
         content: Text(
-          'Remove ${action.name} from your businesses and stop new bookings? '
-          'Past bookings, payments and reports will remain available. '
-          'Upcoming or ongoing bookings and active or upcoming admissions must be resolved first.',
+          'Permanently delete ${action.name}, its spaces and linked setup? '
+          'This cannot be undone in the app. Businesses with booking, admission or financial history cannot be deleted. '
+          'You can turn a business off to keep its history.',
         ),
         actions: [
           TextButton(
@@ -91,7 +91,7 @@ Future<bool> confirmBusinessRemoval(
               backgroundColor: Theme.of(context).colorScheme.error,
               foregroundColor: Theme.of(context).colorScheme.onError,
             ),
-            child: const Text('Remove'),
+            child: const Text('Delete permanently'),
           ),
         ],
       ),

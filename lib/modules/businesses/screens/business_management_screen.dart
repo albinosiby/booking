@@ -48,9 +48,9 @@ class _BusinessManagementScreenState extends State<BusinessManagementScreen> {
     if (!await confirmBusinessRemoval(context, action) || !mounted) return;
     final saved = await cubit.removeBusiness(action);
     if (saved && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('${action.name} was removed.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${action.name} was permanently deleted.')),
+      );
     }
   }
 

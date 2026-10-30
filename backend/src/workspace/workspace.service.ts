@@ -1,5 +1,6 @@
 import { ensureWebsiteDraft } from "../website/website.validation";
 import { EmailTeamAccess } from "./email-team-access";
+import { deleteUnusedBusiness } from "./business-deletion";
 import { z } from "zod";
 import {
   organizationEditSchema,
@@ -628,56 +629,56 @@ export class WorkspaceService {
       return { id };
     });
   }
-  async archiveBusiness(actor: Actor, id: string, input: unknown) {
+  async deleteBusiness(actor: Actor, id: string, input: unknown) {
     z.uuid().parse(id);
     const v = z
       .object({ version: z.number().int().positive() })
       .strict()
       .parse(input);
-    return this.db.transaction(async (db) => {
-      const m = await this.member(actor, true, db, true);
-      // Same ordering lock as additions/reorders, then the inventory lock used
-      // by booking, admission and public-website commits. A non-key lock lets
-      // concurrent inventory writers finish their organization FK checks before
-      // we acquire their business lock, avoiding an organization/business cycle.
-      await db.query(
-        "SELECT id FROM organizations WHERE id=$1 FOR NO KEY UPDATE",
-        [m.organization_id],
-      );
-      const b = (
-        await db.query<Row>(
-          "SELECT * FROM businesses WHERE id=$1 AND organization_id=$2 FOR UPDATE",
-          [id, m.organization_id],
-        )
-      ).rows[0];
-      if (!b) throw new NotFoundException("Business not found.");
-      if (b.status === "archived") return { id };
-      if (b.version !== v.version)
-        throw new ConflictException(
-          "Business changed. Refresh before removing it.",
+    return this.db
+      .transaction(async (db) => {
+        const m = await this.member(actor, true, db, true);
+        // Serialize order changes without blocking inventory writers' FK checks.
+        await db.query(
+          "SELECT id FROM organizations WHERE id=$1 FOR NO KEY UPDATE",
+          [m.organization_id],
         );
-      const pending = (
-        await db.query<Row>(
-          `SELECT EXISTS(SELECT 1 FROM bookings WHERE organization_id=$1 AND business_id=$2 AND status<>'cancelled' AND ends_at>now()) AS bookings,
-          EXISTS(SELECT 1 FROM admission_balances WHERE organization_id=$1 AND business_id=$2 AND status IN ('active','upcoming')) AS admissions`,
-          [m.organization_id, id],
-        )
-      ).rows[0];
-      if (pending.bookings || pending.admissions)
-        throw new ConflictException(
-          "This business has upcoming or ongoing bookings, or active or upcoming admissions. Resolve them before removing it.",
+        // Public booking/settings writes lock the website before the business.
+        await db.query(
+          "SELECT id FROM booking_websites WHERE organization_id=$1 ORDER BY id FOR UPDATE",
+          [m.organization_id],
         );
-      await db.query(
-        "UPDATE businesses SET status='archived',archived_at=now(),archived_by=$2,version=version+1 WHERE id=$1",
-        [id, actor.uid],
-      );
-      await db.query(
-        "UPDATE organizations SET business_order_revision=business_order_revision+1 WHERE id=$1",
-        [m.organization_id],
-      );
-      await this.audit(db, actor, m.organization_id, "business.archived", id);
-      return { id };
-    });
+        const b = (
+          await db.query<Row>(
+            "SELECT * FROM businesses WHERE id=$1 AND organization_id=$2 FOR UPDATE",
+            [id, m.organization_id],
+          )
+        ).rows[0];
+        if (!b) {
+          const deleted = await db.query(
+            "SELECT 1 FROM audit_events WHERE organization_id=$1 AND entity_id=$2 AND action='business.deleted' LIMIT 1",
+            [m.organization_id, id],
+          );
+          if (deleted.rows.length) return { id };
+          throw new NotFoundException("Business not found.");
+        }
+        if (b.version !== v.version)
+          throw new ConflictException(
+            "Business changed. Refresh before removing it.",
+          );
+        return deleteUnusedBusiness(
+          db,
+          { id, organization_id: b.organization_id },
+          actor.uid,
+        );
+      })
+      .catch((error) => {
+        if (error?.code === "23503")
+          throw new ConflictException(
+            "This business still has linked records and cannot be permanently deleted. Resolve those records or turn it off instead.",
+          );
+        throw error;
+      });
   }
   async setBookingEnabled(actor: Actor, id: string, input: unknown) {
     const v = z

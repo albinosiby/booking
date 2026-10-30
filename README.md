@@ -178,7 +178,7 @@ Shared loading motion and usage are documented in [Loading animations](docs/load
 
 ### Profile and business management
 
-Owners can remove a business from Profile → Businesses → its options menu. Removal preserves history and requires resolving future bookings and active admissions first. Apply the prepared migration before deploying this feature; see [business removal](docs/business-removal.md).
+Owners can permanently delete an unused business from Profile → Businesses → its options menu. Any booking, admission or financial history blocks deletion; use Turn off business to preserve a used business. No archival migration is required; see [permanent business deletion](docs/business-removal.md).
 
 Profile now links to organization details, Businesses, team and payment settings. Businesses provides visible detail, rename and configuration actions, plus an organization-wide saved display order used by business selectors and groups throughout the app. See [business management](docs/business-management.md), including migration `004_business_order.sql`, before deploying the updated API.
 

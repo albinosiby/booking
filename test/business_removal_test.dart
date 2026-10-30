@@ -34,7 +34,7 @@ class RemovalSource extends ManagementSource {
     await wait?.future;
     if (this.fail) {
       throw const AppException(
-        'Resolve upcoming bookings before removing this business.',
+        'Businesses with booking history cannot be permanently deleted.',
       );
     }
     businesses = businesses.where((b) => b.id != id).toList();
@@ -131,7 +131,7 @@ void main() {
         isFalse,
       );
       expect(source.businesses.length, 2);
-      expect(active.state.error, contains('Resolve upcoming bookings'));
+      expect(active.state.error, contains('booking history'));
       await cubit.close();
       await active.close();
     },
@@ -223,10 +223,10 @@ void main() {
           await tester.ensureVisible(menu);
           await tester.tap(menu);
           await tester.pumpAndSettle();
-          await tester.tap(find.text('Remove business'));
+          await tester.tap(find.text('Delete business'));
           await tester.pumpAndSettle();
           expect(
-            find.textContaining('Past bookings, payments and reports'),
+            find.textContaining('This cannot be undone in the app.'),
             findsOneWidget,
           );
           await tester.tap(find.text('Cancel'));
@@ -234,9 +234,9 @@ void main() {
           expect(source.attempts, id == 'turf' ? 0 : 1);
           await tester.tap(menu);
           await tester.pumpAndSettle();
-          await tester.tap(find.text('Remove business'));
+          await tester.tap(find.text('Delete business'));
           await tester.pumpAndSettle();
-          await tester.tap(find.text('Remove'));
+          await tester.tap(find.text('Delete permanently'));
           await tester.pumpAndSettle();
           expect(find.byKey(ValueKey('business-menu-$id')), findsNothing);
           expect(tester.takeException(), isNull);

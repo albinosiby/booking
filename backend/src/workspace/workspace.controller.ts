@@ -99,12 +99,12 @@ export class WorkspaceController {
   ) {
     return this.service.renameBusiness(r.actor, id, b);
   }
-  @Delete("businesses/:id") archiveBusiness(
+  @Delete("businesses/:id") deleteBusiness(
     @Req() r: AuthRequest,
     @Param("id", ParseUUIDPipe) id: string,
     @Body() b: unknown,
   ) {
-    return this.service.archiveBusiness(r.actor, id, b);
+    return this.service.deleteBusiness(r.actor, id, b);
   }
   @Post("businesses/:id/resources") resource(
     @Req() r: AuthRequest,
