@@ -1,0 +1,54 @@
+Booking OS - signed Google Play upload bundle
+Prepared: 30 October 2026
+
+App bundle: booking-os-0.1.0-1.aab
+Application ID: bookingservice.tatos.tech
+Version name: 0.1.0
+Version code: 1
+Minimum Android SDK: 24
+Target Android SDK: 36
+Architectures: armeabi-v7a, arm64-v8a, x86_64
+Size: 82,212,512 bytes
+
+Signing
+Existing Tatos release keystore reused; no new private key generated.
+Key alias: tatos
+Certificate owner: CN=Tatos Tech, O=Tatos, C=IN
+Certificate SHA-256:
+1F:A4:22:99:C9:11:53:F7:89:17:BF:E5:1A:6B:30:0A:7E:B9:BC:78:9E:3D:66:C6:32:BF:0F:07:CA:4A:BF:5C
+Public certificate: upload-certificate.pem
+Private keystore: /Users/albinosiby/.tatos-signing/tatos-release.jks
+Private configuration: android/key.properties (excluded from Git)
+Back up the existing keystore and its passwords securely for future updates.
+Do not upload the keystore or key.properties with the app bundle.
+
+Verification
+Release build succeeded with production Supabase configuration and emulator disabled.
+JAR signature verified; signer matches the existing release key.
+Google bundletool 1.18.3 validation passed.
+ZIP integrity passed; release manifest is not debuggable.
+Native bundle packaging requests PAGE_ALIGNMENT_16K.
+All 10 packaged arm64-v8a/x86_64 libraries pass 16 KB LOAD alignment checks.
+19 existing sign-in, startup and notification tests passed.
+Flutter analysis: 11 existing test-file warnings/style notices; no application-code issues.
+No phone installation or Play Console upload was performed.
+Device acceptance and Google Play review remain separate from artifact validation.
+
+Upload
+In the intended Play Console app, select a testing or production release and upload the AAB.
+Use Play App Signing during setup. For an existing Play app, its registered upload
+certificate must match the certificate above; this was not checked in Play Console.
+Version code 1 must be unused in that Play Console app. Future releases need a higher code.
+Google signs the APKs distributed through Play using its configured app-signing key.
+
+Rebuild
+JAVA_HOME=/Users/albinosiby/development/jdk/Contents/Home
+Add $JAVA_HOME/bin to PATH, then run from the repository root:
+flutter build appbundle --release --no-pub --dart-define-from-file=.local/dart-defines-supabase.json
+
+Official references
+https://docs.flutter.dev/deployment/android
+https://developer.android.com/studio/publish/app-signing
+https://developer.android.com/guide/practices/page-sizes
+
+AAB SHA-256: 5ac35d9a61b26721f486ac945e1e09f5df65aa088d51a47d4af0617f74e47b03
