@@ -284,6 +284,33 @@ void main() {
       if (page == 'expenses') {
         expect(find.text('Monthly'), findsOneWidget);
         expect(find.text('Add expense'), findsOneWidget);
+        await tester.tap(find.byTooltip('Download report'));
+        await tester.pumpAndSettle();
+        final reportSpace = find.byKey(const ValueKey('expense-report-space'));
+        await tester.ensureVisible(reportSpace);
+        await tester.tap(reportSpace);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Badminton · Court 1').last);
+        await tester.pumpAndSettle();
+        final reportCategory = find.byKey(
+          const ValueKey('expense-report-category'),
+        );
+        await tester.ensureVisible(reportCategory);
+        await tester.tap(reportCategory);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Food').last);
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey('expense-report-scope')))
+              .data,
+          contains('Badminton · Court 1'),
+        );
+        await tester.tap(find.text('Download PDF'));
+        await tester.pumpAndSettle();
+        expect(repository.filters.last.businessId, 'business');
+        expect(repository.filters.last.spaceId, 'space');
+        expect(repository.filters.last.categoryId, 'food');
       } else {
         expect(find.text('Save expense'), findsOneWidget);
         await tester.scrollUntilVisible(

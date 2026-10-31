@@ -41,6 +41,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       context: context,
       builder: (c) => ExpenseReportSheet(
         initialAnchor: state.filter.anchor,
+        catalog: state.catalog!,
         categories: state.categories,
         initialFormat: format,
       ),

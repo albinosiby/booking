@@ -16,9 +16,11 @@ class IncomeReportSheet extends StatefulWidget {
   const IncomeReportSheet({
     super.key,
     required this.initialAnchor,
+    required this.catalog,
     required this.categories,
   });
   final DateTime initialAnchor;
+  final FinanceCatalog catalog;
   final List<IncomeCategory> categories;
 
   @override
@@ -31,16 +33,30 @@ class _IncomeReportSheetState extends State<IncomeReportSheet> {
     widget.initialAnchor.month,
   );
   bool yearly = false;
-  String source = '', format = 'pdf';
+  String spaceId = '', source = '', format = 'pdf';
 
   @override
   Widget build(BuildContext context) => AdaptiveSheetBody(
     initialChildSize: .82,
     builder: (context, controller, _) {
+      final spaces = [
+        for (final business in widget.catalog.businesses)
+          for (final space in business.spaces)
+            (
+              businessId: business.id,
+              spaceId: space.id,
+              label: '${business.name} · ${space.name}',
+            ),
+      ];
+      final selectedSpace = spaces
+          .where((space) => space.spaceId == spaceId)
+          .firstOrNull;
       final filter = IncomeFilter(
         anchor: anchor,
         yearly: yearly,
         source: source.isEmpty ? null : source,
+        businessId: selectedSpace?.businessId,
+        spaceId: selectedSpace?.spaceId,
       );
       final sources = [
         const PickerItem('', 'All income'),
@@ -68,7 +84,7 @@ class _IncomeReportSheetState extends State<IncomeReportSheet> {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'Choose the period and income source for this download.',
+                  'Choose the period, space and income source for this download.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 20),
@@ -81,6 +97,18 @@ class _IncomeReportSheetState extends State<IncomeReportSheet> {
                     anchor = DateTime(date.year, date.month);
                     yearly = isYearly;
                   }),
+                ),
+                const SizedBox(height: 20),
+                AppPicker(
+                  key: const ValueKey('income-report-space'),
+                  label: 'Space',
+                  value: spaceId,
+                  items: [
+                    const PickerItem('', 'All spaces'),
+                    for (final space in spaces)
+                      PickerItem(space.spaceId, space.label),
+                  ],
+                  onChanged: (value) => setState(() => spaceId = value),
                 ),
                 const SizedBox(height: 20),
                 AppPicker(
@@ -117,7 +145,7 @@ class _IncomeReportSheetState extends State<IncomeReportSheet> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '${financeRangeLabel(FinanceFilter(from: filter.from, until: filter.until))}\n$sourceName',
+                        '${financeRangeLabel(FinanceFilter(from: filter.from, until: filter.until))}\n${selectedSpace?.label ?? 'All spaces'}\n$sourceName',
                         key: const ValueKey('income-report-scope'),
                       ),
                       const SizedBox(height: 8),

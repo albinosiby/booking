@@ -54,6 +54,7 @@ class _IncomeScreenState extends State<IncomeScreen> {
       maxWidth: 560,
       builder: (c) => IncomeReportSheet(
         initialAnchor: cubit.state.filter.anchor,
+        catalog: cubit.state.catalog!,
         categories: cubit.state.categories,
       ),
     );

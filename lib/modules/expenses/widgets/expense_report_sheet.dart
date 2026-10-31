@@ -16,10 +16,12 @@ class ExpenseReportSheet extends StatefulWidget {
   const ExpenseReportSheet({
     super.key,
     required this.initialAnchor,
+    required this.catalog,
     required this.categories,
     this.initialFormat = 'pdf',
   });
   final DateTime initialAnchor;
+  final FinanceCatalog catalog;
   final List<ExpenseCategory> categories;
   final String initialFormat;
 
@@ -33,17 +35,31 @@ class _ExpenseReportSheetState extends State<ExpenseReportSheet> {
     widget.initialAnchor.month,
   );
   bool yearly = false;
-  String category = '';
+  String spaceId = '', category = '';
   late String format = widget.initialFormat;
 
   @override
   Widget build(BuildContext context) => AdaptiveSheetBody(
     initialChildSize: .82,
     builder: (context, controller, _) {
+      final spaces = [
+        for (final business in widget.catalog.businesses)
+          for (final space in business.spaces)
+            (
+              businessId: business.id,
+              spaceId: space.id,
+              label: '${business.name} · ${space.name}',
+            ),
+      ];
+      final selectedSpace = spaces
+          .where((space) => space.spaceId == spaceId)
+          .firstOrNull;
       final filter = ExpenseFilter(
         anchor: anchor,
         yearly: yearly,
         categoryId: category.isEmpty ? null : category,
+        businessId: selectedSpace?.businessId,
+        spaceId: selectedSpace?.spaceId,
       );
       final categories = [
         const PickerItem('', 'All expenses'),
@@ -69,7 +85,7 @@ class _ExpenseReportSheetState extends State<ExpenseReportSheet> {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'Choose the period and expense category for this download.',
+                  'Choose the period, space and expense category for this download.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 20),
@@ -82,6 +98,18 @@ class _ExpenseReportSheetState extends State<ExpenseReportSheet> {
                     anchor = DateTime(date.year, date.month);
                     yearly = isYearly;
                   }),
+                ),
+                const SizedBox(height: 20),
+                AppPicker(
+                  key: const ValueKey('expense-report-space'),
+                  label: 'Space',
+                  value: spaceId,
+                  items: [
+                    const PickerItem('', 'All spaces'),
+                    for (final space in spaces)
+                      PickerItem(space.spaceId, space.label),
+                  ],
+                  onChanged: (value) => setState(() => spaceId = value),
                 ),
                 const SizedBox(height: 20),
                 AppPicker(
@@ -118,7 +146,7 @@ class _ExpenseReportSheetState extends State<ExpenseReportSheet> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '${financeRangeLabel(FinanceFilter(from: filter.from, until: filter.until))}\n$categoryName',
+                        '${financeRangeLabel(FinanceFilter(from: filter.from, until: filter.until))}\n${selectedSpace?.label ?? 'All spaces'}\n$categoryName',
                         key: const ValueKey('expense-report-scope'),
                       ),
                       const SizedBox(height: 8),

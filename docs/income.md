@@ -10,7 +10,7 @@ Income is opened from **Profile → Income**, or from **Accounts → Income by p
 - The total card shows total income, the number of entries, refunds, and net after refunds. Totals use the same rule as "Total income" on Accounts: booking payments + admission payments + extra income. Refunds are listed separately and subtracted for the net. Reversals reduce income on the date they were recorded. Transfers are excluded.
 - **By source** lists Bookings, Admissions and each category. Tap a row to filter by it.
 - **All income** is grouped by day. Tap an entry to open the existing transaction detail screen.
-- **Download PDF / Excel** exports the selected period and filters: a summary, source totals, every entry and the payment split.
+- **Download PDF / Excel** opens a separate chooser for month or year, space, income source and file format. Choosing a space also scopes the request to its business. The scope preview shows the selected space; hidden page filters do not carry over. The report includes a summary, source totals, every entry and the payment split.
 - **Add income** opens the existing "Add extra income" form. Its category is now picked from the managed list. If the server has no income categories yet (migration not applied), the form keeps the old typed category field.
 - Owners can add, rename, archive and restore income categories (category icon in the app bar). Renaming keeps history; archiving blocks new entries but keeps reports.
 

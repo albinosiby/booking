@@ -6,7 +6,7 @@ Choose a month or year, then use the category chips to narrow the page. Search b
 
 The summary shows gross expenses, reversals, net spent, net cash spent, net bank/digital spent and the net daily or monthly average. The daily cards show the reason, category, space, payment methods and the amount spent. Select a day to see that day's ledger, add an expense with that date prefilled, or download that day's report. The trend chart is collapsible on mobile.
 
-The main Download action opens an explicit report chooser. Select a month or year, a category or all expenses, and PDF or Excel. This chooser does not inherit hidden page filters. The selected-day Download action uses the currently visible filters and that day.
+The main Download action opens an explicit report chooser. Select a month or year, a space or all spaces, a category or all expenses, and PDF or Excel. Choosing a space also scopes the request to its business. The scope preview shows the selected space; hidden page filters do not carry over. The selected-day Download action uses the currently visible filters and that day.
 
 ## Accounting and export
 

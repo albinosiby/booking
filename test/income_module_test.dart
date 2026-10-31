@@ -325,9 +325,23 @@ void main() {
       expect(find.text('All income'), findsWidgets);
       await tester.tap(find.byTooltip('Previous period').last);
       await tester.pumpAndSettle();
+      final reportSpace = find.byKey(const ValueKey('income-report-space'));
+      await tester.ensureVisible(reportSpace);
+      await tester.tap(reportSpace);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Badminton · Court 1').last);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('income-report-scope')))
+            .data,
+        contains('Badminton · Court 1'),
+      );
       await tester.tap(find.text('Download PDF'));
       await tester.pumpAndSettle();
       expect(r.reports.single.$1.source, isNull);
+      expect(r.reports.single.$1.businessId, 'business');
+      expect(r.reports.single.$1.spaceId, 'space');
       expect(r.reports.single.$1.from, '2026-09-01');
       expect(r.reports.single.$1.until, '2026-09-30');
       expect(r.reports.single.$2, 'pdf');
