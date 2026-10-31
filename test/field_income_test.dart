@@ -177,7 +177,7 @@ void main() {
       });
       await c.load();
       await c.export('pdf');
-      expect(saver.name, 'income-2026-10-01-2026-10-31.pdf');
+      expect(saver.name, 'bookos-income-2026-10-all.pdf');
     });
     test('double tap on export runs a single download', () async {
       final w = await workspace();

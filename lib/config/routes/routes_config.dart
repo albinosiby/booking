@@ -162,7 +162,9 @@ GoRouter createRouter(
       GoRoute(path: Routes.income, builder: (c, s) => const IncomeScreen()),
       GoRoute(
         path: Routes.addExpense,
-        builder: (c, s) => const ExpenseFormScreen(),
+        builder: (c, s) => ExpenseFormScreen(
+          initialDate: s.extra is DateTime ? s.extra as DateTime : null,
+        ),
       ),
       GoRoute(
         path: '/expenses/:id',
@@ -325,8 +327,19 @@ GoRouter createRouter(
         builder: (c, s) =>
             ['income', 'expense', 'transfer'].contains(s.pathParameters['kind'])
             ? s.pathParameters['kind'] == 'expense'
-                  ? const ExpenseFormScreen()
-                  : FinanceEntryScreen(kind: s.pathParameters['kind']!)
+                  ? ExpenseFormScreen(
+                      initialDate: s.extra is DateTime
+                          ? s.extra as DateTime
+                          : null,
+                    )
+                  : FinanceEntryScreen(
+                      kind: s.pathParameters['kind']!,
+                      initialDate:
+                          s.pathParameters['kind'] == 'income' &&
+                              s.extra is DateTime
+                          ? s.extra as DateTime
+                          : null,
+                    )
             : const AppPage(
                 title: 'Invalid entry type',
                 back: true,

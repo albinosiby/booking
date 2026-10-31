@@ -372,7 +372,16 @@ void main() {
         await tester.ensureVisible(bar);
         await tester.tap(bar);
         await tester.pumpAndSettle();
-        expect(find.text('15 Oct 2026 · ₹ 300.00'), findsOneWidget);
+        if (isIncome) {
+          expect(find.text('Selected day’s income'), findsWidgets);
+          expect(find.text('Total income ₹ 300.00'), findsOneWidget);
+          expect(find.text('Refunds ₹ 0.00'), findsOneWidget);
+          expect(find.text('Net received ₹ 300.00'), findsOneWidget);
+          expect(find.text('Net cash received ₹ 0.00'), findsOneWidget);
+          expect(find.text('Net bank received ₹ 0.00'), findsOneWidget);
+        } else {
+          expect(find.text('15 Oct 2026 · ₹ 300.00'), findsOneWidget);
+        }
         final chart = tester.widget<FinancePeriodChart>(
           find.byType(FinancePeriodChart),
         );

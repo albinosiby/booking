@@ -170,6 +170,41 @@ test("active staff can read their public website link, revoked members cannot", 
     /No active organization membership/,
   );
 });
+test("Home hero reads only the active member's organization image", async () => {
+  const other = await seedWebsite(
+    db,
+    `hero-${randomUUID().slice(0, 8)}`,
+    false,
+  );
+  const site = (
+    await db.query<{ id: string }>(
+      "SELECT id FROM booking_websites WHERE organization_id=$1",
+      [other.orgId],
+    )
+  ).rows[0];
+  assert.equal(await other.website.homeHero(other.owner), null);
+  const data = Buffer.alloc(24, 7);
+  await db.query(
+    `INSERT INTO booking_website_images
+     (id,website_id,organization_id,kind,position,content_type,data)
+     VALUES($1,$2,$3,'hero',0,'image/png',$4)`,
+    [randomUUID(), site.id, other.orgId, data],
+  );
+  assert.equal(await f.website.homeHero(f.owner), null);
+  await db.query("UPDATE memberships SET role='staff' WHERE user_id=$1", [
+    other.owner.uid,
+  ]);
+  const image = await other.website.homeHero(other.owner);
+  assert.equal(image?.content_type, "image/png");
+  assert.deepEqual(Buffer.from(image!.data), data);
+  await db.query("UPDATE memberships SET active=false WHERE user_id=$1", [
+    other.owner.uid,
+  ]);
+  await assert.rejects(
+    () => other.website.homeHero(other.owner),
+    /No active organization membership/,
+  );
+});
 test("guest booking uses existing inventory and creates no payment entries", async () => {
   const { selection } = await choice(),
     quote = await f.website.quote(f.slug, { selection }),

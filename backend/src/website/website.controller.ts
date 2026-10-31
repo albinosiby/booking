@@ -24,6 +24,16 @@ export class WebsiteSettingsController {
   link(@Req() r: AuthRequest) {
     return this.service.link(r.actor);
   }
+  @Get("home-hero")
+  async homeHero(@Req() r: AuthRequest, @Res() res: Response) {
+    const image = await this.service.homeHero(r.actor);
+    res.set({
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    if (!image) return res.status(204).end();
+    return res.type(image.content_type).send(Buffer.from(image.data));
+  }
   @Header("Cache-Control", "private, no-store")
   @Get()
   settings(@Req() r: AuthRequest) {

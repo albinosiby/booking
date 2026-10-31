@@ -100,6 +100,21 @@ test("structured expense is idempotent, scoped and excludes other categories", a
   });
   assert.equal(Number(s.total_minor), 20000);
   assert.equal(s.count, 1);
+  assert.equal(Number(s.gross_minor), 20000);
+  assert.equal(Number(s.reversals_minor), 0);
+  assert.deepEqual(s.methods, [{ method: "cash", total_minor: 20000 }]);
+  const day = (s.days as any[]).find((entry) => entry.day === today);
+  assert.equal(Number(day.gross_minor), 20000);
+  assert.equal(Number(day.reversals_minor), 0);
+  assert.deepEqual(day.methods, [{ method: "cash", total_minor: 20000 }]);
+  assert.deepEqual(day.purposes, [
+    {
+      category: "Maintenance",
+      reason: "Ground repairs",
+      space: "No space",
+      total_minor: 20000,
+    },
+  ]);
   assert.equal(
     (await expenses.list(owner, { ...filter, category_id: category })).items[0]
       .lines.length,
@@ -182,12 +197,23 @@ test("exports contain filtered rows, split sources and reversal traceability", a
   const d = await expenses.report(owner, { ...filter, category_id: category });
   assert.equal(d.items.length, 2);
   assert.equal(d.total_minor, 0);
+  assert.equal(Number(d.gross_minor), 20000);
+  assert.equal(Number(d.reversals_minor), 20000);
+  assert.deepEqual(d.methods, [{ method: "cash", total_minor: 0 }]);
   assert.equal(d.categories.length, 1);
   const xlsx = await renderExpenseReport(d, "xlsx"),
     wb = new ExcelJS.Workbook();
   await wb.xlsx.load(xlsx as any);
   assert.equal(wb.getWorksheet("Expenses")!.rowCount, 3);
   assert.equal(wb.getWorksheet("Payment breakdown")!.rowCount, 5);
+  const summary = wb.getWorksheet("Summary")!;
+  assert.equal(summary.getCell("A4").value, "Exported at");
+  assert.match(String(summary.getCell("B4").value), /UTC/);
+  assert.equal(summary.getCell("B11").value, 200);
+  assert.equal(summary.getCell("B12").value, 200);
+  assert.equal(summary.getCell("B13").value, 0);
+  assert.equal(summary.getCell("B14").value, 0);
+  assert.equal(summary.getCell("B15").value, 0);
   const pdf = await renderExpenseReport(d, "pdf");
   assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
   assert.ok(pdf.length > 1000);

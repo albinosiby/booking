@@ -41,19 +41,6 @@ class CompactBookingCard extends StatelessWidget {
 
   String clock(String value) =>
       value.length >= 16 ? TimeFormat.display(value.substring(11, 16)) : value;
-  String get initials {
-    final names = model.customer
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((v) => v.isNotEmpty)
-        .toList();
-    if (names.isEmpty) return '?';
-    return [
-      names.first,
-      if (names.length > 1) names.last,
-    ].map((v) => String.fromCharCode(v.runes.first)).join().toUpperCase();
-  }
-
   IconData get spaceIcon {
     final text = '${model.option} ${model.business}'.toLowerCase();
     if (text.contains('cricket')) return Icons.sports_cricket_outlined;
@@ -89,8 +76,13 @@ class CompactBookingCard extends StatelessWidget {
         : b.balance > 0
         ? b.balance
         : b.total;
+    final space = [
+      if (b.business.isNotEmpty && b.business != b.space) b.business,
+      b.space,
+      if (b.option?.isNotEmpty == true && b.option != b.space) b.option!,
+    ].where((value) => value.isNotEmpty).join(' · ');
     return Padding(
-      padding: EdgeInsets.only(bottom: 10.h),
+      padding: EdgeInsets.only(bottom: 8.h),
       child: AppCard(
         padding: EdgeInsets.zero,
         onTap: () => context.push(
@@ -98,82 +90,24 @@ class CompactBookingCard extends StatelessWidget {
               ? '/booking/${b.id}'
               : '/admissions/${b.admissionId}',
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: EdgeInsets.all(14.w),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
                 children: [
-                  ExcludeSemantics(
-                    child: CircleAvatar(
-                      radius: 24,
-                      backgroundColor: colors.primary.withValues(alpha: .12),
-                      foregroundColor: colors.primary,
+                  Expanded(
+                    child: Tooltip(
+                      message: b.customer,
                       child: Text(
-                        initials,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: colors.primary,
+                        b.customer,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          b.customer,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (b.phone.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.phone_outlined,
-                                size: 14,
-                                color: colors.onSurfaceVariant,
-                              ),
-                              const SizedBox(width: 5),
-                              Expanded(child: Text(b.phone, style: muted)),
-                            ],
-                          ),
-                        ],
-                        const SizedBox(height: 6),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              spaceIcon,
-                              size: 16,
-                              color: colors.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 5),
-                            Expanded(
-                              child: Text(
-                                [
-                                  b.space,
-                                  if (b.option?.isNotEmpty == true &&
-                                      b.option != b.space)
-                                    b.option!,
-                                ].where((v) => v.isNotEmpty).join(' · '),
-                                style: muted,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (b.business.isNotEmpty && b.business != b.space)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 3),
-                            child: Text(b.business, style: muted),
-                          ),
-                      ],
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -182,8 +116,8 @@ class CompactBookingCard extends StatelessWidget {
                     child: Container(
                       constraints: const BoxConstraints(maxWidth: 88),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 5,
+                        horizontal: 7,
+                        vertical: 3,
                       ),
                       decoration: BoxDecoration(
                         color: b.status == 'cancelled'
@@ -204,19 +138,43 @@ class CompactBookingCard extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-            Divider(
-              height: 1,
-              color: colors.outlineVariant.withValues(alpha: .6),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                spacing: 16,
-                runSpacing: 4,
+              const SizedBox(height: 5),
+              Row(
                 children: [
-                  Text(date(b.start), style: theme.textTheme.bodySmall),
+                  Icon(spaceIcon, size: 15, color: colors.onSurfaceVariant),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Tooltip(
+                      message: space,
+                      child: Text(
+                        space,
+                        style: muted,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  if (b.phone.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 112),
+                      child: Text(
+                        b.phone,
+                        style: muted,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 12,
+                runSpacing: 3,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(date(b.start), style: muted),
                   Text(
                     time,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -225,54 +183,56 @@ class CompactBookingCard extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-            if (b.admissionId != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                child: CalendarAttendance(
-                  admissionId: b.admissionId!,
-                  visitId: b.id,
-                  attendance: b.admissionAttendance ?? 'unmarked',
-                  cancelled: b.status == 'cancelled',
+              if (b.admissionId != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 7),
+                  child: CalendarAttendance(
+                    admissionId: b.admissionId!,
+                    visitId: b.id,
+                    attendance: b.admissionAttendance ?? 'unmarked',
+                    cancelled: b.status == 'cancelled',
+                  ),
                 ),
-              ),
-            if (b.admissionId == null && amount != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                child: Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 12,
-                  runSpacing: 6,
-                  children: [
-                    Text(
-                      '${b.refund > 0
-                          ? 'Refund due'
-                          : b.balance > 0
-                          ? 'Amount due'
-                          : b.status == 'cancelled'
-                          ? 'Booking total'
-                          : 'Paid'} · ${bookingMoney(amount, currency)}',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: b.balance > 0 || b.refund > 0
-                            ? colors.primary
-                            : colors.onSurfaceVariant,
-                      ),
-                    ),
-                    if (canCollect && b.collectible)
-                      FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
+              if (b.admissionId == null && amount != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 7),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${b.refund > 0
+                              ? 'Refund due'
+                              : b.balance > 0
+                              ? 'Amount due'
+                              : b.status == 'cancelled'
+                              ? 'Booking total'
+                              : 'Paid'} · ${bookingMoney(amount, currency)}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: b.balance > 0 || b.refund > 0
+                                ? colors.primary
+                                : colors.onSurfaceVariant,
+                          ),
                         ),
-                        icon: const Icon(Icons.payments_outlined, size: 16),
-                        label: const Text('Collect'),
-                        onPressed: () =>
-                            context.push('/booking/${b.id}?action=collect'),
                       ),
-                  ],
+                      if (canCollect && b.collectible) ...[
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          icon: const Icon(Icons.payments_outlined, size: 16),
+                          label: const Text('Collect'),
+                          onPressed: () =>
+                              context.push('/booking/${b.id}?action=collect'),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

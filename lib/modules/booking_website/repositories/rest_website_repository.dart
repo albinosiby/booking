@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'website_photo_encoder.dart';
 import '../../../utils/services/logo_picker_service.dart';
 import 'website_link_actions.dart';
+import 'website_image_events.dart';
 import '../../../utils/exceptions/app_exception.dart';
 import '../../../utils/services/rest_api_service.dart';
 import '../models/website_settings.dart';
@@ -16,8 +17,9 @@ String normaliseSocialLink(String value) {
 }
 
 class RestWebsiteRepository implements WebsiteRepository {
-  RestWebsiteRepository(this.api);
+  RestWebsiteRepository(this.api, {this.imageEvents});
   final RestApiService api;
+  final WebsiteImageEvents? imageEvents;
   final _imageBytes = <String, Uint8List>{};
   final _imageLoads = <String, Future<Uint8List>>{};
   Set<String> _imageIds = {};
@@ -265,17 +267,23 @@ class RestWebsiteRepository implements WebsiteRepository {
         );
       }
     }
+    imageEvents?.changed();
     return result;
   }
 
   @override
-  Future<WebsiteSettings> removeImage(String id, int version) async => _map(
-    await api.request(
-      '/booking-website/images/$id/remove',
-      method: 'POST',
-      data: {'version': version},
-    ),
-  );
+  Future<WebsiteSettings> removeImage(String id, int version) async {
+    final result = _map(
+      await api.request(
+        '/booking-website/images/$id/remove',
+        method: 'POST',
+        data: {'version': version},
+      ),
+    );
+    imageEvents?.changed();
+    return result;
+  }
+
   @override
   Future<String> preview() async =>
       (await api.request('/booking-website/preview', method: 'POST'))['url']

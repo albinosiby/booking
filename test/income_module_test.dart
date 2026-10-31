@@ -21,6 +21,7 @@ import 'expenses_module_test.dart' show Saver, workspace;
 class IncomeRepo extends Fake implements IncomeRepository {
   final events = StreamController<void>.broadcast();
   final filters = <IncomeFilter>[];
+  final reports = <(IncomeFilter, String)>[];
   bool failCategories = false, failOverview = false;
   @override
   Stream<void> get changes => events.stream;
@@ -47,6 +48,21 @@ class IncomeRepo extends Fake implements IncomeRepository {
       refunds: 10000,
       count: 3,
       days: {'2026-10-15': 85000},
+      dailyTotals: const {
+        '2026-10-15': IncomeDailyTotal(
+          gross: 85000,
+          refunds: 10000,
+          incomeCount: 2,
+          refundCount: 1,
+          methods: {'cash': 55000, 'upi': 20000},
+          purposes: [
+            IncomePurposeTotal('Bookings', 'Main turf', 65000),
+            IncomePurposeTotal('Tournament sponsor', 'Shared', 20000),
+          ],
+          purposeCount: 2,
+        ),
+      },
+      methods: const {'cash': 55000, 'upi': 20000},
       sources: const [
         IncomeSourceTotal(incomeBookings, 'Bookings', 65000),
         IncomeSourceTotal('sponsorship', 'Sponsorship', 20000),
@@ -86,6 +102,7 @@ class IncomeRepo extends Fake implements IncomeRepository {
   @override
   Future<List<int>> report(IncomeFilter f, String format) async {
     filters.add(f);
+    reports.add((f, format));
     return [1, 2, 3];
   }
 }
@@ -103,6 +120,58 @@ void main() {
     });
     expect(year.copy(clearSource: true).toQuery().containsKey('source'), false);
   });
+  test('daily totals keep refunds on their recorded day', () {
+    final summary = IncomeSummary.fromJson({
+      'total_minor': 50000,
+      'refunds_minor': 10000,
+      'count': 2,
+      'days': [
+        {
+          'day': '2026-10-15',
+          'total_minor': 50000,
+          'refunds_minor': 0,
+          'income_count': 1,
+          'refund_count': 0,
+          'methods': [
+            {'method': 'cash', 'total_minor': 30000},
+            {'method': 'upi', 'total_minor': 20000},
+          ],
+          'purposes': [
+            {'purpose': 'Bookings', 'space': 'Main turf', 'total_minor': 50000},
+          ],
+          'purpose_count': 1,
+        },
+        {
+          'day': '2026-10-16',
+          'total_minor': 0,
+          'refunds_minor': 10000,
+          'income_count': 0,
+          'refund_count': 1,
+          'methods': [
+            {'method': 'cash', 'total_minor': -10000},
+          ],
+          'purposes': [],
+          'purpose_count': 0,
+        },
+      ],
+      'methods': [
+        {'method': 'cash', 'total_minor': 20000},
+        {'method': 'upi', 'total_minor': 20000},
+      ],
+      'sources': [],
+    });
+    expect(summary.bars(IncomeFilter(anchor: DateTime(2026, 10)))[14], 50000);
+    expect(summary.bars(IncomeFilter(anchor: DateTime(2026, 10)))[15], 0);
+    expect(summary.dailyTotals['2026-10-16']!.net, -10000);
+    expect(summary.dailyTotals['2026-10-16']!.refundCount, 1);
+    expect(
+      summary.dailyTotals['2026-10-15']!.purposes.single.space,
+      'Main turf',
+    );
+    expect(summary.dailyTotals['2026-10-16']!.methods['cash'], -10000);
+    expect(summary.cash, 20000);
+    expect(summary.bank, 20000);
+  });
   test(
     'income cubit loads totals and exports with the source filter',
     () async {
@@ -116,7 +185,11 @@ void main() {
       expect(r.filters.last.source, incomeBookings);
       expect(c.state.sourceName, 'Bookings');
       await c.export('xlsx');
-      expect(saver.name, 'income-2026-10-01-2026-10-31-source.xlsx');
+      expect(saver.name, 'bookos-income-2026-10-bookings.xlsx');
+      expect(
+        c.reportFilename(c.state.filter.copy(day: 15), 'pdf'),
+        'bookos-income-2026-10-15-bookings.pdf',
+      );
       await c.close();
       await w.close();
     },
@@ -195,13 +268,21 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final w = await workspace(), r = IncomeRepo();
+      final w = await workspace(), r = IncomeRepo(), saver = Saver();
       await getIt.reset();
       getIt.registerFactoryParam<IncomeCubit, WorkspaceSession, void>(
-        (s, _) => IncomeCubit(s, r, Saver()),
+        (s, _) => IncomeCubit(s, r, saver),
       );
       final router = GoRouter(
-        routes: [GoRoute(path: '/', builder: (c, s) => const IncomeScreen())],
+        routes: [
+          GoRoute(path: '/', builder: (c, s) => const IncomeScreen()),
+          GoRoute(
+            path: '/accounts/entry/income',
+            builder: (c, s) => Scaffold(
+              body: Text('Prefill ${(s.extra as DateTime).toIso8601String()}'),
+            ),
+          ),
+        ],
       );
       await tester.pumpWidget(
         BlocProvider.value(
@@ -225,16 +306,59 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('Total income'), findsOneWidget);
       expect(find.text('Net after refunds'), findsOneWidget);
+      expect(find.text('Net cash received'), findsOneWidget);
+      expect(find.text('Net bank received'), findsOneWidget);
+      expect(find.text('Daily average (net)'), findsOneWidget);
       expect(find.text('Add income'), findsOneWidget);
       final scroll = find.byType(Scrollable).first;
       final sponsor = find.textContaining('Sponsorship · Shared');
       await tester.scrollUntilVisible(sponsor, 300, scrollable: scroll);
       expect(tester.takeException(), isNull);
-      final bookings = find.text('Bookings');
+      final bookings = find.byKey(const ValueKey('income-source-bookings'));
       await tester.scrollUntilVisible(bookings, -200, scrollable: scroll);
       await tester.tap(bookings);
       await tester.pumpAndSettle();
       expect(r.filters.last.source, incomeBookings);
+      await tester.tap(find.byTooltip('Download report'));
+      await tester.pumpAndSettle();
+      expect(find.text('Download income report'), findsOneWidget);
+      expect(find.text('All income'), findsWidgets);
+      await tester.tap(find.byTooltip('Previous period').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Download PDF'));
+      await tester.pumpAndSettle();
+      expect(r.reports.single.$1.source, isNull);
+      expect(r.reports.single.$1.from, '2026-09-01');
+      expect(r.reports.single.$1.until, '2026-09-30');
+      expect(r.reports.single.$2, 'pdf');
+      final bar = find.byKey(const ValueKey('finance-bar-14'));
+      await tester.ensureVisible(bar);
+      await tester.tap(bar);
+      await tester.pumpAndSettle();
+      final dayLayoutError = tester.takeException();
+      expect(dayLayoutError, isNull, reason: '$dayLayoutError');
+      expect(find.text('Total income ₹ 850.00'), findsOneWidget);
+      expect(find.text('Net cash received ₹ 550.00'), findsOneWidget);
+      expect(find.text('Net bank received ₹ 200.00'), findsOneWidget);
+      final downloadDay = find.byKey(const ValueKey('income-day-download'));
+      await tester.ensureVisible(downloadDay);
+      await tester.tap(downloadDay);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('PDF report'));
+      await tester.pumpAndSettle();
+      expect(r.reports.length, 2);
+      expect(r.reports.last.$1.from, '2026-10-15');
+      expect(r.reports.last.$1.until, '2026-10-15');
+      expect(r.reports.last.$1.source, incomeBookings);
+      expect(saver.name, 'bookos-income-2026-10-15-bookings.pdf');
+      final addDay = find.byKey(const ValueKey('income-day-add'));
+      await tester.ensureVisible(addDay);
+      await tester.tap(addDay);
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Prefill 2026-10-15T12:00:00'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       router.dispose();

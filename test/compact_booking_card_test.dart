@@ -84,6 +84,10 @@ void main() {
           expect(find.textContaining('5 Jun 2030, 24:00'), findsOneWidget);
           expect(find.text('9876543210'), findsOneWidget);
           expect(find.text('4 Jun 2030'), findsOneWidget);
+          expect(
+            tester.getSize(find.byType(CompactBookingCard)).height,
+            lessThan(240),
+          );
           expect(tester.takeException(), isNull);
           await tester.tap(
             find.text(scenario.collect ? 'Collect' : 'Customer'),

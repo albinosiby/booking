@@ -15,12 +15,26 @@ import 'package:eden_booking/modules/income/cubit/income_cubit.dart';
 import 'package:eden_booking/modules/income/models/income_models.dart';
 import 'package:eden_booking/modules/income/screens/income_screen.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_session.dart';
+import 'package:eden_booking/utils/exceptions/app_exception.dart';
 import 'expense_detail_screen_test.dart' show DetailRepo;
 import 'expenses_module_test.dart' show Picker, Saver, workspace;
 import 'income_module_test.dart' show IncomeRepo;
 
 late IncomeRepo income;
+late Saver incomeSaver;
 late DetailRepo expenses;
+
+class DuplicateCategoryExpenses extends DetailRepo {
+  DuplicateCategoryExpenses() : super(false);
+  @override
+  Future<void> saveCategory(
+    String name, {
+    String? id,
+    bool active = true,
+  }) async {
+    throw const AppException('A category with this name already exists.');
+  }
+}
 
 /// Pumps [page] in a 1440x1000 desktop window, pushed over a home route so
 /// the in-page Back link is available.
@@ -64,9 +78,10 @@ void main() {
   setUp(() async {
     await getIt.reset();
     income = IncomeRepo();
+    incomeSaver = Saver();
     expenses = DetailRepo(false);
     getIt.registerFactoryParam<IncomeCubit, WorkspaceSession, void>(
-      (s, _) => IncomeCubit(s, income, Saver()),
+      (s, _) => IncomeCubit(s, income, incomeSaver),
     );
     getIt.registerFactoryParam<ExpensesCubit, WorkspaceSession, void>(
       (s, _) => ExpensesCubit(s, expenses, Saver()),
@@ -94,18 +109,28 @@ void main() {
       'Manage categories',
       'Previous period',
       'Next period',
-      'Choose source',
       'Filter income',
     ]) {
       expect(find.byTooltip(tip), findsOneWidget, reason: tip);
     }
-    expect(find.byType(AppStatTile), findsNWidgets(4));
+    expect(find.byType(AppStatTile), findsNWidgets(6));
     expect(find.text('Net after refunds'), findsOneWidget);
     expect(find.text('₹ 750.00'), findsOneWidget);
     expect(find.text('By source'), findsOneWidget);
+    expect(find.byKey(const ValueKey('income-source-all')), findsOneWidget);
+    expect(find.text('Income by day'), findsOneWidget);
+    expect(find.text('Income ₹ 850.00'), findsOneWidget);
+    expect(find.text('Refunds ₹ 100.00'), findsOneWidget);
+    expect(find.text('Net ₹ 750.00'), findsOneWidget);
+    expect(find.text('Bookings · Main turf'), findsOneWidget);
+    expect(find.text('Cash ₹ 550.00'), findsOneWidget);
+    expect(find.text('UPI ₹ 200.00'), findsOneWidget);
+    expect(find.text('Net cash received'), findsOneWidget);
+    expect(find.text('Net bank received'), findsOneWidget);
+    expect(find.text('Daily average (net)'), findsOneWidget);
     expect(find.text('All income'), findsOneWidget);
     expect(find.text('Tournament sponsor'), findsOneWidget);
-    expect(find.byKey(const ValueKey('desktop-export-pdf')), findsOneWidget);
+    expect(find.byKey(const ValueKey('income-report-open')), findsOneWidget);
 
     await tester.tap(find.text('Sponsorship').first);
     await tester.pumpAndSettle();
@@ -119,18 +144,37 @@ void main() {
       contains('2026-01-01'),
     );
 
-    await tester.tap(find.byKey(const ValueKey('desktop-export-xlsx')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('income-report-open')),
+    );
+    await tester.tap(find.byKey(const ValueKey('income-report-open')));
     await tester.pumpAndSettle();
-    expect(income.filters.last.source, 'sponsorship');
+    expect(find.text('Download income report'), findsOneWidget);
+    await tester.tap(find.text('Yearly').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('income-report-source')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sponsorship').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Excel').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Download Excel'));
+    await tester.pumpAndSettle();
+    expect(income.reports.single.$1.source, 'sponsorship');
+    expect(income.reports.single.$1.yearly, isTrue);
+    expect(income.reports.single.$1.from, '2026-01-01');
+    expect(income.reports.single.$1.until, '2026-12-31');
+    expect(income.reports.single.$2, 'xlsx');
+    expect(incomeSaver.name, 'bookos-income-2026-sponsorship.xlsx');
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('income source filter can be cleared on desktop', (tester) async {
     await pumpDesktop(tester, const IncomeScreen());
-    await tester.tap(find.text('Bookings').first);
+    await tester.tap(find.byKey(const ValueKey('income-source-bookings')));
     await tester.pumpAndSettle();
     expect(income.filters.last.source, incomeBookings);
-    await tester.tap(find.bySemanticsLabel('Clear Bookings'));
+    await tester.tap(find.byKey(const ValueKey('income-source-all')));
     await tester.pumpAndSettle();
     expect(income.filters.last.source, isNull);
     expect(tester.takeException(), isNull);
@@ -142,7 +186,9 @@ void main() {
     await pumpDesktop(tester, const ExpensesScreen());
     expect(find.byType(FloatingActionButton), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Add expense'), findsOneWidget);
-    expect(find.byType(AppStatTile), findsNWidgets(4));
+    expect(find.byType(AppStatTile), findsNWidgets(7));
+    expect(find.text('Net cash spent'), findsOneWidget);
+    expect(find.text('Net bank spent'), findsOneWidget);
     expect(find.text('Top category'), findsOneWidget);
     expect(find.text('Maintenance · 100% of spending'), findsOneWidget);
     expect(find.text('By category'), findsOneWidget);
@@ -151,12 +197,13 @@ void main() {
       'Download report',
       'Refresh',
       'Manage categories',
-      'Choose category',
       'Filter expenses',
     ]) {
       expect(find.byTooltip(tip), findsOneWidget, reason: tip);
     }
-    await tester.tap(find.text('Maintenance'));
+    await tester.tap(
+      find.byKey(const ValueKey('expense-category-maintenance')),
+    );
     await tester.pumpAndSettle();
     expect(expenses.filters.last.categoryId, 'maintenance');
     await tester.tap(find.byTooltip('Next period'));
@@ -164,8 +211,37 @@ void main() {
     final november = expenses.filters.where((f) => f.from == '2026-11-01');
     expect(november, isNotEmpty);
     expect(november.last.categoryId, 'maintenance');
+    await tester.enterText(
+      find.byKey(const ValueKey('expense-search')),
+      'floodlight',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(expenses.filters.last.query, 'floodlight');
+    expect(find.text('Search: floodlight'), findsOneWidget);
+    await tester.tap(find.text('Clear filters'));
+    await tester.pumpAndSettle();
+    expect(expenses.filters.last.categoryId, isNull);
+    expect(expenses.filters.last.query, isEmpty);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'expense category errors remain visible in the management sheet',
+    (tester) async {
+      expenses = DuplicateCategoryExpenses();
+      await pumpDesktop(tester, const ExpensesScreen());
+      await tester.tap(find.byTooltip('Manage categories'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add category'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, 'Maintenance');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('already exists'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('expense detail puts receipt and invoices beside details', (
     tester,

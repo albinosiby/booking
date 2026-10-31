@@ -43,8 +43,13 @@ class CategoryExpenses extends ExpenseRepo {
   final saved = <String>[];
   bool duplicate = false;
   @override
-  Future<void> saveCategory(String name, {String? id, bool active = true}) async {
-    if (duplicate) throw const AppException('A category with this name already exists.');
+  Future<void> saveCategory(
+    String name, {
+    String? id,
+    bool active = true,
+  }) async {
+    if (duplicate)
+      throw const AppException('A category with this name already exists.');
     saved.add(name);
   }
 }
@@ -68,10 +73,18 @@ class ManyPicker extends Picker {
   ManyPicker(this.count);
   final int count;
   @override
-  Future<List<ExpensePickedInvoice>> pick({bool camera = false, bool photos = false}) async => [
+  Future<List<ExpensePickedInvoice>> pick({
+    bool camera = false,
+    bool photos = false,
+  }) async => [
     for (var i = 0; i < count; i++)
       ExpensePickedInvoice(
-        ExpenseInvoice(id: 'f$i', name: 'bill$i.pdf', type: 'application/pdf', size: 8),
+        ExpenseInvoice(
+          id: 'f$i',
+          name: 'bill$i.pdf',
+          type: 'application/pdf',
+          size: 8,
+        ),
         Uint8List.fromList([37, 80, 68, 70]),
       ),
   ];
@@ -97,7 +110,9 @@ Future<ExpenseFormCubit> form(
 }
 
 String textOf(WidgetTester tester, Finder field) => tester
-    .widget<EditableText>(find.descendant(of: field, matching: find.byType(EditableText)))
+    .widget<EditableText>(
+      find.descendant(of: field, matching: find.byType(EditableText)),
+    )
     .controller
     .text;
 
@@ -115,7 +130,10 @@ void main() {
       expect(ExpenseFilter(anchor: DateTime(2025, 2, 10)).until, '2025-02-28');
       expect(ExpenseFilter(anchor: DateTime(2026, 4, 10)).until, '2026-04-30');
       expect(ExpenseFilter(anchor: DateTime(2026, 12, 31)).until, '2026-12-31');
-      expect(ExpenseFilter(anchor: DateTime(2026, 12, 31), yearly: true).until, '2026-12-31');
+      expect(
+        ExpenseFilter(anchor: DateTime(2026, 12, 31), yearly: true).until,
+        '2026-12-31',
+      );
     });
     test('single day filter', () {
       final f = ExpenseFilter(anchor: DateTime(2026, 10, 15), day: 31);
@@ -131,7 +149,10 @@ void main() {
     });
     test('bars skip dates in other months', () {
       final f = ExpenseFilter(anchor: DateTime(2026, 2, 1));
-      final s = ExpenseSummary(300, 2, {'2026-02-28': 100, '2026-02-01': 200}, []);
+      final s = ExpenseSummary(300, 2, {
+        '2026-02-28': 100,
+        '2026-02-01': 200,
+      }, []);
       final bars = s.bars(f);
       expect(bars.length, 28);
       expect(bars.first, 200);
@@ -140,7 +161,15 @@ void main() {
   });
 
   group('ExpenseFormCubit amount matrix', () {
-    for (final ok in {'1': 100, '0.01': 1, '19.99': 1999, '4.35': 435, '1.15': 115, ' 7 ': 700, '1000000': 100000000}.entries) {
+    for (final ok in {
+      '1': 100,
+      '0.01': 1,
+      '19.99': 1999,
+      '4.35': 435,
+      '1.15': 115,
+      ' 7 ': 700,
+      '1000000': 100000000,
+    }.entries) {
       test('"${ok.key}" saves ${ok.value} minor units', () async {
         final r = ExpenseRepo();
         final c = await form(r, amount: ok.key);
@@ -148,7 +177,25 @@ void main() {
         expect(r.writes.single.payments.single.amount, ok.value);
       });
     }
-    for (final bad in ['', ' ', '0', '0.0', '0.00', '-1', '-0.01', '1.001', '1e3', 'abc', '💰', '١٢', '1000000.01', '99999999999999999999', '1,5', '+3', '0x1']) {
+    for (final bad in [
+      '',
+      ' ',
+      '0',
+      '0.0',
+      '0.00',
+      '-1',
+      '-0.01',
+      '1.001',
+      '1e3',
+      'abc',
+      '💰',
+      '١٢',
+      '1000000.01',
+      '99999999999999999999',
+      '1,5',
+      '+3',
+      '0x1',
+    ]) {
       test('"$bad" is rejected before any request', () async {
         final r = ExpenseRepo();
         final c = await form(r, amount: bad);
@@ -164,14 +211,17 @@ void main() {
       await c.save();
       expect(r.writes, isEmpty);
     });
-    test('split totals are exact and removing a line updates the total', () async {
-      final c = await form(ExpenseRepo(), amount: '0.10');
-      c.addLine();
-      c.line(1, c.state.lines[1].copyWith(amount: '0.20', accountId: 'cash'));
-      expect(c.total, 30);
-      c.removeLine(0);
-      expect(c.total, 20);
-    });
+    test(
+      'split totals are exact and removing a line updates the total',
+      () async {
+        final c = await form(ExpenseRepo(), amount: '0.10');
+        c.addLine();
+        c.line(1, c.state.lines[1].copyWith(amount: '0.20', accountId: 'cash'));
+        expect(c.total, 30);
+        c.removeLine(0);
+        expect(c.total, 20);
+      },
+    );
     test('split lines cap at 20, last line cannot be removed', () async {
       final c = await form(ExpenseRepo());
       for (var i = 0; i < 30; i++) {
@@ -201,14 +251,17 @@ void main() {
         expect(r.writes, isEmpty, reason: '"$bad"');
       }
     });
-    test('reason accepted at 2 and 500 chars, trimmed, unicode intact', () async {
-      for (final v in ['ab', 'a' * 500, '  修理 💡 <b>x</b> ']) {
-        final r = ExpenseRepo();
-        final c = await form(r, reason: v);
-        await c.save();
-        expect(r.writes.single.reason, v.trim());
-      }
-    });
+    test(
+      'reason accepted at 2 and 500 chars, trimmed, unicode intact',
+      () async {
+        for (final v in ['ab', 'a' * 500, '  修理 💡 <b>x</b> ']) {
+          final r = ExpenseRepo();
+          final c = await form(r, reason: v);
+          await c.save();
+          expect(r.writes.single.reason, v.trim());
+        }
+      },
+    );
     test('reference is trimmed and optional', () async {
       final r = ExpenseRepo();
       final c = await form(r);
@@ -228,19 +281,28 @@ void main() {
         expect(r.writes, isEmpty, reason: '$id');
       }
     });
-    test('reason over 500 characters is blocked in the cubit, not just the widget', () async {
-      final r = ExpenseRepo();
-      final c = await form(r, reason: 'a' * 501);
-      await c.save();
-      expect(r.writes, isEmpty);
-    }, skip: 'BUG-13: ExpenseFormCubit.save() has no upper length check for reason (500) or reference (200); only the widget maxLength protects it');
-    test('reference over 200 characters is blocked in the cubit', () async {
-      final r = ExpenseRepo();
-      final c = await form(r);
-      c.fields(reference: 'a' * 201);
-      await c.save();
-      expect(r.writes, isEmpty);
-    }, skip: 'BUG-13: see reason length');
+    test(
+      'reason over 500 characters is blocked in the cubit, not just the widget',
+      () async {
+        final r = ExpenseRepo();
+        final c = await form(r, reason: 'a' * 501);
+        await c.save();
+        expect(r.writes, isEmpty);
+      },
+      skip:
+          'BUG-13: ExpenseFormCubit.save() has no upper length check for reason (500) or reference (200); only the widget maxLength protects it',
+    );
+    test(
+      'reference over 200 characters is blocked in the cubit',
+      () async {
+        final r = ExpenseRepo();
+        final c = await form(r);
+        c.fields(reference: 'a' * 201);
+        await c.save();
+        expect(r.writes, isEmpty);
+      },
+      skip: 'BUG-13: see reason length',
+    );
   });
 
   group('ExpenseFormCubit invoices', () {
@@ -264,20 +326,27 @@ void main() {
       c.removeFile(0);
       expect(c.state.files.length, 9);
     });
-    test('a failed upload keeps the expense id and marks only that file', () async {
-      final r = ExpenseRepo()..failUpload = true;
-      final c = await form(r);
-      await c.pick();
-      await c.save();
-      expect(r.writes.length, 1);
-      expect(c.state.savedId, 'saved-expense');
-      expect(c.state.files.single.error, 'Upload failed');
-      expect(c.state.complete, isFalse);
-      r.failUpload = false;
-      await c.save();
-      expect(r.writes.length, 1, reason: 'retry must not create the expense again');
-      expect(c.state.complete, isTrue);
-    });
+    test(
+      'a failed upload keeps the expense id and marks only that file',
+      () async {
+        final r = ExpenseRepo()..failUpload = true;
+        final c = await form(r);
+        await c.pick();
+        await c.save();
+        expect(r.writes.length, 1);
+        expect(c.state.savedId, 'saved-expense');
+        expect(c.state.files.single.error, 'Upload failed');
+        expect(c.state.complete, isFalse);
+        r.failUpload = false;
+        await c.save();
+        expect(
+          r.writes.length,
+          1,
+          reason: 'retry must not create the expense again',
+        );
+        expect(c.state.complete, isTrue);
+      },
+    );
   });
 
   group('ExpenseFormCubit submission safety', () {
@@ -323,7 +392,10 @@ void main() {
   });
 
   group('Category dialog (ExpensesScreen)', () {
-    Future<CategoryExpenses> open(WidgetTester tester, {CategoryExpenses? repo}) async {
+    Future<CategoryExpenses> open(
+      WidgetTester tester, {
+      CategoryExpenses? repo,
+    }) async {
       tester.view.physicalSize = const Size(320, 568);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -332,10 +404,16 @@ void main() {
       final w = await workspace();
       addTearDown(w.close);
       await getIt.reset();
-      getIt.registerFactoryParam<ExpensesCubit, WorkspaceSession, void>((s, _) => ExpensesCubit(s, r, Saver()));
-      getIt.registerFactoryParam<ExpenseFormCubit, WorkspaceSession, void>((s, _) => ExpenseFormCubit(s, r, Picker()));
+      getIt.registerFactoryParam<ExpensesCubit, WorkspaceSession, void>(
+        (s, _) => ExpensesCubit(s, r, Saver()),
+      );
+      getIt.registerFactoryParam<ExpenseFormCubit, WorkspaceSession, void>(
+        (s, _) => ExpenseFormCubit(s, r, Picker()),
+      );
       addTearDown(getIt.reset);
-      final router = GoRouter(routes: [GoRoute(path: '/', builder: (c, s) => const ExpensesScreen())]);
+      final router = GoRouter(
+        routes: [GoRoute(path: '/', builder: (c, s) => const ExpensesScreen())],
+      );
       addTearDown(router.dispose);
       await tester.pumpWidget(
         BlocProvider.value(
@@ -346,7 +424,9 @@ void main() {
               theme: AppTheme.build(Brightness.light),
               routerConfig: router,
               builder: (c, child) => MediaQuery(
-                data: MediaQuery.of(c).copyWith(textScaler: const TextScaler.linear(2.0)),
+                data: MediaQuery.of(
+                  c,
+                ).copyWith(textScaler: const TextScaler.linear(2.0)),
                 child: child!,
               ),
             ),
@@ -361,86 +441,102 @@ void main() {
       return r;
     }
 
-    testWidgets('empty, whitespace and one-character names are ignored silently', (tester) async {
-      final r = await open(tester);
-      for (final bad in ['', '   ', 'a', ' a ']) {
-        await tester.enterText(find.byType(TextField), bad);
-        await tester.tap(find.text('Save'));
-        await tester.pumpAndSettle();
-        expect(find.text('Category name'), findsOneWidget, reason: 'dialog stays open for "$bad"');
-      }
-      expect(r.saved, isEmpty);
-      expect(tester.takeException(), isNull);
-    });
+    Finder categoryField() => find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
 
-    testWidgets('validation feedback is shown for an invalid name', (tester) async {
+    testWidgets(
+      'empty, whitespace and one-character names keep the dialog open',
+      (tester) async {
+        final r = await open(tester);
+        for (final bad in ['', '   ', 'a', ' a ']) {
+          await tester.enterText(categoryField(), bad);
+          await tester.tap(find.text('Save'));
+          await tester.pumpAndSettle();
+          expect(
+            find.text('Category name'),
+            findsOneWidget,
+            reason: 'dialog stays open for "$bad"',
+          );
+        }
+        expect(r.saved, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('validation feedback is shown for an invalid name', (
+      tester,
+    ) async {
       await open(tester);
-      await tester.enterText(find.byType(TextField), 'a');
+      await tester.enterText(categoryField(), 'a');
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
       expect(find.textContaining('at least 2'), findsOneWidget);
-    }, skip: true); // BUG-14: category dialog Save does nothing and shows no message for an invalid name
+    });
 
-    testWidgets('valid, emoji and 80 character names are saved trimmed', (tester) async {
-      final saved = FlutterError.onError;
-      addTearDown(() => FlutterError.onError = saved);
-      captureErrors();
+    testWidgets('valid, emoji and 80 character names are saved trimmed', (
+      tester,
+    ) async {
       final r = await open(tester);
-      await tester.enterText(find.byType(TextField), '  Zoë 🏸  ');
+      await tester.enterText(categoryField(), '  Zoë 🏸  ');
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
       expect(r.saved.single, 'Zoë 🏸');
     });
 
-    testWidgets('names over 80 characters are truncated by the field', (tester) async {
-      final saved = FlutterError.onError;
-      addTearDown(() => FlutterError.onError = saved);
-      captureErrors();
+    testWidgets('names over 80 characters are truncated by the field', (
+      tester,
+    ) async {
       final r = await open(tester);
-      await tester.enterText(find.byType(TextField), 'a' * 120);
+      await tester.enterText(categoryField(), 'a' * 120);
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
       expect(r.saved.single.length, 80);
     });
 
-    testWidgets('BUG-18: closing the category dialog does not use a disposed controller', (tester) async {
-      final saved = FlutterError.onError;
-      addTearDown(() => FlutterError.onError = saved);
-      final errors = captureErrors();
-      await open(tester);
-      await tester.enterText(find.byType(TextField), 'Valid name');
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-      expect(errors, isEmpty);
-    }, skip: true); // BUG-18: categoryDialog disposes its TextEditingController right after showDialog returns, while the closing animation still builds the TextField (expenses_screen.dart:96, income_screen.dart:109, accounts_transactions_screen.dart:229)
+    testWidgets(
+      'BUG-18: closing the category dialog does not use a disposed controller',
+      (tester) async {
+        await open(tester);
+        await tester.enterText(categoryField(), 'Valid name');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets('duplicate name surfaces the server message', (tester) async {
-      final saved = FlutterError.onError;
-      addTearDown(() => FlutterError.onError = saved);
-      captureErrors();
       final r = await open(tester, repo: CategoryExpenses()..duplicate = true);
-      await tester.enterText(find.byType(TextField), 'Maintenance');
+      await tester.enterText(categoryField(), 'Maintenance');
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
       expect(r.saved, isEmpty);
-      expect(find.textContaining('already exists', skipOffstage: false), findsWidgets,
-          reason: 'the cubit does surface the server message');
+      expect(
+        find.textContaining('already exists', skipOffstage: false),
+        findsWidgets,
+        reason: 'the cubit does surface the server message',
+      );
     });
 
-    testWidgets('BUG-21: duplicate-name error is visible to the user', (tester) async {
-      final saved = FlutterError.onError;
-      addTearDown(() => FlutterError.onError = saved);
-      captureErrors();
+    testWidgets('BUG-21: duplicate-name error is visible to the user', (
+      tester,
+    ) async {
       await open(tester, repo: CategoryExpenses()..duplicate = true);
-      await tester.enterText(find.byType(TextField), 'Maintenance');
+      await tester.enterText(categoryField(), 'Maintenance');
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
       expect(find.textContaining('already exists'), findsWidgets);
-    }, skip: true); // BUG-21: the error is rendered on the page under the manage-categories sheet, so the user sees nothing
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('ExpenseFormScreen at 320x568', () {
-    Future<void> pump(WidgetTester tester, ExpenseRepo r, {double scale = 1.0}) async {
+    Future<void> pump(
+      WidgetTester tester,
+      ExpenseRepo r, {
+      double scale = 1.0,
+    }) async {
       tester.view.physicalSize = const Size(320, 568);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -448,8 +544,12 @@ void main() {
       final w = await workspace();
       addTearDown(w.close);
       await getIt.reset();
-      getIt.registerFactoryParam<ExpensesCubit, WorkspaceSession, void>((s, _) => ExpensesCubit(s, r, Saver()));
-      getIt.registerFactoryParam<ExpenseFormCubit, WorkspaceSession, void>((s, _) => ExpenseFormCubit(s, r, Picker()));
+      getIt.registerFactoryParam<ExpensesCubit, WorkspaceSession, void>(
+        (s, _) => ExpensesCubit(s, r, Saver()),
+      );
+      getIt.registerFactoryParam<ExpenseFormCubit, WorkspaceSession, void>(
+        (s, _) => ExpenseFormCubit(s, r, Picker()),
+      );
       addTearDown(getIt.reset);
       final router = GoRouter(
         routes: [
@@ -467,7 +567,9 @@ void main() {
               theme: AppTheme.build(Brightness.light),
               routerConfig: router,
               builder: (c, child) => MediaQuery(
-                data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
+                data: MediaQuery.of(
+                  c,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
                 child: child!,
               ),
             ),
@@ -479,16 +581,24 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('large text: no overflow, split lines and invoices render', (tester) async {
+    testWidgets('large text: no overflow, split lines and invoices render', (
+      tester,
+    ) async {
       await pump(tester, ExpenseRepo(), scale: 2.0);
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Split across another payment source'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('Files / PDF'), 300, scrollable: find.byType(Scrollable).first);
+      await tester.scrollUntilVisible(
+        find.text('Files / PDF'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('empty save shows the validation message and sends nothing', (tester) async {
+    testWidgets('empty save shows the validation message and sends nothing', (
+      tester,
+    ) async {
       final r = ExpenseRepo();
       await pump(tester, r);
       await tester.tap(find.text('Save expense'));
@@ -497,30 +607,61 @@ void main() {
       expect(find.textContaining('Choose a category'), findsOneWidget);
     });
 
-    testWidgets('reason and reference text is capped by maxLength', (tester) async {
+    testWidgets('reason and reference text is capped by maxLength', (
+      tester,
+    ) async {
       await pump(tester, ExpenseRepo());
-      final reason = find.widgetWithText(TextFormField, 'What was this expense for?');
+      final reason = find.widgetWithText(
+        TextFormField,
+        'What was this expense for?',
+      );
       await tester.enterText(reason, 'a' * 800);
       expect(textOf(tester, reason).length, 500);
-      final ref = find.widgetWithText(TextFormField, 'Reference / invoice number (optional)');
+      final ref = find.widgetWithText(
+        TextFormField,
+        'Reference / invoice number (optional)',
+      );
       await tester.ensureVisible(ref);
       await tester.enterText(ref, 'b' * 400);
       expect(textOf(tester, ref).length, 200);
     });
 
-    testWidgets('total amount field has no length cap', (tester) async {
-      await pump(tester, ExpenseRepo());
-      final total = find.byWidgetPredicate((w) => w is TextFormField && (w.key as ValueKey?)?.value.toString().startsWith('expense-total') == true);
-      await tester.enterText(total, '9' * 80);
-      expect(textOf(tester, total).length, 80);
-    }, skip: true); // BUG-15: single-line total amount has no maxLength/inputFormatter (split amount fields cap at 12); the server ceiling is 1,000,000.00
+    testWidgets(
+      'total amount field has no length cap',
+      (tester) async {
+        await pump(tester, ExpenseRepo());
+        final total = find.byWidgetPredicate(
+          (w) =>
+              w is TextFormField &&
+              (w.key as ValueKey?)?.value.toString().startsWith(
+                    'expense-total',
+                  ) ==
+                  true,
+        );
+        await tester.enterText(total, '9' * 80);
+        expect(textOf(tester, total).length, 80);
+      },
+      skip: true,
+    ); // BUG-15: single-line total amount has no maxLength/inputFormatter (split amount fields cap at 12); the server ceiling is 1,000,000.00
 
-    testWidgets('full valid form saves once even with a double tap', (tester) async {
+    testWidgets('full valid form saves once even with a double tap', (
+      tester,
+    ) async {
       final r = ExpenseRepo();
       await pump(tester, r);
-      final total = find.byWidgetPredicate((w) => w is TextFormField && (w.key as ValueKey?)?.value.toString().startsWith('expense-total') == true);
+      final total = find.byWidgetPredicate(
+        (w) =>
+            w is TextFormField &&
+            (w.key as ValueKey?)?.value.toString().startsWith(
+                  'expense-total',
+                ) ==
+                true,
+      );
       await tester.enterText(total, '19.99');
-      await tester.enterText(find.widgetWithText(TextFormField, 'What was this expense for?'), 'Net 🏸');
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'What was this expense for?'),
+        'Net 🏸',
+      );
       await tester.tap(find.text('Choose category'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Maintenance').last);
@@ -534,11 +675,15 @@ void main() {
       expect(r.writes.single.reason, 'Net 🏸');
     });
 
-    testWidgets('split amount prefix follows the catalog currency', (tester) async {
-      await pump(tester, UsdExpenses());
-      await tester.tap(find.text('Split across another payment source'));
-      await tester.pumpAndSettle();
-      expect(find.text('₹ '), findsNothing);
-    }, skip: true); // BUG-17: split payment Amount field hardcodes the '₹ ' prefix regardless of the organization currency (expense_form_screen.dart:97)
+    testWidgets(
+      'split amount prefix follows the catalog currency',
+      (tester) async {
+        await pump(tester, UsdExpenses());
+        await tester.tap(find.text('Split across another payment source'));
+        await tester.pumpAndSettle();
+        expect(find.text('₹ '), findsNothing);
+      },
+      skip: true,
+    ); // BUG-17: split payment Amount field hardcodes the '₹ ' prefix regardless of the organization currency (expense_form_screen.dart:97)
   });
 }

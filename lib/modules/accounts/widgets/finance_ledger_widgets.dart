@@ -157,7 +157,7 @@ class FinanceTotalCard extends StatelessWidget {
   });
   final String label, subtitle, currency;
   final int amount;
-  final List<(String, int)> stats;
+  final List<(String, int?)> stats;
 
   /// Uses the inverse surface instead of the brand color (Expenses).
   final bool inverse;
@@ -229,7 +229,7 @@ class FinanceTotalCard extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            financeMoney(value, currency),
+                            value == null ? '—' : financeMoney(value, currency),
                             style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                         ],

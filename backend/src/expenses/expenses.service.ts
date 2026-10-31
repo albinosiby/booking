@@ -178,6 +178,7 @@ export class ExpensesService {
     return `WITH expense_rows AS (
  SELECT e.*,COALESCE(e.expense_category_id,o.expense_category_id) AS category_id,COALESCE(c.name,NULLIF(e.category,''),NULLIF(o.category,''),'Other') AS category_name,
  (e.occurred_at AT TIME ZONE $${tzIndex})::date::text AS local_date,
+ (e.occurred_at AT TIME ZONE $${tzIndex})::text AS local_time,
  (SELECT -SUM(amount_minor) FROM finance_lines fl WHERE fl.event_id=e.id) AS amount_minor,
  b.name AS business_name,r.name AS space_name,COALESCE(m.display_name,e.recorded_by) AS staff_name
  FROM finance_events e LEFT JOIN finance_events o ON o.id=e.reverses_id LEFT JOIN expense_categories c ON c.id=COALESCE(e.expense_category_id,o.expense_category_id)
@@ -187,15 +188,37 @@ export class ExpensesService {
   async overview(actor: Actor, input: unknown) {
     const { f, c, values, where } = await this.context(actor, input),
       cte = this.cte(where, values.indexOf(c.timezone) + 1);
-    // One statement (one consistent snapshot, one round trip) computes the
-    // total, the daily bars and the category breakdown from a single scan.
+    // One statement keeps the period, day and payment-method totals aligned.
     const r = (
       await this.db.query<Row>(
         `${cte},
- days AS (SELECT local_date AS day,SUM(amount_minor) AS total_minor FROM expense_rows GROUP BY local_date),
+ method_rows AS (SELECT r.local_date AS day,l.method,-SUM(l.amount_minor) AS total_minor
+ FROM expense_rows r JOIN finance_lines l ON l.event_id=r.id GROUP BY r.local_date,l.method),
+ daily_methods AS (SELECT day,jsonb_agg(jsonb_build_object('method',method,'total_minor',total_minor) ORDER BY method) AS methods
+ FROM method_rows GROUP BY day),
+ purpose_rows AS (SELECT local_date AS day,category_name AS category,reason,COALESCE(space_name,'No space') AS space,
+ SUM(amount_minor) AS total_minor FROM expense_rows WHERE kind='expense' GROUP BY local_date,category_name,reason,space_name),
+ ranked_purposes AS (SELECT p.*,ROW_NUMBER() OVER (PARTITION BY day ORDER BY total_minor DESC,category,reason,space) AS rank,
+ COUNT(*) OVER (PARTITION BY day)::int AS purpose_count FROM purpose_rows p),
+ daily_purposes AS (SELECT day,MAX(purpose_count)::int AS purpose_count,
+ COALESCE(jsonb_agg(jsonb_build_object('category',category,'reason',reason,'space',space,'total_minor',total_minor) ORDER BY total_minor DESC,category,reason,space)
+ FILTER (WHERE rank<=4),'[]'::jsonb) AS purposes FROM ranked_purposes GROUP BY day),
+ day_amounts AS (SELECT local_date AS day,SUM(amount_minor) AS total_minor,
+ COALESCE(SUM(amount_minor) FILTER (WHERE kind='expense'),0) AS gross_minor,
+ COALESCE(-SUM(amount_minor) FILTER (WHERE kind='reversal'),0) AS reversals_minor,
+ COUNT(*) FILTER (WHERE kind='expense')::int AS expense_count,
+ COUNT(*) FILTER (WHERE kind='reversal')::int AS reversal_count
+ FROM expense_rows GROUP BY local_date),
+ days AS (SELECT a.*,COALESCE(m.methods,'[]'::jsonb) AS methods,
+ COALESCE(p.purposes,'[]'::jsonb) AS purposes,COALESCE(p.purpose_count,0) AS purpose_count
+ FROM day_amounts a LEFT JOIN daily_methods m ON m.day=a.day LEFT JOIN daily_purposes p ON p.day=a.day),
  categories AS (SELECT category_id,category_name,SUM(amount_minor) AS total_minor FROM expense_rows GROUP BY category_id,category_name)
- SELECT COALESCE(SUM(amount_minor),0) AS total_minor,COUNT(*)::int AS count,
+ SELECT COALESCE(SUM(amount_minor),0) AS total_minor,
+ COALESCE(SUM(amount_minor) FILTER (WHERE kind='expense'),0) AS gross_minor,
+ COALESCE(-SUM(amount_minor) FILTER (WHERE kind='reversal'),0) AS reversals_minor,
+ COUNT(*)::int AS count,
  (SELECT COALESCE(jsonb_agg(d ORDER BY d.day),'[]') FROM days d) AS days,
+ (SELECT COALESCE(jsonb_agg(m ORDER BY m.method),'[]') FROM (SELECT method,SUM(total_minor) AS total_minor FROM method_rows GROUP BY method) m) AS methods,
  (SELECT COALESCE(jsonb_agg(x ORDER BY x.total_minor DESC),'[]') FROM categories x) AS categories
  FROM expense_rows`,
         values,
@@ -208,8 +231,11 @@ export class ExpensesService {
       from: f.from,
       until: f.until,
       total_minor: r.total_minor,
+      gross_minor: r.gross_minor,
+      reversals_minor: r.reversals_minor,
       count: r.count,
       days: r.days,
+      methods: r.methods,
       categories: r.categories,
     };
   }
@@ -282,10 +308,22 @@ export class ExpensesService {
     const { items } = await this.list(actor, input, true);
     // Derive report aggregates from the exact exported rows, even if new entries arrive meanwhile.
     const categories = new Map<string, { name: string; total_minor: number }>();
-    let total = 0;
+    let total = 0,
+      gross = 0,
+      reversals = 0;
+    const methods = new Map<string, number>();
     for (const r of items) {
       const n = Number(r.amount_minor);
       total += n;
+      if (r.kind === "reversal") reversals -= n;
+      else gross += n;
+      for (const line of r.lines ?? []) {
+        const method = String(line.method);
+        methods.set(
+          method,
+          (methods.get(method) ?? 0) - Number(line.amount_minor),
+        );
+      }
       const key = r.category_id ?? r.category_name;
       const c = categories.get(key) ?? {
         name: r.category_name,
@@ -306,7 +344,14 @@ export class ExpensesService {
         : null;
     return {
       ...overview,
+      exported_at: new Date().toISOString(),
       total_minor: total,
+      gross_minor: gross,
+      reversals_minor: reversals,
+      methods: [...methods].map(([method, total_minor]) => ({
+        method,
+        total_minor,
+      })),
       count: items.length,
       categories: [...categories.values()],
       items,

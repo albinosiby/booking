@@ -175,6 +175,17 @@ void main() {
       expect(r.filters.last.categoryId, 'food');
       expect(r.filters.last.until, '2026-12-31');
       expect(saver.name, 'expenses-2026-01-01-2026-12-31-category.xlsx');
+      await c.export(
+        'pdf',
+        filter: ExpenseFilter(
+          anchor: DateTime(2026, 10),
+          categoryId: 'maintenance',
+        ),
+      );
+      expect(r.filters.last.from, '2026-10-01');
+      expect(r.filters.last.until, '2026-10-31');
+      expect(r.filters.last.categoryId, 'maintenance');
+      expect(saver.name, 'expenses-2026-10-01-2026-10-31-category.pdf');
       expect(c.state.exporting, false);
       await c.close();
       await w.close();

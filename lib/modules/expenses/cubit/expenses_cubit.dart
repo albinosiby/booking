@@ -201,9 +201,9 @@ class ExpensesCubit extends FinanceCubit<ExpensesState> {
     }
   }
 
-  Future<void> export(String format) async {
+  Future<void> export(String format, {ExpenseFilter? filter}) async {
     if (state.exporting || !authorized) return;
-    final f = state.filter, scope = accessScope;
+    final f = filter ?? state.filter, scope = accessScope;
     emit(state.copy(exporting: true));
     try {
       final bytes = await repository.report(f, format);

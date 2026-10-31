@@ -21,7 +21,7 @@ class ExpenseFormCubit extends FinanceCubit<ExpenseFormState> {
   @override
   void onAccessChanged() =>
       emit(ExpenseFormState(error: 'Your access changed. Reopen this form.'));
-  Future<void> load() async {
+  Future<void> load({DateTime? initialDate}) async {
     if (!authorized) return;
     final g = ++epoch;
     emit(state.copy(loading: true));
@@ -38,7 +38,7 @@ class ExpenseFormCubit extends FinanceCubit<ExpenseFormState> {
             loading: false,
             catalog: catalog,
             categories: categories,
-            date: DateTime.now(),
+            date: initialDate ?? DateTime.now(),
             lines: [
               FinanceDraftLine(
                 id: const Uuid().v4(),

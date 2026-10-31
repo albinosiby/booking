@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHandler } from "../edge/handler";
-function fixture() {
+function fixture(heroAvailable = true) {
   const calls: { method: string; args: unknown[] }[] = [],
     website = new Proxy(
       {},
@@ -10,7 +10,8 @@ function fixture() {
           (_, method) =>
           async (...args: unknown[]) => {
             calls.push({ method: String(method), args });
-            if (["image", "ownerImage"].includes(String(method)))
+            if (String(method) === "homeHero" && !heroAvailable) return null;
+            if (["image", "ownerImage", "homeHero"].includes(String(method)))
               return {
                 data: Buffer.from([1, 2, 3]),
                 content_type: "image/png",
@@ -77,6 +78,34 @@ test("Home website link authenticates and is never cached", async () => {
   assert.match(response.headers.get("Cache-Control")!, /no-store/);
   assert.equal(f.calls.at(-1)?.method, "link");
   assert.equal((f.calls.at(-1)?.args[0] as { uid: string }).uid, "owner");
+});
+test("Home hero requires authentication, serves private bytes, and handles a missing image", async () => {
+  const f = fixture();
+  assert.equal((await f.request("/v1/booking-website/home-hero")).status, 401);
+  const response = await f.request(
+    "/v1/booking-website/home-hero",
+    "GET",
+    undefined,
+    "valid",
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Content-Type"), "image/png");
+  assert.match(response.headers.get("Cache-Control")!, /private.*no-store/);
+  assert.equal(response.headers.get("X-Content-Type-Options"), "nosniff");
+  assert.deepEqual(
+    Buffer.from(await response.arrayBuffer()),
+    Buffer.from([1, 2, 3]),
+  );
+  assert.equal(f.calls.at(-1)?.method, "homeHero");
+  assert.equal((f.calls.at(-1)?.args[0] as { uid: string }).uid, "owner");
+  const missing = await fixture(false).request(
+    "/v1/booking-website/home-hero",
+    "GET",
+    undefined,
+    "valid",
+  );
+  assert.equal(missing.status, 204);
+  assert.equal(await missing.text(), "");
 });
 test("owner website routes authenticate, and preview capability is limited to the public service", async () => {
   const f = fixture(),

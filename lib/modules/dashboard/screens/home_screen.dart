@@ -60,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
           name: context.watch<AuthCubit?>()?.state.user?.name ?? '',
           organization: workspace.organization?.name ?? 'Your organization',
           logo: workspace.logo,
+          heroImage: s.heroImage,
         ),
         maxWidth: 1200,
         scrollId: 'home-dashboard',

@@ -7,10 +7,17 @@ import '../models/home_screen_model.dart';
 import '../repositories/dashboard_repository.dart';
 import '../../workspace/models/workspace_access.dart';
 import '../../workspace/repositories/refreshable_reads.dart';
+import '../../booking_website/repositories/website_image_events.dart';
+import '../repositories/home_hero_repository.dart';
 
 class HomeCubit extends Cubit<HomeScreenModel> {
-  HomeCubit(this.repository, [this.bookings, this.accounts])
-    : super(HomeScreenModel.fromSnapshot(repository.current)) {
+  HomeCubit(
+    this.repository, [
+    this.bookings,
+    this.accounts,
+    this.hero,
+    this.imageEvents,
+  ]) : super(HomeScreenModel.fromSnapshot(repository.current)) {
     _subscription = repository.changes.listen((snapshot) {
       if (isClosed) return;
       final scopeChanged =
@@ -28,6 +35,8 @@ class HomeCubit extends Cubit<HomeScreenModel> {
         _generation++;
         _dueGeneration++;
         _accountGeneration++;
+        _heroGeneration++;
+        unawaited(loadHero());
       }
       if (refresh) {
         loadBookings();
@@ -38,12 +47,38 @@ class HomeCubit extends Cubit<HomeScreenModel> {
       loadBookings();
     });
     _accountSubscription = accounts?.changes.listen((_) => loadAccountSetup());
+    _imageSubscription = imageEvents?.changes.listen((_) => loadHero());
     loadBookings();
     loadAccountSetup();
+    unawaited(loadHero());
   }
   final DashboardRepository repository;
   final BookingRepository? bookings;
   final AccountsRepository? accounts;
+  final HomeHeroRepository? hero;
+  final WebsiteImageEvents? imageEvents;
+  StreamSubscription<void>? _imageSubscription;
+  int _heroGeneration = 0;
+
+  Future<void> loadHero() async {
+    final source = hero, organization = state.data.organization?.id;
+    final g = ++_heroGeneration;
+    if (source == null || organization == null) return;
+    try {
+      final image = await source.load();
+      if (!isClosed &&
+          g == _heroGeneration &&
+          organization == state.data.organization?.id) {
+        emit(state.copyWith(heroImage: image, clearHeroImage: image == null));
+      }
+    } catch (error) {
+      if (!isClosed && g == _heroGeneration && accessFailure(error)) {
+        emit(state.copyWith(clearHeroImage: true));
+      }
+      // The bundled background remains available when an optional photo fails.
+    }
+  }
+
   StreamSubscription? _accountSubscription;
   int _accountGeneration = 0;
 
@@ -172,7 +207,7 @@ class HomeCubit extends Cubit<HomeScreenModel> {
     if (source is RefreshableReads) {
       (source as RefreshableReads).invalidateReads();
     }
-    await Future.wait([loadBookings(), loadAccountSetup()]);
+    await Future.wait([loadBookings(), loadAccountSetup(), loadHero()]);
   }
 
   Future<void> reload() => refreshBookings();
@@ -182,7 +217,9 @@ class HomeCubit extends Cubit<HomeScreenModel> {
     _generation++;
     _dueGeneration++;
     _accountGeneration++;
+    _heroGeneration++;
     await _accountSubscription?.cancel();
+    await _imageSubscription?.cancel();
     await _subscription.cancel();
     await _bookingSubscription?.cancel();
     return super.close();

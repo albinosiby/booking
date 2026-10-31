@@ -1,8 +1,8 @@
 // Field-value tests for lib/modules/dashboard: greeting name/organization
 // handling, small-screen and large-text layout of the greeting card.
-import 'dart:typed_data';
 import 'package:eden_booking/modules/dashboard/widgets/home_greeting_card.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<void> mount(
@@ -102,6 +102,38 @@ void main() {
     );
     await tester.pump();
     expect(find.byIcon(Icons.business_outlined), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Home hero uses the bundled image with a translucent overlay', (
+    tester,
+  ) async {
+    await mount(
+      tester,
+      const HomeGreetingCard(name: 'Al', organization: 'Eden'),
+    );
+    expect(find.byKey(const ValueKey('home-hero-fallback')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-hero-uploaded')), findsNothing);
+    final opacity = tester.widget<Opacity>(find.byType(Opacity).first);
+    expect(opacity.opacity, greaterThan(0));
+    expect(opacity.opacity, lessThan(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('saved website hero replaces the bundled background', (
+    tester,
+  ) async {
+    final image = await rootBundle.load('assets/branding/booking_os_mark.png');
+    await mount(
+      tester,
+      HomeGreetingCard(
+        name: 'Al',
+        organization: 'Eden',
+        heroImage: image.buffer.asUint8List(),
+      ),
+    );
+    expect(find.byKey(const ValueKey('home-hero-uploaded')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-hero-fallback')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

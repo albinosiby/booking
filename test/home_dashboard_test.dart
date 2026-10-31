@@ -13,6 +13,8 @@ import 'package:eden_booking/di/injection.dart';
 import 'package:eden_booking/di/feature_injection.dart';
 import 'package:eden_booking/modules/dashboard/cubit/home_cubit.dart';
 import 'package:eden_booking/modules/dashboard/repositories/dashboard_repository.dart';
+import 'package:eden_booking/modules/dashboard/repositories/home_hero_repository.dart';
+import 'package:eden_booking/modules/booking_website/repositories/website_image_events.dart';
 import 'package:eden_booking/modules/dashboard/screens/home_screen.dart';
 import 'package:eden_booking/modules/bookings/models/booking_models.dart';
 import 'package:eden_booking/modules/bookings/screens/booking_detail_screen.dart';
@@ -55,6 +57,17 @@ class HomeBookings extends FakeBookingRepository {
   }
 }
 
+class HomeHeroSource implements HomeHeroRepository {
+  final responses = <Future<Uint8List?>>[];
+  int calls = 0;
+
+  @override
+  Future<Uint8List?> load() {
+    calls++;
+    return responses.removeAt(0);
+  }
+}
+
 void main() {
   setUpAll(() async {
     if (!const bool.fromEnvironment('HOME_PREVIEWS')) return;
@@ -70,6 +83,60 @@ void main() {
     }
   });
   tearDown(() => getIt.reset());
+
+  test(
+    'Home reloads the hero after a photo change and ignores a stale scope',
+    () async {
+      final source = BookingSource(), workspace = WorkspaceCubit(source);
+      await workspace.load();
+      final hero = HomeHeroSource();
+      final events = WebsiteImageEvents();
+      final first = Uint8List.fromList([1, 2, 3]);
+      final updated = Uint8List.fromList([4, 5, 6]);
+      final other = Uint8List.fromList([7, 8, 9]);
+      final stale = Completer<Uint8List?>();
+      hero.responses.addAll([
+        Future.value(first),
+        Future.value(updated),
+        stale.future,
+        Future.value(other),
+      ]);
+      final cubit = HomeCubit(
+        SessionDashboardRepository(workspace),
+        null,
+        null,
+        hero,
+        events,
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.heroImage, first);
+      events.changed();
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.heroImage, updated);
+      events.changed();
+      await Future<void>.delayed(Duration.zero);
+      source.value = Workspace(
+        organization: const Organization(
+          id: 'other',
+          name: 'Other',
+          phone: '9876543210',
+          currency: 'INR',
+        ),
+        membership: const {'role': 'owner'},
+        businesses: source.value.businesses,
+      );
+      await workspace.load();
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.heroImage, other);
+      stale.complete(first);
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.heroImage, other);
+      expect(hero.calls, 4);
+      await cubit.close();
+      await workspace.close();
+      await events.dispose();
+    },
+  );
 
   test(
     'Home paginates balances, excludes refunds and refreshes after payments',

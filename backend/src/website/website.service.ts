@@ -151,6 +151,20 @@ export class WebsiteService {
       can_manage: member.role === "owner",
     };
   }
+  /** Only the active organization's saved hero photo is exposed to Home. */
+  async homeHero(actor: Actor) {
+    const member = await this.workspace.member(actor);
+    return (
+      (
+        await this.db.query<Row>(
+          `SELECT i.data,i.content_type FROM booking_website_images i
+         JOIN booking_websites w ON w.id=i.website_id AND w.organization_id=i.organization_id
+         WHERE w.organization_id=$1 AND i.kind='hero'`,
+          [member.organization_id],
+        )
+      ).rows[0] ?? null
+    );
+  }
   private async ownerSite(actor: Actor, db: Queryable = this.db, lock = false) {
     const m = await this.workspace.member(actor, true, db);
     const org = (

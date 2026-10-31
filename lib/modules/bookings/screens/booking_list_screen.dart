@@ -174,6 +174,14 @@ class _BookingListScreenState extends State<BookingListScreen> {
                       'Totals for selected filters',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Cash received (net): ${bookingMoney(s.cashReceivedNet, s.catalog.currency)}',
+                    ),
+                    Text(
+                      'Bank / digital received (net): ${bookingMoney(s.bankReceivedNet, s.catalog.currency)}',
+                    ),
+                    const Divider(height: 20),
                     for (final t in s.totals)
                       Text(
                         '${paymentLabel(t.kind)} · ${paymentLabel(t.method)}: ${bookingMoney(t.total, s.catalog.currency)}',

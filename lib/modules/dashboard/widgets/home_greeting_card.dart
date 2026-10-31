@@ -8,9 +8,10 @@ class HomeGreetingCard extends StatefulWidget {
     required this.name,
     required this.organization,
     this.logo,
+    this.heroImage,
   });
   final String name, organization;
-  final Uint8List? logo;
+  final Uint8List? logo, heroImage;
   @override
   State<HomeGreetingCard> createState() => _HomeGreetingCardState();
 }
@@ -83,7 +84,7 @@ class _HomeGreetingCardState extends State<HomeGreetingCard>
             MediaQuery.textScalerOf(context).scale(14) <= 21;
         return Container(
           width: double.infinity,
-          padding: EdgeInsets.all(wide ? 28 : 20),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
@@ -101,64 +102,100 @@ class _HomeGreetingCardState extends State<HomeGreetingCard>
               ],
             ),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          child: Stack(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              Positioned.fill(
+                child: Opacity(
+                  opacity: dark ? .28 : .16,
+                  child: widget.heroImage == null
+                      ? Image.asset(
+                          'assets/branding/turf_booking_fallback.png',
+                          key: const ValueKey('home-hero-fallback'),
+                          fit: BoxFit.cover,
+                          excludeFromSemantics: true,
+                        )
+                      : Image.memory(
+                          widget.heroImage!,
+                          key: const ValueKey('home-hero-uploaded'),
+                          fit: BoxFit.cover,
+                          excludeFromSemantics: true,
+                          errorBuilder: (_, _, _) => Image.asset(
+                            'assets/branding/turf_booking_fallback.png',
+                            key: const ValueKey('home-hero-fallback'),
+                            fit: BoxFit.cover,
+                            excludeFromSemantics: true,
+                          ),
+                        ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.all(wide ? 28 : 20),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(icon, color: colors.primary, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            MaterialLocalizations.of(
-                              context,
-                            ).formatFullDate(now),
-                            style: theme.textTheme.labelMedium?.copyWith(
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(icon, color: colors.primary, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  MaterialLocalizations.of(
+                                    context,
+                                  ).formatFullDate(now),
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Semantics(
+                            header: true,
+                            child: Text(
+                              firstName.isEmpty
+                                  ? greeting
+                                  : '$greeting, $firstName',
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Here’s your day at a glance.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
                               color: colors.onSurfaceVariant,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Semantics(
-                      header: true,
-                      child: Text(
-                        firstName.isEmpty ? greeting : '$greeting, $firstName',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Here’s your day at a glance.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            widget.organization,
-                            style: theme.textTheme.labelLarge,
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  widget.organization,
+                                  style: theme.textTheme.labelLarge,
+                                ),
+                              ),
+                              if (!wide) ...[
+                                const SizedBox(width: 12),
+                                mark(36),
+                              ],
+                            ],
                           ),
-                        ),
-                        if (!wide) ...[const SizedBox(width: 12), mark(36)],
-                      ],
+                        ],
+                      ),
                     ),
+                    if (wide) ...[const SizedBox(width: 28), mark(72)],
                   ],
                 ),
               ),
-              if (wide) ...[const SizedBox(width: 28), mark(72)],
             ],
           ),
         );

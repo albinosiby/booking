@@ -206,6 +206,17 @@ export function createHandler(
   add("GET", "/v1/admin/audit", (i) => ad.auditLog(i.actor, i.query));
   add("GET", "/v1/booking-website", (i) => services.website.settings(i.actor));
   add("GET", "/v1/booking-website/link", (i) => services.website.link(i.actor));
+  add("GET", "/v1/booking-website/home-hero", async (i) => {
+    const image = await services.website.homeHero(i.actor);
+    return new Response(image ? new Uint8Array(image.data) : null, {
+      status: image ? 200 : 204,
+      headers: {
+        ...(image ? { "Content-Type": image.content_type } : {}),
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  });
   add("PUT", "/v1/booking-website", (i) =>
     services.website.save(i.actor, i.body),
   );

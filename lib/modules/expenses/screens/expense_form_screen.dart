@@ -11,7 +11,8 @@ import '../cubit/expenses_state.dart';
 import '../widgets/invoice_preview.dart';
 
 class ExpenseFormScreen extends StatefulWidget {
-  const ExpenseFormScreen({super.key});
+  const ExpenseFormScreen({super.key, this.initialDate});
+  final DateTime? initialDate;
   @override
   State<ExpenseFormScreen> createState() => _ExpenseFormScreenState();
 }
@@ -19,7 +20,7 @@ class ExpenseFormScreen extends StatefulWidget {
 class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   late final cubit = getIt<ExpenseFormCubit>(
     param1: context.read<WorkspaceCubit>(),
-  )..load();
+  )..load(initialDate: widget.initialDate);
   @override
   void dispose() {
     cubit.close();

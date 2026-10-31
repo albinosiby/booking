@@ -66,12 +66,34 @@ class ExpenseSummary {
     this.total,
     this.count,
     Map<String, int> days,
-    List<ExpenseCategoryTotal> categories,
-  ) : days = Map.unmodifiable(days),
-      categories = List.unmodifiable(categories);
-  final int total, count;
+    List<ExpenseCategoryTotal> categories, {
+    int? gross,
+    this.reversals = 0,
+    Map<String, ExpenseDailyTotal> dailyTotals = const {},
+    Map<String, int> methods = const {},
+    this.methodBreakdownAvailable = true,
+  }) : gross = gross ?? total,
+       dailyTotals = Map.unmodifiable(
+         dailyTotals.isEmpty
+             ? {
+                 for (final entry in days.entries)
+                   entry.key: ExpenseDailyTotal(gross: entry.value),
+               }
+             : dailyTotals,
+       ),
+       methods = Map.unmodifiable(methods),
+       days = Map.unmodifiable(days),
+       categories = List.unmodifiable(categories);
+  final int total, gross, reversals, count;
   final Map<String, int> days;
+  final Map<String, ExpenseDailyTotal> dailyTotals;
+  final Map<String, int> methods;
+  final bool methodBreakdownAvailable;
   final List<ExpenseCategoryTotal> categories;
+  int get cash => methods['cash'] ?? 0;
+  int get bank => methods.entries
+      .where((entry) => entry.key != 'cash')
+      .fold(0, (total, entry) => total + entry.value);
 
   List<int> bars(ExpenseFilter f) => List.generate(
     f.yearly ? 12 : DateTime(f.anchor.year, f.anchor.month + 1, 0).day,
@@ -83,6 +105,39 @@ class ExpenseSummary {
         )
         .fold(0, (n, e) => n + e.value),
   );
+}
+
+class ExpenseDailyTotal {
+  const ExpenseDailyTotal({
+    required this.gross,
+    this.reversals = 0,
+    this.expenseCount = 0,
+    this.reversalCount = 0,
+    this.methods = const {},
+    this.purposes = const [],
+    this.purposeCount = 0,
+    this.methodBreakdownAvailable = true,
+  });
+  final int gross, reversals, expenseCount, reversalCount, purposeCount;
+  final Map<String, int> methods;
+  final List<ExpensePurposeTotal> purposes;
+  final bool methodBreakdownAvailable;
+  int get net => gross - reversals;
+  int get cash => methods['cash'] ?? 0;
+  int get bank => methods.entries
+      .where((entry) => entry.key != 'cash')
+      .fold(0, (total, entry) => total + entry.value);
+}
+
+class ExpensePurposeTotal {
+  const ExpensePurposeTotal(
+    this.category,
+    this.reason,
+    this.space,
+    this.amount,
+  );
+  final String category, reason, space;
+  final int amount;
 }
 
 class ExpenseCategoryTotal {

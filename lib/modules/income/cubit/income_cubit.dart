@@ -201,17 +201,39 @@ class IncomeCubit extends FinanceCubit<IncomeState> {
     }
   }
 
-  Future<void> export(String format) async {
+  String reportFilename(IncomeFilter filter, String format) {
+    final month = filter.anchor.month.toString().padLeft(2, '0');
+    final period = filter.day != null && !filter.yearly
+        ? '${filter.anchor.year}-$month-${filter.day.toString().padLeft(2, '0')}'
+        : filter.yearly
+        ? '${filter.anchor.year}'
+        : '${filter.anchor.year}-$month';
+    final name = switch (filter.source) {
+      null => 'all',
+      incomeBookings => 'bookings',
+      incomeAdmissions => 'admissions',
+      final id =>
+        state.categories
+                .where((category) => category.id == id)
+                .firstOrNull
+                ?.name ??
+            'category',
+    };
+    final source = name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    return 'bookos-income-$period-${source.isEmpty ? 'category' : source}.$format';
+  }
+
+  Future<void> export(String format, {IncomeFilter? filter}) async {
     if (state.exporting || !authorized) return;
-    final f = state.filter, scope = accessScope;
+    final f = filter ?? state.filter, scope = accessScope;
     emit(state.copy(exporting: true));
     try {
       final bytes = await repository.report(f, format);
       if (isClosed || !authorized || accessScope != scope) return;
-      final saved = await saver.save(
-        bytes,
-        'income-${f.from}-${f.until}${f.source == null ? '' : '-source'}.$format',
-      );
+      final saved = await saver.save(bytes, reportFilename(f, format));
       if (!isClosed && authorized && accessScope == scope) {
         emit(
           state.copy(

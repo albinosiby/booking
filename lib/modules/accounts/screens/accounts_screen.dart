@@ -163,6 +163,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
               methods: o.today.methods,
               currency: currency,
             ),
+            if (catalog?.canManage == true)
+              StaffCashOwnerSection(currency: currency),
             FinanceSection(
               'Income by payment method',
               action: 'View all',
@@ -211,7 +213,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
                 ),
               ),
             ],
-            if (catalog.canManage) StaffCashOwnerSection(currency: currency),
             FinanceSection(
               'Recent activity',
               action: 'View all',
@@ -455,6 +456,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
                           currency: currency,
                         ),
                       ),
+                      if (catalog?.canManage == true)
+                        StaffCashOwnerSection(currency: currency),
                       FinancePanel(
                         title: 'Income by payment method',
                         action: 'View all',
@@ -501,8 +504,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
                             ),
                           ),
                         ),
-                      if (catalog?.canManage == true)
-                        StaffCashOwnerSection(currency: currency),
                     ],
                   ),
                 ),

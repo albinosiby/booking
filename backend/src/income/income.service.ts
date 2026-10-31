@@ -150,6 +150,7 @@ export class IncomeService {
  CASE WHEN ${base} IN ('booking_collection','booking_refund') THEN 'bookings' WHEN ${base} IN ('admission_collection','admission_refund') THEN 'admissions' ELSE COALESCE(e.income_category_id,o.income_category_id)::text END AS source_id,
  CASE WHEN ${base} IN ('booking_collection','booking_refund') THEN 'Bookings' WHEN ${base} IN ('admission_collection','admission_refund') THEN 'Admissions' ELSE COALESCE(c.name,NULLIF(e.category,''),NULLIF(o.category,''),'Other') END AS source_name,
  (e.occurred_at AT TIME ZONE $${tzIndex})::date::text AS local_date,(e.occurred_at AT TIME ZONE $${tzIndex})::text AS local_time,
+ COALESCE((b.starts_at AT TIME ZONE $${tzIndex})::date::text,ad.starts_on::text) AS booking_date,
  (SELECT SUM(amount_minor) FROM finance_lines fl WHERE fl.event_id=e.id) AS amount_minor,
  b.id AS booking_id,ad.id AS admission_id,COALESCE(b.reference,ad.reference) AS booking_reference,
  COALESCE(b.customer_snapshot->>'name',ad.customer_snapshot->>'name') AS customer_name,COALESCE(b.total_minor,ad.total_minor) AS tariff_minor,
@@ -169,10 +170,35 @@ export class IncomeService {
     const t = (
       await this.db.query<Row>(
         `${cte},
- days AS (SELECT local_date AS day,SUM(amount_minor) AS total_minor FROM income_rows WHERE NOT is_refund GROUP BY local_date),
+ method_rows AS (SELECT r.local_date AS day,l.method,SUM(l.amount_minor) AS total_minor
+ FROM income_rows r JOIN finance_lines l ON l.event_id=r.id GROUP BY r.local_date,l.method),
+ daily_methods AS (SELECT day,jsonb_agg(jsonb_build_object('method',method,'total_minor',total_minor) ORDER BY method) AS methods
+ FROM method_rows GROUP BY day),
+ purpose_rows AS (SELECT r.local_date AS day,
+ CASE WHEN r.source_id IN ('bookings','admissions') THEN
+ r.source_name || COALESCE(' #' || NULLIF(TRIM(LEADING '#' FROM r.booking_reference),''),'')
+ ELSE COALESCE(NULLIF(r.reason,''),r.source_name) END AS purpose,
+ COALESCE(r.space_name,'No space') AS space,
+ SUM(r.amount_minor) AS total_minor
+ FROM income_rows r WHERE NOT r.is_refund GROUP BY r.local_date,purpose,space),
+ ranked_purposes AS (SELECT p.*,ROW_NUMBER() OVER (PARTITION BY day ORDER BY total_minor DESC,purpose,space) AS rank,
+ COUNT(*) OVER (PARTITION BY day)::int AS purpose_count FROM purpose_rows p),
+ daily_purposes AS (SELECT day,MAX(purpose_count)::int AS purpose_count,
+ COALESCE(jsonb_agg(jsonb_build_object('purpose',purpose,'space',space,'total_minor',total_minor) ORDER BY total_minor DESC,purpose,space)
+ FILTER (WHERE rank<=4),'[]'::jsonb) AS purposes FROM ranked_purposes GROUP BY day),
+ day_amounts AS (SELECT local_date AS day,
+ COALESCE(SUM(amount_minor) FILTER (WHERE NOT is_refund),0) AS total_minor,
+ COALESCE(-SUM(amount_minor) FILTER (WHERE is_refund),0) AS refunds_minor,
+ COUNT(*) FILTER (WHERE NOT is_refund)::int AS income_count,
+ COUNT(*) FILTER (WHERE is_refund)::int AS refund_count
+ FROM income_rows GROUP BY local_date),
+ days AS (SELECT a.*,COALESCE(m.methods,'[]'::jsonb) AS methods,
+ COALESCE(p.purposes,'[]'::jsonb) AS purposes,COALESCE(p.purpose_count,0) AS purpose_count
+ FROM day_amounts a LEFT JOIN daily_methods m ON m.day=a.day LEFT JOIN daily_purposes p ON p.day=a.day),
  sources AS (SELECT source_id,source_name,SUM(amount_minor) AS total_minor FROM income_rows WHERE NOT is_refund GROUP BY source_id,source_name)
  SELECT COALESCE(SUM(amount_minor) FILTER (WHERE NOT is_refund),0) AS total_minor,COALESCE(-SUM(amount_minor) FILTER (WHERE is_refund),0) AS refunds_minor,COUNT(*)::int AS count,
  (SELECT COALESCE(jsonb_agg(d ORDER BY d.day),'[]') FROM days d) AS days,
+ (SELECT COALESCE(jsonb_agg(m ORDER BY m.method),'[]') FROM (SELECT method,SUM(total_minor) AS total_minor FROM method_rows GROUP BY method) m) AS methods,
  (SELECT COALESCE(jsonb_agg(x ORDER BY x.total_minor DESC),'[]') FROM sources x) AS sources
  FROM income_rows`,
         values,
@@ -189,6 +215,7 @@ export class IncomeService {
       net_minor: Number(t.total_minor) - Number(t.refunds_minor),
       count: t.count,
       days: t.days,
+      methods: t.methods,
       sources: t.sources,
     };
   }
@@ -245,6 +272,7 @@ export class IncomeService {
         : null;
     return {
       ...overview,
+      exported_at: new Date().toISOString(),
       total_minor: total,
       refunds_minor: refunds,
       net_minor: total - refunds,

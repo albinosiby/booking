@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import '../../bookings/models/booking_models.dart';
 import '../../workspace/models/workspace_state.dart';
 
@@ -6,6 +7,7 @@ class HomeScreenModel extends WorkspaceState {
     WorkspaceState snapshot, {
     this.dashboard,
     this.accountConfigured,
+    this.heroImage,
     this.bookingLoading = false,
     this.bookingError,
     Iterable<BookingOutstanding> dueBookings = const [],
@@ -22,6 +24,7 @@ class HomeScreenModel extends WorkspaceState {
        );
   final BookingDashboard? dashboard;
   final bool? accountConfigured;
+  final Uint8List? heroImage;
   bool get needsAccountSetup => data.isOwner && accountConfigured == false;
   final bool bookingLoading;
   final String? bookingError;
@@ -34,6 +37,8 @@ class HomeScreenModel extends WorkspaceState {
     WorkspaceState? snapshot,
     bool? accountConfigured,
     bool clearAccountConfigured = false,
+    Uint8List? heroImage,
+    bool clearHeroImage = false,
     BookingDashboard? dashboard,
     bool clearDashboard = false,
     bool? bookingLoading,
@@ -52,6 +57,7 @@ class HomeScreenModel extends WorkspaceState {
     accountConfigured: clearAccountConfigured
         ? null
         : accountConfigured ?? this.accountConfigured,
+    heroImage: clearHeroImage ? null : heroImage ?? this.heroImage,
     dashboard: clearDashboard ? null : dashboard ?? this.dashboard,
     bookingLoading: bookingLoading ?? this.bookingLoading,
     bookingError: clearBookingError ? null : bookingError ?? this.bookingError,
@@ -67,6 +73,7 @@ class HomeScreenModel extends WorkspaceState {
     ...super.props,
     dashboard,
     accountConfigured,
+    heroImage,
     bookingLoading,
     bookingError,
     dueBookings,

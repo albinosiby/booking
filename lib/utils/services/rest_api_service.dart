@@ -308,7 +308,7 @@ class RestApiService {
           code: 'CANCELLED',
         );
       }
-      return response.data!;
+      return response.data ?? const <int>[];
     } on DioException catch (e) {
       if (requestUser != auth.currentUser?.id) {
         throw const AppException(

@@ -10,8 +10,9 @@ import '../models/accounts_screen_models.dart';
 import '../widgets/accounts_widgets.dart';
 
 class FinanceEntryScreen extends StatefulWidget {
-  const FinanceEntryScreen({super.key, required this.kind});
+  const FinanceEntryScreen({super.key, required this.kind, this.initialDate});
   final String kind;
+  final DateTime? initialDate;
   @override
   State<FinanceEntryScreen> createState() => _FinanceEntryScreenState();
 }
@@ -20,7 +21,14 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   late final cubit = getIt<FinanceEntryCubit>(
     param1: context.read<WorkspaceCubit>(),
     param2: widget.kind,
-  )..load();
+  );
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialDate != null) cubit.fields(date: widget.initialDate);
+    cubit.load();
+  }
+
   @override
   void dispose() {
     cubit.close();

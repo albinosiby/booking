@@ -18,6 +18,37 @@ class ExpenseMapper {
           expenseInt(r['total_minor']),
         ),
     ],
+    gross: expenseInt(j['gross_minor'] ?? j['total_minor']),
+    reversals: expenseInt(j['reversals_minor']),
+    methodBreakdownAvailable: j.containsKey('methods'),
+    methods: {
+      for (final method in (j['methods'] as List? ?? const []))
+        method['method'] as String: expenseInt(method['total_minor']),
+    },
+    dailyTotals: {
+      for (final r in j['days'])
+        r['day']: ExpenseDailyTotal(
+          gross: expenseInt(r['gross_minor'] ?? r['total_minor']),
+          reversals: expenseInt(r['reversals_minor']),
+          expenseCount: expenseInt(r['expense_count']),
+          reversalCount: expenseInt(r['reversal_count']),
+          methods: {
+            for (final method in (r['methods'] as List? ?? const []))
+              method['method'] as String: expenseInt(method['total_minor']),
+          },
+          purposes: [
+            for (final purpose in (r['purposes'] as List? ?? const []))
+              ExpensePurposeTotal(
+                purpose['category'] as String,
+                purpose['reason'] as String,
+                purpose['space'] as String,
+                expenseInt(purpose['total_minor']),
+              ),
+          ],
+          purposeCount: expenseInt(r['purpose_count']),
+          methodBreakdownAvailable: r.containsKey('methods'),
+        ),
+    },
   );
   static ExpenseInvoice invoice(Map<String, dynamic> j) => ExpenseInvoice(
     id: j['id'],

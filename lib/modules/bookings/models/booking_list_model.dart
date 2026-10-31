@@ -66,6 +66,20 @@ class BookingListModel extends Equatable {
   final List<BookingRecord> bookings;
   final List<CollectionEntry> collections;
   final List<CollectionTotal> totals;
+  int get cashReceivedNet => totals
+      .where((total) => total.method == 'cash')
+      .fold(
+        0,
+        (sum, total) =>
+            sum + (total.kind == 'refund' ? -total.total : total.total),
+      );
+  int get bankReceivedNet => totals
+      .where((total) => total.method != 'cash')
+      .fold(
+        0,
+        (sum, total) =>
+            sum + (total.kind == 'refund' ? -total.total : total.total),
+      );
   final bool loading, loadingMore, hasLoaded;
   final String? businessId, spaceId, date, status, error;
   final bool dueView;

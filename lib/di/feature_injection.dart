@@ -95,13 +95,22 @@ import '../modules/team/cubit/invitation_cubit.dart';
 import '../modules/profile/cubit/profile_cubit.dart';
 import '../modules/dashboard/cubit/home_cubit.dart';
 import '../modules/booking_website/repositories/booking_website_link_repository.dart';
+import '../modules/booking_website/repositories/website_image_events.dart';
+import '../modules/dashboard/repositories/home_hero_repository.dart';
 
 /// Composition root: swap persistence implementations here, never in screens.
 void registerFeatureDependencies(GetIt di) {
+  di.registerLazySingleton<WebsiteImageEvents>(
+    WebsiteImageEvents.new,
+    dispose: (events) => events.dispose(),
+  );
+  di.registerFactory<HomeHeroRepository>(() => RestHomeHeroRepository(di()));
   di.registerFactory<BookingWebsiteLinkRepository>(
     () => RestBookingWebsiteLinkRepository(di()),
   );
-  di.registerFactory<WebsiteRepository>(() => RestWebsiteRepository(di()));
+  di.registerFactory<WebsiteRepository>(
+    () => RestWebsiteRepository(di(), imageEvents: di()),
+  );
   di.registerFactoryParam<WebsiteSettingsCubit, WorkspaceSession, void>(
     (s, _) => WebsiteSettingsCubit(
       s,
@@ -328,6 +337,8 @@ void registerFeatureDependencies(GetIt di) {
       SessionDashboardRepository(session),
       di.isRegistered<RestApiService>() ? di<BookingRepository>() : null,
       di.isRegistered<RestApiService>() ? di<AccountsRepository>() : null,
+      di.isRegistered<RestApiService>() ? di<HomeHeroRepository>() : null,
+      di<WebsiteImageEvents>(),
     ),
   );
 }

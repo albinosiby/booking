@@ -82,24 +82,100 @@ class IncomeSourceTotal {
 
 int incomeInt(dynamic n) => n is num ? n.toInt() : int.tryParse('$n') ?? 0;
 
+class IncomeDailyTotal {
+  const IncomeDailyTotal({
+    required this.gross,
+    this.refunds = 0,
+    this.incomeCount = 0,
+    this.refundCount = 0,
+    this.methods = const {},
+    this.purposes = const [],
+    this.purposeCount = 0,
+    this.methodBreakdownAvailable = true,
+  });
+  final int gross, refunds, incomeCount, refundCount;
+  final Map<String, int> methods;
+  final List<IncomePurposeTotal> purposes;
+  final int purposeCount;
+  final bool methodBreakdownAvailable;
+  int get net => gross - refunds;
+  int get cash => methods['cash'] ?? 0;
+  int get bank => methods.entries
+      .where((entry) => entry.key != 'cash')
+      .fold(0, (total, entry) => total + entry.value);
+}
+
+class IncomePurposeTotal {
+  const IncomePurposeTotal(this.purpose, this.space, this.amount);
+  final String purpose, space;
+  final int amount;
+}
+
 class IncomeSummary {
   IncomeSummary({
     required this.total,
     required this.refunds,
     required this.count,
     Map<String, int> days = const {},
+    Map<String, IncomeDailyTotal> dailyTotals = const {},
+    Map<String, int> methods = const {},
+    this.methodBreakdownAvailable = true,
     List<IncomeSourceTotal> sources = const [],
   }) : days = Map.unmodifiable(days),
+       dailyTotals = Map.unmodifiable(
+         dailyTotals.isEmpty
+             ? {
+                 for (final entry in days.entries)
+                   entry.key: IncomeDailyTotal(gross: entry.value),
+               }
+             : dailyTotals,
+       ),
+       methods = Map.unmodifiable(methods),
        sources = List.unmodifiable(sources);
   final int total, refunds, count;
   final Map<String, int> days;
+  final Map<String, IncomeDailyTotal> dailyTotals;
+  final Map<String, int> methods;
+  final bool methodBreakdownAvailable;
   final List<IncomeSourceTotal> sources;
   int get net => total - refunds;
+  int get cash => methods['cash'] ?? 0;
+  int get bank => methods.entries
+      .where((entry) => entry.key != 'cash')
+      .fold(0, (total, entry) => total + entry.value);
   factory IncomeSummary.fromJson(Map<String, dynamic> j) => IncomeSummary(
     total: incomeInt(j['total_minor']),
     refunds: incomeInt(j['refunds_minor']),
     count: incomeInt(j['count']),
     days: {for (final r in j['days']) r['day']: incomeInt(r['total_minor'])},
+    dailyTotals: {
+      for (final r in j['days'])
+        r['day']: IncomeDailyTotal(
+          gross: incomeInt(r['total_minor']),
+          refunds: incomeInt(r['refunds_minor']),
+          incomeCount: incomeInt(r['income_count']),
+          refundCount: incomeInt(r['refund_count']),
+          methods: {
+            for (final method in (r['methods'] as List? ?? const []))
+              method['method'] as String: incomeInt(method['total_minor']),
+          },
+          purposes: [
+            for (final purpose in (r['purposes'] as List? ?? const []))
+              IncomePurposeTotal(
+                purpose['purpose'] as String,
+                purpose['space'] as String,
+                incomeInt(purpose['total_minor']),
+              ),
+          ],
+          purposeCount: incomeInt(r['purpose_count']),
+          methodBreakdownAvailable: r.containsKey('methods'),
+        ),
+    },
+    methodBreakdownAvailable: j.containsKey('methods'),
+    methods: {
+      for (final method in (j['methods'] as List? ?? const []))
+        method['method'] as String: incomeInt(method['total_minor']),
+    },
     sources: [
       for (final r in j['sources'])
         IncomeSourceTotal(

@@ -366,6 +366,10 @@ void main() {
       expect(find.text('Booking dues'), findsOneWidget);
       expect(find.text('Income & expenses'), findsOneWidget);
       expect(find.text("Today's collection"), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Staff cash to collect')).dy,
+        lessThan(tester.getTopLeft(find.text('Income by payment method')).dy),
+      );
       await w.close();
     });
   }
@@ -426,6 +430,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      if (screen == 'overview') {
+        expect(
+          tester.getTopLeft(find.text('Staff cash to collect')).dy,
+          lessThan(tester.getTopLeft(find.text('Income by payment method')).dy),
+        );
+      }
       if (screen == 'transfer') {
         expect(find.text('Category'), findsNothing);
         expect(find.text('Reason for transfer'), findsOneWidget);

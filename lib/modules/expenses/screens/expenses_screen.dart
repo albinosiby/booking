@@ -13,6 +13,8 @@ import '../cubit/expenses_cubit.dart';
 import '../cubit/expenses_state.dart';
 import '../models/expense_models.dart';
 import '../widgets/expenses_widgets.dart';
+import '../widgets/expense_daily_breakdown.dart';
+import '../widgets/expense_report_sheet.dart';
 import '../widgets/finance_desktop_widgets.dart';
 
 class ExpensesScreen extends StatefulWidget {
@@ -22,78 +24,38 @@ class ExpensesScreen extends StatefulWidget {
 }
 
 class _ExpensesScreenState extends State<ExpensesScreen> {
+  final search = TextEditingController();
   late final cubit = getIt<ExpensesCubit>(
     param1: context.read<WorkspaceCubit>(),
   )..load();
   @override
   void dispose() {
+    search.dispose();
     cubit.close();
     super.dispose();
   }
 
-  Future<void> export() async {
-    final format = await showAdaptiveSheet<String>(
+  Future<void> export({String format = 'pdf'}) async {
+    final state = cubit.state;
+    final selection = await showAdaptiveSheet<ExpenseReportSelection>(
       context: context,
-      builder: (c) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Download expense report',
-              style: Theme.of(c).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${cubit.state.filter.from} – ${cubit.state.filter.until}\nIncludes the selected category and filters.',
-            ),
-            ListTile(
-              leading: const Icon(Icons.picture_as_pdf_outlined),
-              title: const Text('PDF report'),
-              onTap: () => Navigator.pop(c, 'pdf'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.table_chart_outlined),
-              title: const Text('Excel workbook'),
-              onTap: () => Navigator.pop(c, 'xlsx'),
-            ),
-          ],
-        ),
+      builder: (c) => ExpenseReportSheet(
+        initialAnchor: state.filter.anchor,
+        categories: state.categories,
+        initialFormat: format,
       ),
     );
-    if (format != null) await cubit.export(format);
+    if (selection != null && mounted) {
+      showMessage(context, 'Preparing the expense report…');
+      await cubit.export(selection.format, filter: selection.filter);
+    }
   }
 
   Future<void> categoryDialog({ExpenseCategory? category}) async {
-    final controller = TextEditingController(text: category?.name);
     final name = await showDialog<String>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: Text(category == null ? 'New category' : 'Edit category'),
-        content: TextField(
-          controller: controller,
-          maxLength: 80,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Category name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (controller.text.trim().length >= 2) {
-                Navigator.pop(c, controller.text.trim());
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (c) => _ExpenseCategoryNameDialog(category: category),
     );
-    controller.dispose();
     if (name != null) {
       await cubit.category(
         name,
@@ -120,6 +82,13 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                     'Expense categories',
                     style: Theme.of(c).textTheme.titleLarge,
                   ),
+                  if (s.error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      s.error!,
+                      style: TextStyle(color: Theme.of(c).colorScheme.error),
+                    ),
+                  ],
                   ListTile(
                     leading: const Icon(Icons.add),
                     title: const Text('Add category'),
@@ -199,9 +168,154 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     );
   }
 
-  Future<void> addExpense() async {
-    await context.push('/expenses/new');
+  Future<void> addExpense({DateTime? date}) async {
+    await context.push('/expenses/new', extra: date);
     await cubit.load(refresh: true);
+  }
+
+  Future<void> exportDay() async {
+    final state = cubit.state, day = state.selectedDay;
+    if (day == null || state.exporting || state.catalog?.canView != true) {
+      return;
+    }
+    final filter = state.filter.copy(day: day);
+    final format = await showFinanceOptions(
+      context,
+      title: 'Download ${filter.from} expenses',
+      selected: 'pdf',
+      options: const [
+        FinanceOption('pdf', 'PDF report', icon: Icons.picture_as_pdf_outlined),
+        FinanceOption(
+          'xlsx',
+          'Excel workbook',
+          icon: Icons.table_chart_outlined,
+        ),
+      ],
+    );
+    if (format == null || !mounted) return;
+    showMessage(context, 'Preparing the day report…');
+    await cubit.export(format, filter: filter);
+  }
+
+  Widget categoryChips(ExpensesState s) => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    child: Row(
+      children: [
+        for (final (id, label) in <(String?, String)>[
+          (null, 'All categories'),
+          for (final category in s.categories)
+            (
+              category.id,
+              category.active ? category.name : '${category.name} · archived',
+            ),
+        ]) ...[
+          ChoiceChip(
+            key: ValueKey('expense-category-${id ?? 'all'}'),
+            label: Text(label),
+            selected: s.filter.categoryId == id,
+            onSelected: (_) => cubit.setFilter(
+              s.filter.copy(categoryId: id, clearCategory: id == null),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ],
+    ),
+  );
+
+  Widget searchAndFilters(ExpensesState s) {
+    final f = s.filter, catalog = s.catalog;
+    final business = catalog?.businesses
+        .where((item) => item.id == f.businessId)
+        .firstOrNull;
+    final space = business?.spaces
+        .where((item) => item.id == f.spaceId)
+        .firstOrNull;
+    final account = catalog?.accounts
+        .where((item) => item.id == f.accountId)
+        .firstOrNull;
+    final hasFilters =
+        f.categoryId != null ||
+        f.businessId != null ||
+        f.accountId != null ||
+        f.query.trim().isNotEmpty ||
+        s.selectedDay != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 12),
+        TextField(
+          key: const ValueKey('expense-search'),
+          controller: search,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search),
+            hintText: 'Search reason or reference',
+            suffixIcon: f.query.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      search.clear();
+                      cubit.setFilter(f.copy(query: ''));
+                    },
+                    icon: const Icon(Icons.close),
+                  ),
+          ),
+          onSubmitted: (value) => cubit.setFilter(f.copy(query: value.trim())),
+        ),
+        if (hasFilters) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              if (f.businessId != null)
+                InputChip(
+                  label: Text(business?.name ?? 'Business'),
+                  onDeleted: () => cubit.setFilter(
+                    f.copy(businessId: null, spaceId: null, clearScope: true),
+                  ),
+                ),
+              if (f.spaceId != null)
+                InputChip(
+                  label: Text(space?.name ?? 'Space'),
+                  onDeleted: () =>
+                      cubit.setFilter(f.copy(spaceId: null, clearScope: true)),
+                ),
+              if (f.accountId != null)
+                InputChip(
+                  label: Text(account?.name ?? 'Account'),
+                  onDeleted: () => cubit.setFilter(f.copy(clearAccount: true)),
+                ),
+              if (s.selectedDay != null)
+                InputChip(
+                  label: Text('Day ${s.selectedDay}'),
+                  onDeleted: () => cubit.selectDay(null),
+                ),
+              if (f.query.trim().isNotEmpty)
+                InputChip(
+                  label: Text('Search: ${f.query.trim()}'),
+                  onDeleted: () {
+                    search.clear();
+                    cubit.setFilter(f.copy(query: ''));
+                  },
+                ),
+              TextButton(
+                onPressed: () {
+                  search.clear();
+                  cubit.load(
+                    filter: ExpenseFilter(anchor: f.anchor, yearly: f.yearly),
+                    clearDay: true,
+                  );
+                },
+                child: const Text('Clear filters'),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -240,6 +354,12 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             onPressed: s.loading ? null : () => cubit.load(refresh: true),
             icon: const Icon(Icons.refresh),
           ),
+          if (catalog?.canManage == true)
+            IconButton(
+              tooltip: 'Manage categories',
+              onPressed: manageCategories,
+              icon: const Icon(Icons.category_outlined),
+            ),
         ],
         floatingActionButton: catalog?.canExpense == true
             ? FloatingActionButton.extended(
@@ -276,16 +396,6 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               runSpacing: 8,
               children: [
                 FinanceFilterChip(
-                  icon: Icons.category_outlined,
-                  label: category?.name ?? 'All categories',
-                  tooltip: 'Choose category',
-                  active: f.categoryId != null,
-                  onTap: pickCategory,
-                  onClear: f.categoryId == null
-                      ? null
-                      : () => cubit.setFilter(f.copy(clearCategory: true)),
-                ),
-                FinanceFilterChip(
                   icon: Icons.tune,
                   label: filtered == 0 ? 'Filters' : 'Filters · $filtered',
                   tooltip: 'Filter expenses',
@@ -294,6 +404,8 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 ),
               ],
             ),
+            categoryChips(s),
+            searchAndFilters(s),
             // Fixed height so the page does not jump while loading.
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -316,35 +428,90 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                       const SizedBox(height: 13),
                       FinanceTotalCard(
                         label: category?.name ?? 'Total expenses',
-                        amount: summary.total,
+                        amount: summary.gross,
                         currency: catalog!.currency,
                         inverse: true,
                         subtitle:
                             '${summary.count} ${summary.count == 1 ? 'entry' : 'entries'} · ${financeRangeLabel(FinanceFilter(from: f.from, until: f.until))}',
                         stats: [
-                          financeAverage(
-                            summary.total,
-                            f.anchor,
-                            f.yearly,
-                            catalog.today,
+                          if (summary.reversals != 0) ...[
+                            ('Reversals', summary.reversals),
+                            ('Net spent', summary.total),
+                          ],
+                          (
+                            'Net cash spent',
+                            summary.methodBreakdownAvailable
+                                ? summary.cash
+                                : null,
                           ),
+                          (
+                            'Net bank spent',
+                            summary.methodBreakdownAvailable
+                                ? summary.bank
+                                : null,
+                          ),
+                          () {
+                            final (label, value) = financeAverage(
+                              summary.total,
+                              f.anchor,
+                              f.yearly,
+                              catalog.today,
+                            );
+                            return ('$label (net)', value);
+                          }(),
                         ],
                       ),
                       const SizedBox(height: 12),
                       AppCard(
-                        child: ExpenseChart(
-                          values: summary.bars(f),
-                          selectedDay: s.selectedDay,
-                          onDay: cubit.selectDay,
-                          onClearDay: () => cubit.selectDay(null),
-                          filter: f,
-                          currency: catalog.currency,
-                          onMonth: (m) => cubit.setFilter(
-                            f.copy(
-                              anchor: DateTime(f.anchor.year, m),
-                              yearly: false,
+                        child: f.yearly
+                            ? const Text(
+                                'Select a month in View trend to see daily expenses.',
+                              )
+                            : ExpenseDailyBreakdown(
+                                summary: summary,
+                                anchor: f.anchor,
+                                currency: catalog.currency,
+                                selectedDay: s.selectedDay,
+                                onDay: cubit.selectDay,
+                                onClearDay: () => cubit.selectDay(null),
+                                onAddExpense:
+                                    catalog.canExpense && s.selectedDay != null
+                                    ? () => addExpense(
+                                        date: DateTime(
+                                          f.anchor.year,
+                                          f.anchor.month,
+                                          s.selectedDay!,
+                                          12,
+                                        ),
+                                      )
+                                    : null,
+                                onDownloadDay: s.selectedDay == null
+                                    ? null
+                                    : exportDay,
+                                exporting: s.exporting,
+                              ),
+                      ),
+                      const SizedBox(height: 8),
+                      AppCard(
+                        child: ExpansionTile(
+                          key: const ValueKey('expense-view-trend'),
+                          title: const Text('View trend'),
+                          children: [
+                            ExpenseChart(
+                              values: summary.bars(f),
+                              selectedDay: s.selectedDay,
+                              onDay: cubit.selectDay,
+                              onClearDay: () => cubit.selectDay(null),
+                              filter: f,
+                              currency: catalog.currency,
+                              onMonth: (m) => cubit.setFilter(
+                                f.copy(
+                                  anchor: DateTime(f.anchor.year, m),
+                                  yearly: false,
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
                       if (summary.categories.isNotEmpty) ...[
@@ -426,28 +593,6 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     },
   );
 
-  Future<void> pickCategory() async {
-    final s = cubit.state;
-    final id = await showFinanceOptions(
-      context,
-      title: 'Category',
-      selected: s.filter.categoryId ?? '',
-      options: [
-        const FinanceOption('', 'All categories', icon: Icons.all_inclusive),
-        for (final c in s.categories)
-          FinanceOption(
-            c.id,
-            c.name,
-            icon: expenseCategoryIcon(c.name),
-            note: c.active ? null : 'Archived',
-          ),
-      ],
-    );
-    if (id != null) {
-      cubit.setFilter(s.filter.copy(categoryId: id, clearCategory: id.isEmpty));
-    }
-  }
-
   // Wide web windows: toolbar, headline figures, then chart and ledger beside
   // the category breakdown.
   Widget _desktop(BuildContext c, ExpensesState s) {
@@ -514,16 +659,6 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                       ),
                     ),
                     FinanceFilterChip(
-                      icon: Icons.category_outlined,
-                      label: category?.name ?? 'All categories',
-                      tooltip: 'Choose category',
-                      active: f.categoryId != null,
-                      onTap: pickCategory,
-                      onClear: f.categoryId == null
-                          ? null
-                          : () => cubit.setFilter(f.copy(clearCategory: true)),
-                    ),
-                    FinanceFilterChip(
                       icon: Icons.tune,
                       label: filtered == 0 ? 'Filters' : 'Filters · $filtered',
                       tooltip: 'Filter expenses',
@@ -546,6 +681,8 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               ),
           ],
         ),
+        if (canView) categoryChips(s),
+        if (canView) searchAndFilters(s),
         // Fixed height so the page does not jump while loading.
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 14, 0, 18),
@@ -585,33 +722,24 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         highlight: true,
                         icon: Icons.north_east_rounded,
                         label: category?.name ?? 'Total expenses',
-                        value: money(summary.total),
+                        value: money(summary.gross),
                         caption: range,
                       ),
                       AppStatTile(
-                        icon: Icons.receipt_long_outlined,
-                        label: 'Entries',
-                        value: '${summary.count}',
-                        caption: summary.count == 1
-                            ? 'Expense recorded'
-                            : 'Expenses recorded',
+                        icon: Icons.undo_rounded,
+                        accent: scheme.primary,
+                        label: 'Reversals',
+                        value: money(summary.reversals),
+                        caption: summary.reversals == 0
+                            ? 'No reversals this period'
+                            : 'Returned to accounts',
                       ),
-                      () {
-                        final (label, value) = financeAverage(
-                          summary.total,
-                          f.anchor,
-                          f.yearly,
-                          catalog!.today,
-                        );
-                        return AppStatTile(
-                          icon: Icons.show_chart_rounded,
-                          label: label,
-                          value: money(value),
-                          caption: f.yearly
-                              ? 'Across elapsed months'
-                              : 'Across elapsed days',
-                        );
-                      }(),
+                      AppStatTile(
+                        icon: Icons.account_balance_wallet_outlined,
+                        label: 'Net spent',
+                        value: money(summary.total),
+                        caption: 'Expenses less reversals',
+                      ),
                       AppStatTile(
                         icon: top == null
                             ? Icons.category_outlined
@@ -627,6 +755,43 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  AppStatRow(
+                    children: [
+                      AppStatTile(
+                        icon: Icons.payments_outlined,
+                        label: 'Net cash spent',
+                        value: summary.methodBreakdownAvailable
+                            ? money(summary.cash)
+                            : '—',
+                        caption: 'After cash reversals',
+                      ),
+                      AppStatTile(
+                        icon: Icons.account_balance_outlined,
+                        label: 'Net bank spent',
+                        value: summary.methodBreakdownAvailable
+                            ? money(summary.bank)
+                            : '—',
+                        caption: 'UPI, card and bank transfers',
+                      ),
+                      () {
+                        final (label, value) = financeAverage(
+                          summary.total,
+                          f.anchor,
+                          f.yearly,
+                          catalog!.today,
+                        );
+                        return AppStatTile(
+                          icon: Icons.show_chart_rounded,
+                          label: '$label (net)',
+                          value: money(value),
+                          caption: f.yearly
+                              ? 'Across elapsed months'
+                              : 'Across elapsed days',
+                        );
+                      }(),
+                    ],
+                  ),
                   const SizedBox(height: 32),
                   AppTwoPane(
                     primary: [
@@ -636,19 +801,50 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                             ? 'Select a month to explore it'
                             : range,
                         child: AppCard(
-                          child: ExpenseChart(
-                            values: summary.bars(f),
-                            selectedDay: s.selectedDay,
-                            onDay: cubit.selectDay,
-                            onClearDay: () => cubit.selectDay(null),
-                            filter: f,
-                            currency: catalog!.currency,
-                            onMonth: (m) => cubit.setFilter(
-                              f.copy(
-                                anchor: DateTime(f.anchor.year, m),
-                                yearly: false,
+                          child: Column(
+                            children: [
+                              ExpenseChart(
+                                values: summary.bars(f),
+                                selectedDay: s.selectedDay,
+                                onDay: cubit.selectDay,
+                                onClearDay: () => cubit.selectDay(null),
+                                filter: f,
+                                currency: catalog!.currency,
+                                onMonth: (m) => cubit.setFilter(
+                                  f.copy(
+                                    anchor: DateTime(f.anchor.year, m),
+                                    yearly: false,
+                                  ),
+                                ),
                               ),
-                            ),
+                              if (!f.yearly) ...[
+                                const Divider(height: 26),
+                                ExpenseDailyBreakdown(
+                                  summary: summary,
+                                  anchor: f.anchor,
+                                  currency: catalog.currency,
+                                  selectedDay: s.selectedDay,
+                                  onDay: cubit.selectDay,
+                                  onClearDay: () => cubit.selectDay(null),
+                                  onAddExpense:
+                                      catalog.canExpense &&
+                                          s.selectedDay != null
+                                      ? () => addExpense(
+                                          date: DateTime(
+                                            f.anchor.year,
+                                            f.anchor.month,
+                                            s.selectedDay!,
+                                            12,
+                                          ),
+                                        )
+                                      : null,
+                                  onDownloadDay: s.selectedDay == null
+                                      ? null
+                                      : exportDay,
+                                  exporting: s.exporting,
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                       ),
@@ -732,9 +928,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         title: 'Reports',
                         child: FinanceExportCard(
                           note:
-                              '$range · includes the selected category and filters.',
+                              'Choose the period and category for this download.',
                           exporting: s.exporting,
-                          onExport: cubit.export,
+                          onExport: (format) => export(format: format),
                         ),
                       ),
                     ],
@@ -746,4 +942,59 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       ],
     );
   }
+}
+
+class _ExpenseCategoryNameDialog extends StatefulWidget {
+  const _ExpenseCategoryNameDialog({this.category});
+  final ExpenseCategory? category;
+
+  @override
+  State<_ExpenseCategoryNameDialog> createState() =>
+      _ExpenseCategoryNameDialogState();
+}
+
+class _ExpenseCategoryNameDialogState
+    extends State<_ExpenseCategoryNameDialog> {
+  late final controller = TextEditingController(text: widget.category?.name);
+  bool invalid = false;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.category == null ? 'New category' : 'Edit category'),
+    content: TextField(
+      controller: controller,
+      maxLength: 80,
+      autofocus: true,
+      decoration: InputDecoration(
+        labelText: 'Category name',
+        errorText: invalid ? 'Name must be at least 2 characters.' : null,
+      ),
+      onChanged: (_) {
+        if (invalid) setState(() => invalid = false);
+      },
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () {
+          final name = controller.text.trim();
+          if (name.length < 2) {
+            setState(() => invalid = true);
+            return;
+          }
+          Navigator.pop(context, name);
+        },
+        child: const Text('Save'),
+      ),
+    ],
+  );
 }
