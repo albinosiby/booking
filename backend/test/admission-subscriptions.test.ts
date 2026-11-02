@@ -31,12 +31,13 @@ const hours = {
   date_from: null,
   date_until: null,
 };
-function configuration() {
+function configuration(subscriptions = true) {
   const ids = [randomUUID()];
   return {
     kind: "court_v1",
     schema_version: 1,
     renewal_reminder_days: 3,
+    subscriptions_enabled: subscriptions,
     courts: ids.map((id, n) => ({
       id,
       name: `Court ${n + 1}`,
@@ -60,7 +61,7 @@ function configuration() {
     plans: [],
   };
 }
-async function fixture() {
+async function fixture(subscriptions = true) {
   const owner = {
     uid: randomUUID(),
     email: randomUUID() + "@example.com",
@@ -87,7 +88,7 @@ async function fixture() {
     type: "badminton",
     location_id: w.locations[0].id,
   });
-  const config = configuration();
+  const config = configuration(subscriptions);
   await courts.configure(owner, b.id, { version: 1, configuration: config });
   await workspace.activate(owner, b.id);
   return { owner, config, businessId: b.id };
@@ -182,7 +183,17 @@ test("monthly fees fall due each month from activation; custom periods are one f
       subscriptionExpiry("2030-06-01", { months: 1, ends_on: "2030-06-20" }),
     /months or a custom end date/,
   );
-  const custom = subscriptionPlan({ kind: "court_v1" }, "2030-06-01", {
+  const on = { kind: "court_v1", subscriptions_enabled: true };
+  assert.throws(
+    () =>
+      subscriptionPlan({ kind: "court_v1" }, "2030-06-01", {
+        monthly_minor: 90000,
+        months: 1,
+        ends_on: null,
+      }),
+    /Subscriptions are off for this space/,
+  );
+  const custom = subscriptionPlan(on, "2030-06-01", {
     monthly_minor: 90000,
     months: null,
     ends_on: "2030-06-20",
@@ -194,7 +205,7 @@ test("monthly fees fall due each month from activation; custom periods are one f
   ]);
   assert.throws(
     () =>
-      subscriptionPlan({ kind: "court_v1" }, "2030-06-01", {
+      subscriptionPlan(on, "2030-06-01", {
         monthly_minor: 99999999,
         months: 2,
         ends_on: null,
@@ -210,6 +221,30 @@ test("monthly fees fall due each month from activation; custom periods are one f
     }).success,
     false,
   );
+});
+
+test("Subscription stays hidden and refused until Configure turns it on", async () => {
+  const f = await fixture(false);
+  const off = (await service.catalog(f.owner)).businesses.find(
+    (b: any) => b.id === f.businessId,
+  );
+  assert.equal(off.subscriptions, false);
+  await assert.rejects(
+    () => service.preview(f.owner, input(f)),
+    /Subscriptions are off for this space/,
+  );
+  const current = await workspace.workspace(f.owner);
+  const business = current.businesses.find((b: any) => b.id === f.businessId);
+  await courts.configure(f.owner, f.businessId, {
+    version: business.version,
+    configuration: { ...f.config, subscriptions_enabled: true },
+  });
+  await workspace.activate(f.owner, f.businessId);
+  const on = (await service.catalog(f.owner)).businesses.find(
+    (b: any) => b.id === f.businessId,
+  );
+  assert.equal(on.subscriptions, true);
+  assert.equal((await service.preview(f.owner, input(f))).total_minor, 450000);
 });
 
 test("a subscription reserves its weekly slot for every month at the agreed monthly fee", async () => {

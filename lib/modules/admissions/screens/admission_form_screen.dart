@@ -131,10 +131,13 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
               s.preview == null &&
               widget.renewalId == null &&
               s.draft.renewedFrom == null,
-          items: const [
-            PickerItem('plans', 'Plan'),
-            PickerItem('coaching', 'Coaching'),
-            PickerItem('subscription', 'Subscription'),
+          items: [
+            const PickerItem('plans', 'Plan'),
+            const PickerItem('coaching', 'Coaching'),
+            // Shown when Configure turned subscriptions on for this space.
+            if (s.business?.subscriptions == true ||
+                s.formKind == 'subscription')
+              const PickerItem('subscription', 'Subscription'),
           ],
           onChanged: cubit.admissionType,
         ),

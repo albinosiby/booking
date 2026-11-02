@@ -180,6 +180,15 @@ Verification: backend `test/admission-slot-chart.test.ts`; Flutter
 A subscription is a person who books a weekly slot for a monthly fee agreed
 with them. It needs no configured plan: staff set the amount per person.
 
+**Turn it on per space:** Configure → the court's **Plans & coaching** or the
+pool's **Swimming plans** → **Subscriptions** switch, then save. The switch is
+stored as `subscriptions_enabled: true` in that business's configuration (off
+when missing). While it is off, New booking and New admission do not offer
+Subscription and the API refuses new subscriptions and slot charts with
+"Subscriptions are off for this space. Turn them on in Configure first."
+Turning it off later keeps existing subscriptions: they can still be collected,
+rescheduled and stopped, but not renewed until it is turned back on.
+
 **Add one:** New booking → choose the space → **Subscription** (beside Court
 booking, Court plan and Coaching). Enter the customer's name and phone, the
 activation date, how long (1, 2, 3, 6 or 12 months, or **Custom days** with a

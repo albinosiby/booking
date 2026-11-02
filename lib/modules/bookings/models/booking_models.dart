@@ -111,9 +111,13 @@ class BookingBusiness extends Equatable {
     required this.timezone,
     required this.today,
     required this.spaces,
+    this.subscriptions = false,
   });
   final String id, name, type, timezone, today;
   final List<BookingSpace> spaces;
+
+  /// Configure turned on monthly subscriptions for this space.
+  final bool subscriptions;
   factory BookingBusiness.fromJson(Map<String, dynamic> j) => BookingBusiness(
     id: j['id'],
     name: j['name'],
@@ -125,9 +129,18 @@ class BookingBusiness extends Equatable {
         (r) => BookingSpace.fromJson(Map<String, dynamic>.from(r)),
       ),
     ),
+    subscriptions: j['subscriptions'] == true,
   );
   @override
-  List<Object?> get props => [id, name, type, timezone, today, spaces];
+  List<Object?> get props => [
+    id,
+    name,
+    type,
+    timezone,
+    today,
+    spaces,
+    subscriptions,
+  ];
 }
 
 class BookingMoneyAccount extends Equatable {

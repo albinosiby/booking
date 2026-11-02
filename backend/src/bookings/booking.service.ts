@@ -168,6 +168,7 @@ export class BookingService {
             locations.find((l: Row) => l.id === b.location_id)!.timezone,
           ).slice(0, 10),
           resources: bookingOptions(b),
+          subscriptions: b.configuration?.subscriptions_enabled === true,
         }))
         .filter((b: Row) => b.resources.length),
     };

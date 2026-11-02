@@ -38,12 +38,14 @@ class CourtCoachingModel {
     this.selected,
     this.currency, {
     this.reminderDays = 3,
+    this.subscriptions = false,
   });
   final List<CourtResource> courts;
   final List<CourtPlan> plans;
   final CourtPlan? selected;
   final String currency;
   final int reminderDays;
+  final bool subscriptions;
 }
 
 class CourtReviewModel {

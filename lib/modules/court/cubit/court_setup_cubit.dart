@@ -230,6 +230,11 @@ class CourtSetupCubit extends ConfigurationSetupCubit<CourtSetupState> {
     _edit(state.draft.copyWith(reminderDays: days));
   }
 
+  void subscriptions(bool on) {
+    if (state.disabled) return;
+    _edit(state.draft.copyWith(subscriptions: on));
+  }
+
   void updatePlan(String id, CourtPlan Function(CourtPlan) update) {
     if (state.pendingPlan?.id == id) {
       if (state.disabled) return;

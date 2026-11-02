@@ -106,6 +106,10 @@ export function subscriptionPlan(
   start: string,
   term: z.infer<typeof subscriptionSchema>,
 ) {
+  if (configuration?.subscriptions_enabled !== true)
+    throw new BadRequestException(
+      "Subscriptions are off for this space. Turn them on in Configure first.",
+    );
   const expires = subscriptionExpiry(start, term),
     fees = instalments(start, term),
     total = fees.reduce((n, i) => n + i.amount_minor, 0);

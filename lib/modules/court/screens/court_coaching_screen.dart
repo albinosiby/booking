@@ -54,6 +54,19 @@ class CourtCoachingScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          AppCard(
+            child: SwitchListTile(
+              key: const ValueKey('court-subscriptions'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Subscriptions'),
+              subtitle: const Text(
+                'Members pay a monthly fee and keep a weekly time slot. Turn on to show Subscription in New booking.',
+              ),
+              value: model.subscriptions,
+              onChanged: disabled ? null : cubit.subscriptions,
+            ),
+          ),
+          const SizedBox(height: 16),
           ConfigurationField(
             key: const ValueKey('court-reminder-days'),
             label: 'Payment reminder · days before a plan ends',

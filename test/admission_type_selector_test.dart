@@ -47,6 +47,7 @@ class AdmissionTypeRepository extends AdmissionsFake {
             'Coach Asha',
           ),
         ],
+        subscriptions: true,
       ),
     ],
   );

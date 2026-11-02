@@ -209,11 +209,15 @@ class AdmissionBusiness extends Equatable {
     this.pools,
     this.plans, {
     this.spaceKind = 'pool',
+    this.subscriptions = false,
   });
   final String id, name, today, timezone;
 
   /// `pool` or `court`; [pools] holds that business's bookable spaces.
   final String spaceKind;
+
+  /// Configure turned on monthly subscriptions for this space.
+  final bool subscriptions;
   final List<AdmissionPool> pools;
   final List<AdmissionPlan> plans;
   bool get court => spaceKind == 'court';
@@ -227,6 +231,7 @@ class AdmissionBusiness extends Equatable {
     pools,
     plans,
     spaceKind,
+    subscriptions,
   ];
 }
 

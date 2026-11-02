@@ -124,6 +124,7 @@ class RestAdmissionRepository
               ),
             ),
             spaceKind: b['space_kind'] ?? 'pool',
+            subscriptions: b['subscriptions'] == true,
           ),
         ),
       ),

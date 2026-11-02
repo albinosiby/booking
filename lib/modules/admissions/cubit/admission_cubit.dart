@@ -791,6 +791,10 @@ class AdmissionCubit extends Cubit<AdmissionState> {
                   !state.availablePlans.any((p) => p.id == d.planId))) {
       error = 'Choose a space and plan.';
     }
+    if (state.subscription && state.business?.subscriptions == false) {
+      error =
+          'Subscriptions are off for this space. Turn them on in Configure first.';
+    }
     if (state.subscription && d.weekdays.isEmpty) {
       error = 'Choose the weekdays this subscription reserves.';
     }

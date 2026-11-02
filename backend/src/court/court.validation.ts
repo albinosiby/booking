@@ -119,6 +119,8 @@ export const courtConfigurationSchema = z
     plans: z.array(plan).max(50).optional(),
     /** Days before a term ends when Home lists it for next month's payment. */
     renewal_reminder_days: z.number().int().min(0).max(30).optional(),
+    /** Shows Subscription in New booking and admissions for this space. */
+    subscriptions_enabled: z.boolean().optional(),
     // Coaches are team members now; plans reference their membership id.
     coaches: z
       .array(z.unknown())

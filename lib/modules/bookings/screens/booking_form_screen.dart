@@ -154,7 +154,11 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final mode in PoolBookingMode.values)
+            for (final mode in PoolBookingMode.values.where(
+              (m) =>
+                  m != PoolBookingMode.subscription ||
+                  s.business?.subscriptions == true,
+            ))
               ChoiceChip(
                 label: Text(switch (mode) {
                   PoolBookingMode.singleVisit => 'Court booking',

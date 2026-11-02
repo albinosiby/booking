@@ -274,6 +274,11 @@ class PoolSetupCubit extends ConfigurationSetupCubit<PoolSetupState> {
           ),
         ),
       );
+  void subscriptions(bool on) {
+    if (state.disabled) return;
+    _edit(state.draft.copyWith(subscriptions: on));
+  }
+
   void copyPricing(String id, Iterable<String> targetIds) {
     final source = state.draft.pools.firstWhere((p) => p.id == id);
     _edit(

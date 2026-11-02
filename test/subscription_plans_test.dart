@@ -14,6 +14,8 @@ import 'package:eden_booking/modules/admissions/widgets/admission_slot_chart.dar
 import 'package:eden_booking/modules/admissions/widgets/payment_reminders_section.dart';
 import 'package:eden_booking/modules/admissions/widgets/subscription_sections.dart';
 import 'package:eden_booking/modules/bookings/models/booking_models.dart';
+import 'package:eden_booking/modules/court/models/court_configuration.dart';
+import 'package:eden_booking/modules/pool/models/pool_configuration.dart';
 import 'package:eden_booking/modules/notifications/models/booking_notification.dart';
 import 'package:eden_booking/utils/exceptions/app_exception.dart';
 import 'admissions_test.dart' show AdmissionsFake, example, workspace;
@@ -34,8 +36,9 @@ class SubscriptionFake extends AdmissionsFake implements MembershipActions {
   List<Admission> dueSoon = const [], unpaid = const [];
   final collected = <(String, List<BookingPaymentDraft>, String)>[];
   AppException? collectError;
+  bool subscriptionsOn = true;
   @override
-  Future<AdmissionCatalog> catalog() async => const AdmissionCatalog(
+  Future<AdmissionCatalog> catalog() async => AdmissionCatalog(
     canManage: true,
     canAttend: true,
     canCollect: true,
@@ -46,7 +49,7 @@ class SubscriptionFake extends AdmissionsFake implements MembershipActions {
         'Badminton club',
         '2030-06-01',
         'Asia/Kolkata',
-        [
+        const [
           AdmissionPool(
             'court',
             'Court 1',
@@ -57,8 +60,9 @@ class SubscriptionFake extends AdmissionsFake implements MembershipActions {
             closesAt: '22:00',
           ),
         ],
-        [],
+        const [],
         spaceKind: 'court',
+        subscriptions: subscriptionsOn,
       ),
     ],
   );
@@ -367,4 +371,59 @@ void main() {
       await c.close();
     },
   );
+
+  test('Configure saves the Subscriptions switch for courts and pools', () {
+    expect(
+      CourtConfiguration().toJson().containsKey('subscriptions_enabled'),
+      false,
+    );
+    final court = CourtConfiguration(subscriptions: true).toJson();
+    expect(court['subscriptions_enabled'], true);
+    expect(CourtConfiguration.fromJson(court).subscriptions, true);
+    final pool = PoolConfiguration(subscriptions: true).toJson();
+    expect(pool['subscriptions_enabled'], true);
+    expect(PoolConfiguration.fromJson(pool).subscriptions, true);
+    expect(
+      PoolConfiguration().toJson().containsKey('subscriptions_enabled'),
+      false,
+    );
+    final space = {
+      'id': 'b',
+      'name': 'Club',
+      'type': 'badminton',
+      'timezone': 'UTC',
+      'today': '2030-06-01',
+      'resources': <Object>[],
+    };
+    expect(BookingBusiness.fromJson(space).subscriptions, false);
+    expect(
+      BookingBusiness.fromJson({...space, 'subscriptions': true}).subscriptions,
+      true,
+    );
+  });
+
+  test('a space with Subscriptions off refuses a new subscription', () async {
+    final w = await workspace(),
+        r = SubscriptionFake()..subscriptionsOn = false,
+        c = AdmissionCubit(w, r);
+    await c.loadForm(
+      formKind: 'subscription',
+      businessId: 'business',
+      poolId: 'court',
+      date: '2030-06-01',
+    );
+    expect(c.state.business!.subscriptions, false);
+    c.update(
+      c.state.draft.copyWith(
+        customer: const BookingCustomer(name: 'Rahul', phone: '9000000001'),
+        weekdays: const [6, 7],
+        time: '17:00',
+        amount: '1500',
+      ),
+    );
+    await c.review();
+    expect(c.state.error, contains('Subscriptions are off for this space'));
+    expect(c.state.preview, isNull);
+    await c.close();
+  });
 }

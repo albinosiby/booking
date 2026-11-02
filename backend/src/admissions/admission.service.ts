@@ -336,6 +336,7 @@ export class AdmissionService {
         name: b.name,
         type: b.type,
         space_kind: c.kind === "court_v1" ? "court" : "pool",
+        subscriptions: c.subscriptions_enabled === true,
         timezone: b.timezone,
         today: localStamp(Date.now(), b.timezone).slice(0, 10),
         pools: pools.map((p: Row) => ({

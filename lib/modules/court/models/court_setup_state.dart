@@ -75,6 +75,7 @@ class CourtSetupState extends WorkspaceState {
     selectedPlan,
     currency,
     reminderDays: draft.reminderDays,
+    subscriptions: draft.subscriptions,
   );
   CourtReviewModel get reviewModel => CourtReviewModel(draft, currency);
   CourtSetupState copyWith({
