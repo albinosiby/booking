@@ -882,6 +882,8 @@ export class BookingService {
         status: z
           .enum(["confirmed", "completed", "cancelled", "no_show"])
           .optional(),
+        // The Bookings page leaves plan and subscription sessions out.
+        exclude_admissions: z.enum(["true", "false"]).optional(),
       })
       .strict()
       .parse(input);
@@ -907,6 +909,7 @@ export class BookingService {
       values.push("%" + v.q + "%");
       where += ` AND (b.customer_snapshot->>'name' ILIKE $${values.length} OR b.customer_snapshot->>'phone' ILIKE $${values.length} OR b.reference ILIKE $${values.length})`;
     }
+    if (v.exclude_admissions === "true") where += " AND b.admission_id IS NULL";
     where += await this.scopeCondition(m, values);
     const start =
       "(b.starts_at AT TIME ZONE (b.price_snapshot->>'timezone'))::date";
@@ -936,6 +939,8 @@ export class BookingService {
         status: z
           .enum(["confirmed", "completed", "cancelled", "no_show"])
           .optional(),
+        // The Bookings page leaves plan and subscription sessions out.
+        exclude_admissions: z.enum(["true", "false"]).optional(),
         cursor: z.coerce.number().int().min(0).max(100000).default(0),
       })
       .strict()
@@ -975,6 +980,7 @@ export class BookingService {
     }
     if (v.resource_id) add("b.resource_id=?", v.resource_id);
     if (v.status) add("b.status=?", v.status);
+    if (v.exclude_admissions === "true") where += " AND b.admission_id IS NULL";
     if (v.q) add("(b.customer_snapshot->>'name' ILIKE ?)", "%" + v.q + "%");
     if (v.q) {
       const i = values.length;

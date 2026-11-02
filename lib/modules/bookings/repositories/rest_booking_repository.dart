@@ -32,6 +32,7 @@ class RestBookingRepository implements BookingRepository, RefreshableReads {
     String? spaceId,
     String? query,
     String? status,
+    bool excludeAdmissions = false,
   }) async {
     final j = await api.retainedRead(
       uri('/bookings/date-counts', {
@@ -41,6 +42,7 @@ class RestBookingRepository implements BookingRepository, RefreshableReads {
         'resource_id': spaceId,
         'q': query,
         'status': status,
+        if (excludeAdmissions) 'exclude_admissions': 'true',
       }),
     );
     return Map.unmodifiable({
@@ -154,6 +156,7 @@ class RestBookingRepository implements BookingRepository, RefreshableReads {
     String? query,
     String? status,
     int cursor = 0,
+    bool excludeAdmissions = false,
   }) async {
     final j = await api.retainedRead(
       uri('/bookings', {
@@ -164,6 +167,7 @@ class RestBookingRepository implements BookingRepository, RefreshableReads {
         'business_id': businessId,
         'q': query,
         'status': status,
+        if (excludeAdmissions) 'exclude_admissions': 'true',
         'cursor': cursor,
       }),
     );

@@ -55,6 +55,7 @@ class WarmBookings extends FakeBookingRepository {
     String? query,
     String? status,
     int cursor = 0,
+    bool excludeAdmissions = false,
   }) => gate(() => super.list(date: date, overlap: overlap));
 }
 

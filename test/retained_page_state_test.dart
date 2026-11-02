@@ -33,6 +33,7 @@ class DeferredBookings extends FakeBookingRepository {
     String? query,
     String? status,
     int cursor = 0,
+    bool excludeAdmissions = false,
   }) {
     if (failure != null) return Future.error(failure!);
     return pendingList?.future ??

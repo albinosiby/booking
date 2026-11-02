@@ -34,6 +34,7 @@ class DateRepository extends FakeBookingRepository {
     String? spaceId,
     String? query,
     String? status,
+    bool excludeAdmissions = false,
   }) async {
     countRequests.add(status);
     final pending = nextCounts;
@@ -67,6 +68,7 @@ class DateRepository extends FakeBookingRepository {
     String? query,
     String? status,
     int cursor = 0,
+    bool excludeAdmissions = false,
   }) async {
     if (failList) throw const AppException('Could not load bookings. Retry.');
     requests.add(date);

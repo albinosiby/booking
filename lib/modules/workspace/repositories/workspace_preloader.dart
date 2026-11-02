@@ -59,13 +59,14 @@ class WorkspacePreloader {
       add(bookings.catalog);
       if (workspace.hasPermission('view_bookings') ||
           workspace.hasPermission('manage_bookings')) {
-        add(() => bookings.list());
+        add(() => bookings.list(excludeAdmissions: true));
         add(() => bookings.list(date: today, overlap: true));
         final utc = DateTime.utc(now.year, now.month, now.day);
         add(
           () => bookings.dateCounts(
             date: bookingDate(utc.subtract(const Duration(days: 15))),
             dateUntil: bookingDate(utc.add(const Duration(days: 15))),
+            excludeAdmissions: true,
           ),
         );
       }

@@ -68,6 +68,7 @@ class FakeBookingRepository implements BookingRepository {
     String? spaceId,
     String? query,
     String? status,
+    bool excludeAdmissions = false,
   }) async => {};
   final events = StreamController<void>.broadcast();
   @override
@@ -355,8 +356,13 @@ class FakeBookingRepository implements BookingRepository {
     String? query,
     String? status,
     int cursor = 0,
-  }) async =>
-      BookingPageResult(await Future.wait(records.keys.map(detail)), null);
+    bool excludeAdmissions = false,
+  }) async => BookingPageResult(
+    (await Future.wait(
+      records.keys.map(detail),
+    )).where((b) => !excludeAdmissions || b.admissionId == null).toList(),
+    null,
+  );
   @override
   Future<CollectionPage> collections({
     String? date,

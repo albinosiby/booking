@@ -24,10 +24,17 @@ class CalendarAttendance extends StatelessWidget {
     children: [
       Text(
         cancelled
-            ? 'Admission visit · Cancelled'
-            : 'Admission visit · $attendance',
+            ? 'Plan session · Cancelled'
+            : 'Plan session · ${switch (attendance) {
+                'present' => 'Present',
+                'absent' => 'Absent',
+                _ => 'Not marked',
+              }}',
       ),
+      // Once marked, the session only shows its result; corrections are
+      // made from the admission.
       if (!cancelled &&
+          attendance == 'unmarked' &&
           context.read<WorkspaceCubit>().state.data.hasPermission(
             'mark_attendance',
           ))
