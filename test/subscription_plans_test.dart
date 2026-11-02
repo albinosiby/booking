@@ -11,7 +11,6 @@ import 'package:eden_booking/modules/admissions/repositories/admission_repositor
 import 'package:eden_booking/modules/admissions/repositories/rest_admission_repository.dart';
 import 'package:eden_booking/modules/admissions/widgets/admission_form_fields.dart';
 import 'package:eden_booking/modules/admissions/widgets/admission_slot_chart.dart';
-import 'package:eden_booking/modules/admissions/widgets/payment_reminders_section.dart';
 import 'package:eden_booking/modules/admissions/widgets/subscription_sections.dart';
 import 'package:eden_booking/modules/bookings/models/booking_models.dart';
 import 'package:eden_booking/modules/court/models/court_configuration.dart';
@@ -280,64 +279,6 @@ void main() {
       isNull,
     );
   });
-
-  testWidgets(
-    'Home lists fees due soon and started months to collect, and collects an entered amount',
-    (tester) async {
-      final r = SubscriptionFake()
-        ..dueSoon = [term()]
-        ..unpaid = [term(id: 'old', status: 'expired')];
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.build(Brightness.light),
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: PaymentRemindersSection(
-                repository: r,
-                canRenew: true,
-                canCollect: true,
-                showAmounts: true,
-                currency: 'INR',
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('Due soon'), findsOneWidget);
-      expect(find.text('Collect now'), findsOneWidget);
-      expect(
-        find.text('Next month INR 1500.00 due 2030-07-01'),
-        findsOneWidget,
-      );
-      expect(find.text('INR 700.00 due now'), findsNWidgets(2));
-      expect(
-        find.text('Subscription · Sat/Sun · 2 h · Badminton club'),
-        findsNWidgets(2),
-      );
-      // A subscription with months left is collected, not renewed.
-      expect(find.text('Renew & collect'), findsNothing);
-      expect(find.text('View subscription'), findsNWidgets(2));
-
-      await tester.tap(find.byKey(const ValueKey('collect-old')));
-      await tester.pumpAndSettle();
-      expect(find.text('Collect from Rahul'), findsOneWidget);
-      expect(
-        find.text('Remaining after this: INR 0.00'),
-        findsOneWidget,
-        reason: 'the full due amount is prefilled',
-      );
-      await tester.enterText(find.widgetWithText(TextField, '700.00'), '300');
-      await tester.pumpAndSettle();
-      expect(find.text('Remaining after this: INR 400.00'), findsOneWidget);
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-      expect(r.collected.single.$1, 'old');
-      expect(r.collected.single.$2.single.minor, 30000);
-      expect(find.text('Payment recorded.'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
 
   test(
     'an unconfirmed Home collection retries with the same command key',

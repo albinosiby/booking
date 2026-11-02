@@ -393,6 +393,9 @@ class Admission extends Equatable {
       renewalId == null &&
       (renewalOpen || ['completed', 'expired'].contains(status));
 
+  /// What to collect now: started subscription months, or a plan's balance.
+  int get collectNow => subscription == null ? balance : owedNow;
+
   /// Renewing before this term ends starts the next term the day after it.
   bool get earlyRenewal => canRenew && status == 'active';
   bool get canCheckIn =>

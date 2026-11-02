@@ -27,3 +27,24 @@ String hoursLabel(int minutes) {
   final hours = minutes / 60;
   return '${hours == hours.roundToDouble() ? hours.toInt() : hours.toStringAsFixed(1)} h';
 }
+
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// `2026-10-04` → `Oct 2026`, naming the term a due amount belongs to.
+String termMonth(String date) {
+  final d = DateTime.tryParse(date);
+  return d == null ? date : '${_months[d.month - 1]} ${d.year}';
+}
