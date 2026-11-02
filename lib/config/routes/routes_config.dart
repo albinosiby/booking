@@ -65,6 +65,7 @@ import 'route_guard.dart';
 import '../../modules/agent_calls/screens/agent_service_screen.dart';
 import '../../modules/support/screens/support_screens.dart';
 import '../../modules/agent_calls/screens/call_logs_screen.dart';
+import '../../modules/call_wallet/screens/call_wallet_screen.dart';
 
 class RouterRefresh extends ChangeNotifier {
   RouterRefresh(List<Stream<Object?>> streams) {
@@ -144,6 +145,11 @@ GoRouter createRouter(
         builder: (c, s) => SupportThreadScreen(id: s.pathParameters['id']!),
       ),
       GoRoute(path: Routes.callLogs, builder: (c, s) => const CallLogsScreen()),
+      GoRoute(
+        path: Routes.callWallet,
+        builder: (c, s) =>
+            CallWalletScreen(returnOrderId: s.uri.queryParameters['order_id']),
+      ),
       GoRoute(
         path: '/profile/message-templates',
         builder: (c, s) => const TemplatesScreen(),

@@ -15,7 +15,9 @@ import 'package:eden_booking/modules/agent_calls/screens/agent_service_screen.da
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
 import 'package:eden_booking/utils/exceptions/app_exception.dart';
+import 'package:eden_booking/modules/call_wallet/repositories/call_wallet_repository.dart';
 import 'booking_module_test.dart' show BookingSource;
+import 'call_wallet_fakes.dart';
 
 class TestAgentCalls implements AgentCallRepository {
   AgentServiceStatus value = const AgentServiceStatus();
@@ -224,6 +226,8 @@ void main() {
     getIt.registerSingleton<AgentCallRepository>(repo);
     await getIt.unregister<RecordingSaver>();
     getIt.registerSingleton<RecordingSaver>(saver);
+    await getIt.unregister<CallWalletRepository>();
+    getIt.registerSingleton<CallWalletRepository>(FakeWalletRepository());
     final router = GoRouter(
       routes: [GoRoute(path: '/', builder: (c, s) => screen)],
     );

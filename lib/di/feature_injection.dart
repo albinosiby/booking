@@ -20,6 +20,10 @@ import '../modules/support/support_module.dart';
 import '../modules/agent_calls/models/agent_call_models.dart';
 import '../modules/agent_calls/repositories/agent_call_repository.dart';
 import '../modules/agent_calls/repositories/rest_agent_call_repository.dart';
+import '../modules/call_wallet/cubit/call_wallet_cubit.dart';
+import '../modules/call_wallet/repositories/call_wallet_repository.dart';
+import '../modules/call_wallet/repositories/rest_call_wallet_repository.dart';
+import '../utils/services/cashfree_checkout_service.dart';
 import '../modules/coaching/cubit/coach_classes_cubit.dart';
 import '../modules/coaching/repositories/coach_api.dart';
 import '../modules/team/cubit/team_coaches_cubit.dart';
@@ -152,6 +156,13 @@ void registerFeatureDependencies(GetIt di) {
     () => RestAgentCallRepository(di()),
   );
   di.registerLazySingleton<RecordingSaver>(() => DeviceRecordingSaver());
+  di.registerLazySingleton<CallWalletRepository>(
+    () => RestCallWalletRepository(di()),
+  );
+  di.registerLazySingleton<PaymentCheckout>(() => CashfreeCheckoutService());
+  di.registerFactoryParam<CallWalletCubit, WorkspaceSession, void>(
+    (s, _) => CallWalletCubit(s, di(), di()),
+  );
   di.registerFactoryParam<AgentServiceCubit, WorkspaceSession, void>(
     (s, _) => AgentServiceCubit(s, di()),
   );

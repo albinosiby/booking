@@ -1,6 +1,7 @@
 import { NotificationService } from "../src/notifications/notification.service";
 import { SupportService } from "../src/support/support.service";
 import { AgentCallService } from "../src/agent-calls/agent-calls.service";
+import { CallWalletService } from "../src/call-wallet/call-wallet.service";
 import { AdminService } from "../src/admin/admin.service";
 import { AdminSarvamService } from "../src/admin/admin-sarvam.service";
 import { AdminMcpService } from "../src/admin/admin-mcp.service";
@@ -57,6 +58,7 @@ export const services = {
   adminMcpAuth: new AdminMcpAuthService(db as never),
   support: new SupportService(db as never, workspace),
   agentCalls: new AgentCallService(db as never, workspace, sarvam),
+  callWallet: new CallWalletService(db as never, workspace),
   voice: new VoiceService(db as never, bookings),
   accounts,
   staffCash: new StaffCashService(db as never, workspace),

@@ -1,6 +1,7 @@
 import type { NotificationService } from "../src/notifications/notification.service";
 import type { SupportService } from "../src/support/support.service";
 import type { AgentCallService } from "../src/agent-calls/agent-calls.service";
+import type { CallWalletService } from "../src/call-wallet/call-wallet.service";
 import type { AdminService } from "../src/admin/admin.service";
 import type { AdminSarvamService } from "../src/admin/admin-sarvam.service";
 import {
@@ -51,6 +52,7 @@ type Services = {
   adminMcpAuth?: AdminMcpAuthService;
   support: SupportService;
   agentCalls: AgentCallService;
+  callWallet: CallWalletService;
   website: WebsiteService;
   blocks: SlotBlocksService;
   admissions: AdmissionService;
@@ -356,6 +358,16 @@ export function createHandler(
       },
     });
   });
+  add("GET", "/v1/call-wallet", (i) => services.callWallet.status(i.actor));
+  add("GET", "/v1/call-wallet/transactions", (i) =>
+    services.callWallet.transactions(i.actor, i.query),
+  );
+  add("POST", "/v1/call-wallet/orders", (i) =>
+    services.callWallet.createOrder(i.actor, i.body),
+  );
+  add("POST", "/v1/call-wallet/orders/:id/verify", (i) =>
+    services.callWallet.verify(i.actor, i.params.id),
+  );
   add("GET", "/v1/admin/agent-requests/:id/connection", (i) =>
     ad.connection(i.actor, i.params.id),
   );
@@ -831,6 +843,20 @@ export function createHandler(
         return respond(
           await services.notifications.revokeInstallation(
             await body(req, 1024),
+          ),
+        );
+      }
+      if (req.method === "POST" && path === "/v1/call-wallet/payment-events") {
+        // Forwarded Cashfree events: HMAC signature instead of a user session.
+        if (Number(req.headers.get("content-length")) > 4096)
+          throw new HttpException("Request body is too large.", 413);
+        return respond(
+          await services.callWallet.paymentEvent(
+            {
+              timestamp: req.headers.get("x-booking-pg-timestamp"),
+              signature: req.headers.get("x-booking-pg-signature"),
+            },
+            await body(req, 4096),
           ),
         );
       }

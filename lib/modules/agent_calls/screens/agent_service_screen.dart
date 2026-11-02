@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../config/routes/routes.dart';
 import '../../../design_system/design_system.dart';
 import '../../../di/injection.dart';
+import '../../call_wallet/cubit/call_wallet_cubit.dart';
+import '../../call_wallet/widgets/call_wallet_card.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
 import '../cubit/agent_call_cubits.dart';
 import '../models/agent_call_models.dart';
@@ -20,17 +22,27 @@ class _AgentServiceScreenState extends State<AgentServiceScreen> {
   late final cubit = getIt<AgentServiceCubit>(
     param1: context.read<WorkspaceCubit>(),
   );
+  late final wallet = getIt<CallWalletCubit>(
+    param1: context.read<WorkspaceCubit>(),
+  );
   final note = TextEditingController();
   @override
   void initState() {
     super.initState();
     cubit.load();
+    wallet.load();
+  }
+
+  void refresh() {
+    cubit.load();
+    wallet.load();
   }
 
   @override
   void dispose() {
     note.dispose();
     cubit.close();
+    wallet.close();
     super.dispose();
   }
 
@@ -359,6 +371,11 @@ class _AgentServiceScreenState extends State<AgentServiceScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               action,
+              // Prepaid balance is needed once the service has been requested.
+              if (!canRequest) ...[
+                const SizedBox(height: 20),
+                CallWalletCard(cubit: wallet),
+              ],
               if (s.status.callLogsAvailable) ...[
                 const SizedBox(height: 20),
                 logs(),
@@ -376,7 +393,7 @@ class _AgentServiceScreenState extends State<AgentServiceScreen> {
             actions: [
               IconButton(
                 tooltip: 'Refresh service status',
-                onPressed: s.loading || s.busy ? null : cubit.load,
+                onPressed: s.loading || s.busy ? null : refresh,
                 icon: const Icon(Icons.refresh_rounded),
               ),
             ],
@@ -393,7 +410,7 @@ class _AgentServiceScreenState extends State<AgentServiceScreen> {
                 if (s.error != null) ...[
                   AppErrorWidget(
                     message: s.error!,
-                    onRetry: s.busy ? null : cubit.load,
+                    onRetry: s.busy ? null : refresh,
                   ),
                   const SizedBox(height: 20),
                 ],

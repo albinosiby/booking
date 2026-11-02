@@ -12,6 +12,7 @@ import type { Actor } from "../common/auth.guard";
 import type { WorkspaceService } from "../workspace/workspace.service";
 import type { SarvamService } from "../sarvam/sarvam.service";
 import { serviceSelection } from "./agent-call-policy";
+import { chargeCall } from "../call-wallet/call-wallet.service";
 
 const requestSchema = z
   .object({
@@ -273,8 +274,10 @@ export class AgentCallService {
     const m = await this.workspace.member(actor, true);
     try {
       const { provider_scope, ...result } = await this.provider.calls(actor, q);
-      for (const item of result.items)
+      for (const item of result.items) {
         await this.storeCall(m.organization_id, provider_scope, item);
+        await this.backfillCharge(m.organization_id, item);
+      }
       if (result.total === 0) {
         const saved = await this.savedCalls(m.organization_id, q);
         if (saved.total > 0)
@@ -370,6 +373,17 @@ export class AgentCallService {
       disposition: event.disposition,
       direction: "inbound",
     });
+    await chargeCall(
+      this.db,
+      org,
+      event.interaction_id,
+      event.duration_seconds,
+    ).catch((error) =>
+      console.error("[call-wallet] charge failed", {
+        org,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
     // Raw call transcripts remain a separate, accurately labelled text field.
     if (event.transcript)
       await this.db.query(
@@ -386,6 +400,28 @@ export class AgentCallService {
         ],
       );
     return { ok: true };
+  }
+  /** Charges provider history the on-end event missed, once the call has surely ended. */
+  private async backfillCharge(org: string, item: Record<string, unknown>) {
+    const raw = String(item.started_at ?? "");
+    const started = Date.parse(
+      raw && !/(Z|[+-]\d\d:?\d\d)$/.test(raw)
+        ? raw.replace(" ", "T") + "Z"
+        : raw,
+    );
+    if (
+      typeof item.interaction_id !== "string" ||
+      !Number.isFinite(started) ||
+      Date.now() - started < 3 * 3600000
+    )
+      return;
+    await chargeCall(
+      this.db,
+      org,
+      item.interaction_id,
+      Number(item.duration_seconds ?? 0),
+      new Date(started).toISOString(),
+    ).catch(() => undefined);
   }
   private async storeCall(
     org: string,

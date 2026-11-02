@@ -7,6 +7,11 @@ import { SupportService } from "./support/support.service";
 import { SupportController } from "./support/support.controller";
 import { AgentCallService } from "./agent-calls/agent-calls.service";
 import { AgentCallController } from "./agent-calls/agent-calls.controller";
+import { CallWalletService } from "./call-wallet/call-wallet.service";
+import {
+  CallWalletController,
+  CallWalletEventsController,
+} from "./call-wallet/call-wallet.controller";
 import { AdminService } from "./admin/admin.service";
 import { AdminController } from "./admin/admin.controller";
 import { AdminGuard } from "./admin/admin.guard";
@@ -80,6 +85,8 @@ import {
     MessagesController,
     SupportController,
     AgentCallController,
+    CallWalletController,
+    CallWalletEventsController,
     SarvamOAuthController,
     VoiceController,
     ExpensesController,
@@ -106,6 +113,7 @@ import {
     AdminMcpGuard,
     SupportService,
     AgentCallService,
+    CallWalletService,
     WebsiteService,
     SlotBlocksService,
     AdmissionService,
