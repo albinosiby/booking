@@ -14,6 +14,30 @@ export type StaffCashNotificationDetails = {
   collector_name: string;
 };
 
+export type SubscriptionFeeDetails = {
+  customer_name: string | null;
+  space_name: string | null;
+  amount_minor: number;
+  currency: string;
+  due_on: string;
+};
+
+export function subscriptionFeeNotificationBody(
+  details: SubscriptionFeeDetails,
+) {
+  if (
+    !Number.isSafeInteger(details?.amount_minor) ||
+    details.amount_minor < 0 ||
+    !/^[A-Z]{3}$/.test(details.currency)
+  )
+    throw new Error("Invalid subscription fee snapshot");
+  const money = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: details.currency,
+  }).format(details.amount_minor / 100);
+  return `Collect ${money} from ${label(details.customer_name, "a subscriber")} for this month at ${label(details.space_name, "the space")}.`;
+}
+
 export function staffCashNotificationBody(
   details: StaffCashNotificationDetails,
   forStaff: boolean,

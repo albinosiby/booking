@@ -36,6 +36,7 @@ const listSchema = z
   .object({
     business_id: z.uuid(),
     date: blockDate,
+    resource_id: z.uuid().optional(),
     cursor: z.coerce.number().int().min(0).max(1000000).default(0),
   })
   .strict();
@@ -62,6 +63,7 @@ export class SlotBlocksService {
     businessId: string,
     db: Queryable,
     lock = false,
+    readOnly = false,
   ) {
     const m = (
       await db.query<Row>(
@@ -69,12 +71,18 @@ export class SlotBlocksService {
         [actor.uid],
       )
     ).rows[0];
-    if (
-      !m ||
-      (m.role !== "owner" && !m.permissions.includes("manage_bookings"))
-    )
+    const canManage =
+      !!m && (m.role === "owner" || m.permissions.includes("manage_bookings"));
+    const canRead =
+      canManage ||
+      ["view_bookings", "collect_payments", "manage_attendance"].some((p) =>
+        m?.permissions.includes(p),
+      );
+    if (!m || !(readOnly ? canRead : canManage))
       throw new ForbiddenException(
-        "Booking management permission is required.",
+        readOnly
+          ? "Booking viewing permission is required."
+          : "Booking management permission is required.",
       );
     const b = (
       await db.query<Row>(
@@ -96,7 +104,7 @@ export class SlotBlocksService {
       if (assignment.resource_ids.length)
         scope = new Set(assignment.resource_ids);
     }
-    return { m, b, scope };
+    return { m, b, scope, canManage };
   }
   private keys(b: Row, ids: string[]) {
     const keys = new Set<string>();
@@ -116,7 +124,13 @@ export class SlotBlocksService {
   async list(actor: Actor, input: unknown) {
     const v = listSchema.parse(input);
     return this.db.transaction(async (db) => {
-      const { m, b, scope } = await this.access(actor, v.business_id, db);
+      const { m, b, scope, canManage } = await this.access(
+        actor,
+        v.business_id,
+        db,
+        false,
+        true,
+      );
       const from = new Date(
           zonedTime(v.date, "00:00", b.timezone),
         ).toISOString(),
@@ -128,6 +142,12 @@ export class SlotBlocksService {
       if (scope) {
         values.push(this.keys(b, [...scope]));
         condition = ` AND s.inventory_keys && $${values.length}::text[]`;
+      }
+      if (v.resource_id) {
+        if (scope && !scope.has(v.resource_id))
+          throw new ForbiddenException("This space is not assigned to you.");
+        values.push(this.keys(b, [v.resource_id]));
+        condition += ` AND s.inventory_keys && $${values.length}::text[]`;
       }
       values.push(v.cursor);
       const rows = (
@@ -154,10 +174,13 @@ export class SlotBlocksService {
           local_start: localStamp(Date.parse(r.starts_at), r.timezone),
           local_end: localStamp(Date.parse(r.ends_at), r.timezone),
           timezone: r.timezone,
-          created_by: r.creator,
-          created_at: localStamp(Date.parse(r.created_at), r.timezone),
+          created_by: canManage ? r.creator : "",
+          created_at: canManage
+            ? localStamp(Date.parse(r.created_at), r.timezone)
+            : "",
           can_unblock:
-            !scope || r.resource_ids.every((id: string) => scope.has(id)),
+            canManage &&
+            (!scope || r.resource_ids.every((id: string) => scope.has(id))),
         })),
         next_cursor: rows.length > 100 ? v.cursor + 100 : null,
       };

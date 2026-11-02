@@ -10,6 +10,8 @@ import 'package:eden_booking/modules/bookings/models/booking_models.dart';
 import 'package:eden_booking/modules/bookings/models/booking_list_model.dart';
 import 'package:eden_booking/modules/bookings/repositories/booking_repository.dart';
 import 'package:eden_booking/modules/bookings/widgets/booking_agenda_view.dart';
+import 'package:eden_booking/modules/booking_blocks/models/slot_block_models.dart';
+import 'package:eden_booking/modules/booking_blocks/repositories/slot_block_repository.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_repository_interface.dart';
 import 'package:flutter/material.dart';
@@ -94,8 +96,90 @@ class DateRepository extends FakeBookingRepository {
   }
 }
 
+class CalendarBlocks extends Fake implements SlotBlockRepository {
+  final requests = <(String, String, String?)>[];
+  @override
+  Stream<void> get changes => const Stream.empty();
+  @override
+  Future<SlotBlockPage> list(
+    String businessId,
+    String date, {
+    String? spaceId,
+    int cursor = 0,
+  }) async {
+    requests.add((businessId, date, spaceId));
+    return SlotBlockPage(
+      date == '2030-06-04'
+          ? [
+              SlotBlock(
+                id: 'blocked-court',
+                start: '2030-06-04T09:00',
+                end: '2030-06-04T10:00',
+                timezone: 'Asia/Kolkata',
+                creator: 'Owner',
+                createdAt: '2030-06-01T10:00',
+                allDay: false,
+                canUnblock: false,
+                spaces: const ['Court 1'],
+              ),
+            ]
+          : [],
+      null,
+    );
+  }
+}
+
 void main() {
   tearDown(() => getIt.reset());
+  testWidgets('calendar block card shows space and blocked time', (
+    tester,
+  ) async {
+    final business = (await DateRepository().catalog()).businesses.single;
+    final block = (await CalendarBlocks().list(
+      'business',
+      '2030-06-04',
+    )).items.single;
+    await tester.pumpWidget(
+      ScreenUtilInit(
+        designSize: const Size(390, 844),
+        builder: (context, child) => MaterialApp(
+          theme: darkTheme(),
+          home: Scaffold(
+            body: CalendarBlockCard(
+              entry: CalendarBlockEntry(business, block),
+              date: '2030-06-04',
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('calendar-block-blocked-court')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Blocked ·'), findsOneWidget);
+    expect(find.textContaining('Court 1 · 09:00 – 10:00'), findsOneWidget);
+  });
+  test('calendar loads blocks without bookings and filters by space', () async {
+    final w = WorkspaceCubit(BookingSource());
+    await w.load();
+    final blocks = CalendarBlocks();
+    final cubit = BookingListCubit(
+      w,
+      DateRepository(),
+      BookingListMode.calendar,
+      blockRepository: blocks,
+    );
+    cubit.date('2030-06-04');
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(cubit.state.bookings, isEmpty);
+    expect(cubit.state.blocks, hasLength(1));
+    cubit.filters(businessId: 'business', spaceId: 'space');
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(blocks.requests.last, ('business', '2030-06-04', 'space'));
+    await cubit.close();
+    await w.close();
+  });
   test(
     'changing calendar date clears old results and rejects a late prior response',
     () async {

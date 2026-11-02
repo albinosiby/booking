@@ -81,6 +81,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'Plans, enrolled students, attendance and renewals',
             '/admissions',
           ),
+        if (WorkspaceNavigation(w).admissions)
+          const _Destination(
+            Icons.event_repeat_outlined,
+            'Subscriptions',
+            'Monthly members: stop, reschedule, payments and dues',
+            Routes.subscriptions,
+          ),
         if (w.hasPermission('view_finance') ||
             w.hasPermission('record_expenses'))
           const _Destination(

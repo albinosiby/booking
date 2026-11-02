@@ -101,6 +101,19 @@ class MembershipRepositoryFake extends AdmissionsFake
       ),
     ],
   );
+  List<Admission> dueSoon = const [], unpaid = const [];
+  @override
+  Future<AdmissionPage> paymentReminders(
+    String group, {
+    int cursor = 0,
+  }) async => AdmissionPage(group == 'due_soon' ? dueSoon : unpaid, null);
+  @override
+  Future<void> collectDue(
+    Admission admission,
+    List<BookingPaymentDraft> payments,
+    String key,
+  ) async => collectedPayments = payments;
+
   @override
   Future<AdmissionPage> expiredMembers({int cursor = 0}) async {
     if (expiryError != null) throw expiryError!;

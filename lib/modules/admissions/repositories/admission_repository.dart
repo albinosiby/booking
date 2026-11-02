@@ -6,6 +6,16 @@ abstract interface class MembershipActions {
   Stream<void> get changes;
   Future<AdmissionPage> expiredMembers({int cursor = 0});
   Future<void> deleteMembership(Admission admission, String reason, String key);
+
+  /// Home payment reminders: `due_soon` (next month) or `unpaid` (ended terms).
+  Future<AdmissionPage> paymentReminders(String group, {int cursor = 0});
+
+  /// Records a collection against [admission] at its current version.
+  Future<void> collectDue(
+    Admission admission,
+    List<BookingPaymentDraft> payments,
+    String key,
+  );
 }
 
 abstract class AdmissionRepository {
@@ -60,4 +70,23 @@ abstract class AdmissionRepository {
     String key,
   );
   Future<void> cancel(Admission a, String reason, String key);
+
+  /// Every subscription, newest first, optionally filtered by status.
+  Future<AdmissionPage> subscriptions({
+    String query = '',
+    String? status,
+    int cursor = 0,
+  });
+
+  /// Moves a subscription's remaining sessions from [from] to new weekdays,
+  /// time and hours; earlier sessions stay.
+  Future<void> reschedule(
+    Admission a, {
+    required String from,
+    required List<int> weekdays,
+    required String time,
+    required int duration,
+    required String reason,
+    required String key,
+  });
 }

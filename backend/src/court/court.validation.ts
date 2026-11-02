@@ -96,6 +96,7 @@ const plan = z
     price_minor: price,
     enabled: z.boolean(),
     availability: courtHoursSchema,
+    follow_court_hours: z.boolean().optional(),
     class_duration_minutes: duration.nullable(),
     class_seats: z.number().int().min(1).max(500).nullable(),
     coach_id: id.nullable(),
@@ -116,6 +117,8 @@ export const courtConfigurationSchema = z
     schema_version: z.literal(1),
     courts: z.array(court).max(50),
     plans: z.array(plan).max(50).optional(),
+    /** Days before a term ends when Home lists it for next month's payment. */
+    renewal_reminder_days: z.number().int().min(0).max(30).optional(),
     // Coaches are team members now; plans reference their membership id.
     coaches: z
       .array(z.unknown())
@@ -171,8 +174,10 @@ export const courtConfigurationSchema = z
         if (
           !c.enabled ||
           (p.track_attendance !== false &&
+            !p.follow_court_hours &&
             !within(p.availability, c.operating)) ||
           (p.track_attendance !== false &&
+            !p.follow_court_hours &&
             !p.availability.all_day &&
             (p.class_duration_minutes ?? c.default_duration_minutes) >
               span(p.availability))

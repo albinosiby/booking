@@ -63,7 +63,7 @@ Verification: `flutter analyze`; Flutter tests `admission_overview_test.dart`,
 
 Profile → Plans & Coaching manages customer purchases of configured swimming and coaching plans for pool businesses, and access/coaching plans for court businesses (see [Court coaching](court-coaching.md)). The booking form links to the same admission form. Select a customer, business, pool or court and plan, activation date, attendance mode, and optional split payments. Review the calculated expiry and every fixed session before confirming.
 
-- **Fixed weekly schedule:** selected weekdays/time reserve the complete allowance, up to 1,000 sessions, within validity. Each non-cancelled session uses one unit after its end, even when absent or unmarked. Present/Absent records actual attendance separately. An insufficient schedule or a full interval rejects the entire purchase; it never silently skips a day.
+- **Fixed weekly schedule:** selected weekdays/time reserve every matching date within validity, up to the plan allowance (at most 1,000 sessions). The preview shows the exact count and dates. If fewer dates fit than the allowance, the unscheduled credits expire unused at the end of the term; at least one date must fit. Each non-cancelled session uses one unit after its end, even when absent or unmarked. Present/Absent records actual attendance separately. A full interval rejects the entire purchase; it never silently skips a conflicting day.
 - **Flexible access plans:** no standing reservation. Tap **Mark present** on arrival; there is no date/time picker. The server uses the current minute in the admission's business timezone and the saved visit duration. The visit reserves capacity and consumes one unit per location-local attendance date. Multiple non-overlapping visits on the same date use one unit.
 - **Coaching attendance:** scheduled-session **Present** uses that session's original time. Flexible students appear on coach Home and My classes before a reserved visit exists. **Mark present** joins the unique running class for the same plan, pool/court and duration, preserving its exact interval and seat limit. **Start class & mark present** starts an eligible class at server time with its first student when none is running; the saved attendance time is shown separately. Join-only requests from the admission detail retain their existing behaviour when no class is running. If multiple matching intervals are running, the request is rejected. Existing expiry, opening-hours, coach-conflict and capacity checks still apply. Flexible coaching retains its day-based allowance rule. See [Flexible coaching attendance](flexible-coaching-attendance.md).
 - **Coaching:** configured class duration, seats, pool and snapshotted coach apply. Matching plan/pool/start/end reservations share a class capacity. Independent overlapping classes cannot use the same coach. Calendar displays each student's reservation so attendance can be marked individually. Dedicated named batches and bulk roster attendance are not included.
@@ -174,6 +174,110 @@ shows its error with Retry and the manual **Start time** still works.
 
 Verification: backend `test/admission-slot-chart.test.ts`; Flutter
 `test/admission_slot_chart_test.dart`.
+
+## Subscriptions (monthly members)
+
+A subscription is a person who books a weekly slot for a monthly fee agreed
+with them. It needs no configured plan: staff set the amount per person.
+
+**Add one:** New booking → choose the space → **Subscription** (beside Court
+booking, Court plan and Coaching). Enter the customer's name and phone, the
+activation date, how long (1, 2, 3, 6 or 12 months, or **Custom days** with a
+last day), the weekdays (Every day, Weekends, Weekdays or any mix), then tap a
+start and an end on the time grid. Enter the **Monthly fee** (or **Fee for this
+period** for custom days) and collect the first month in full, half or any
+amount — or confirm unpaid. Plans → New admission → type **Subscription** offers
+the same form.
+
+**Reserved slot:** every chosen weekday from activation through the last day is
+reserved, exactly like a fixed plan, so ordinary bookings and other admissions
+see it as taken and the slot chart names who holds it.
+
+**Monthly fees:** month *k* is due *k* months after activation; a custom period
+is one fee due at activation. The total is fee × months. Payments fill months in
+order and may be paid ahead up to the total.
+
+**Profile → Subscriptions** lists every subscription with search and filters
+(All, Active, Upcoming, Stopped, Ended), the slot, fee and anything due now. The
+detail page shows each month's fee as Paid, due or upcoming, the sessions,
+payment history and history, and offers:
+
+- **Reschedule** – new weekdays, start time and hours from a chosen date. All
+  later sessions move; earlier ones stay. Clashes are refused with who holds
+  the slot.
+- **Move one session** – the existing per-session reschedule.
+- **Stop subscription** (More actions) – cancels future sessions and removes
+  months that have not started. Started months stay owed.
+- **Collect payment** / **Record refund** – the existing payment actions.
+
+**Home:**
+
+- **Collect now** lists subscription months that have started but are not fully
+  paid, and ended plans still owed money. **Collect** takes any amount up to
+  what is due now; the rest stays until paid.
+- **Due soon** lists next monthly fees inside the business's reminder days
+  (court settings, default 3) and plans ending soon.
+
+**Push:** on each month's due day, owners and staff with `collect_payments` (in
+the subscription's space) get "Subscription fee due" with the customer, amount
+and space. Tapping it opens the subscription. The first month is collected at
+signup and is not pushed.
+
+Court plans no longer have hourly "subscription pricing" or package prices; the
+monthly fee is set per person instead.
+
+### API
+
+| Method | Path | Body or query | Permission |
+| --- | --- | --- | --- |
+| POST | `/v1/admissions/preview`, `/v1/admissions` | as other admissions, with `subscription: {monthly_minor, months, ends_on}` instead of `plan_id`; `months` 1–24 or `ends_on`, exactly one; `mode` `fixed` with at least one weekday; `plan_amount_minor` is not accepted | `manage_subscriptions` (+ `collect_payments` to record payments) |
+| POST | `/v1/admissions/slot-chart` | `subscription: {months, ends_on}` instead of `plan_id` | `manage_subscriptions` |
+| GET | `/v1/admissions?subscription=true` | list only subscriptions (`false` excludes them) | `view_bookings` |
+| POST | `/v1/admissions/:id/schedule` | `command_key`, `version`, `from_date`, `weekdays`, `time`, `duration_minutes`, `reason` | `manage_subscriptions` |
+| POST | `/v1/admissions/:id/cancel` | unchanged; for subscriptions also trims months not started | `manage_subscriptions` |
+| GET | `/v1/admissions/payment-reminders?group=due_soon\|unpaid` | `unpaid` is shown as **Collect now** | any reader; amounts need `view_finance` or `collect_payments` |
+
+The admission is stored with `plan_id` `00000000-0000-4000-8000-000000000005`
+and the terms in `plan_snapshot.subscription`
+(`months`, `ends_on`, `monthly_minor`, `instalments[{due_on, amount_minor}]`,
+and `stopped_on` once stopped). List and detail responses add
+`due_now_minor`, `owed_now_minor`, `next_due_on` and `next_due_minor`.
+
+### User-applied push migration
+
+Creating, collecting, rescheduling and stopping subscriptions need **no**
+migration. Only the month-end push does:
+`supabase/migrations/20261102090000_subscription_fee_notifications.sql`. It adds
+`admission_id`, `due_on` and `fee_details` to the private push outbox, allows
+the `subscription_fee_due` kind, adds one alert per subscription and due date,
+and indexes running subscriptions. No new cron job: the existing
+`booking-notifications` scheduler queues due fees on each run.
+
+Release order:
+
+1. Apply the migration (SQL editor or `supabase db push`). It refuses to run
+   before the admissions, Firebase and staff-cash notification migrations.
+2. Deploy `booking-api` and `booking-notifications` from the regenerated
+   bundles in `supabase/functions/`.
+3. Release the app.
+
+If the sender is deployed before the migration, fee alerts are skipped and
+`subscription_fee_queue_failed` is logged on each run; booking and cash alerts
+keep sending. Validate:
+
+```sql
+SELECT name FROM booking_app.schema_migrations
+ WHERE name='20261102090000_subscription_fee_notifications.sql';          -- 1 row
+SELECT conname FROM pg_constraint
+ WHERE conname IN ('notification_subscription_fee_key','notification_admission_org_fk'); -- 2 rows
+SELECT count(*) FROM booking_app.booking_notification_events
+ WHERE kind='subscription_fee_due' AND fee_details IS NULL;                -- 0
+```
+
+Recovery: before any fee alert exists, the change can be reverted by dropping
+the three columns, the index and the two constraints and restoring the previous
+`kind`/source checks. After alerts exist, keep the columns and ship a forward
+fix instead.
 
 ## Membership-only plans and retained deletions
 

@@ -3,8 +3,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../../../design_system/design_system.dart';
+import '../../../utils/helpers/subscription_labels.dart';
 import '../../../utils/helpers/time_format.dart';
+import '../../bookings/models/booking_models.dart';
+import '../../bookings/models/booking_time_cell.dart';
 import '../../bookings/models/slot_holder.dart';
+import '../../bookings/widgets/booking_form_sections.dart';
 import '../../bookings/widgets/slot_holders_sheet.dart';
 import '../cubit/admission_cubit.dart';
 import '../cubit/admission_slot_chart_cubit.dart';
@@ -31,7 +35,10 @@ SlotChartRequest? slotChartRequest(AdmissionState s) {
     planId: d.planId!,
     start: d.start,
     weekdays: d.weekdays,
-    duration: d.duration,
+    // The shortest length lets every longer start–end range be checked.
+    duration: s.endDurations.firstOrNull ?? d.duration,
+    months: d.endsOn == null ? d.months : null,
+    endsOn: d.endsOn,
   );
 }
 
@@ -55,10 +62,36 @@ class AdmissionSlotChartPanel extends StatefulWidget {
 class _AdmissionSlotChartPanelState extends State<AdmissionSlotChartPanel> {
   late final chart = AdmissionSlotChartCubit(widget.cubit.repository)
     ..load(slotChartRequest(widget.state));
+
+  /// Like booking: pick a start, then an end; the draft keeps the last range.
+  PlanPick pick = PlanPick.done;
   @override
   void didUpdateWidget(AdmissionSlotChartPanel old) {
     super.didUpdateWidget(old);
     chart.load(slotChartRequest(widget.state));
+    // An exact time typed elsewhere completes the range.
+    if (pick == PlanPick.start &&
+        old.state.draft.time != widget.state.draft.time) {
+      pick = PlanPick.done;
+    }
+  }
+
+  void choose(PlanCell cell) {
+    final d = widget.state.draft, durations = widget.state.endDurations;
+    final next = switch (cell.role) {
+      PlanRole.start => PlanPick.start,
+      PlanRole.end when pick == PlanPick.done => PlanPick.end,
+      PlanRole.end => PlanPick.done,
+      PlanRole.free => durations.length > 1 ? PlanPick.end : PlanPick.done,
+    };
+    setState(() => pick = next);
+    if (cell.role == PlanRole.free) {
+      widget.cubit.update(d.copyWith(time: cell.time));
+    } else if (cell.role == PlanRole.end &&
+        cell.duration != null &&
+        next == PlanPick.done) {
+      widget.cubit.update(d.copyWith(duration: cell.duration));
+    }
   }
 
   @override
@@ -76,7 +109,9 @@ class _AdmissionSlotChartPanelState extends State<AdmissionSlotChartPanel> {
       final theme = Theme.of(context);
       final d = widget.state.draft;
       final data = c.chart;
-      final selected = data?.at(d.time);
+      final clash = data == null || c.request == null
+          ? null
+          : rangeClash(data, d.time, d.duration, c.request!.duration);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -85,8 +120,8 @@ class _AdmissionSlotChartPanelState extends State<AdmissionSlotChartPanel> {
               Expanded(
                 child: Text(
                   d.weekdays.isEmpty
-                      ? 'Free start times'
-                      : 'Free start times · ${weekdayNames(d.weekdays)}',
+                      ? 'Choose start & end'
+                      : 'Choose start & end · ${weekdayNames(d.weekdays)}',
                   style: theme.textTheme.titleSmall,
                 ),
               ),
@@ -106,13 +141,13 @@ class _AdmissionSlotChartPanelState extends State<AdmissionSlotChartPanel> {
           ),
           if (c.request == null)
             Text(
-              'Choose the plan, activation date and weekdays to see which start times are free.',
+              'Choose the plan, activation date, days and hours to see which start times are free.',
               style: theme.textTheme.bodySmall,
             )
           else ...[
             if (data != null)
               Text(
-                'Checked against all ${data.dates.length} sessions until ${data.expiresOn}. Tap a taken time to see who holds it.',
+                'Tap start and end. Tap a selected boundary again to clear it. Checked against all ${data.dates.length} sessions until ${data.expiresOn}; tap a booked time to see who holds it.',
                 style: theme.textTheme.bodySmall,
               ),
             SizedBox(height: 8.h),
@@ -129,17 +164,27 @@ class _AdmissionSlotChartPanelState extends State<AdmissionSlotChartPanel> {
               )
             else
               _TimeGrid(
-                times: data.times,
-                selected: d.time,
+                cells: planCells(
+                  data,
+                  start: d.time,
+                  duration: d.duration,
+                  durations: widget.state.endDurations,
+                  step: c.request!.duration,
+                  // A booked range is never shown as chosen.
+                  pick: pick == PlanPick.done && clash != null
+                      ? PlanPick.start
+                      : pick,
+                ),
                 enabled: widget.enabled,
-                onSelected: (t) =>
-                    widget.cubit.update(d.copyWith(time: t.time)),
-                onTaken: (t) => _showClashes(context, t),
+                onSelected: choose,
+                onTaken: pick == PlanPick.end
+                    ? null
+                    : (t) => _showClashes(context, t),
               ),
-            if (data != null && selected?.taken == true) ...[
+            if (data != null && pick == PlanPick.done && clash != null) ...[
               SizedBox(height: 8.h),
               Text(
-                '${TimeFormat.display(d.time)} is taken on ${selected!.clashCount} of ${selected.sessionCount} dates. Review will be rejected until you choose a free time or move the other booking.',
+                '${TimeFormat.display(d.time)}–${TimeFormat.display(_hhmm(_minutes(d.time) + d.duration))} is booked on ${clash.$1} of ${clash.$2} dates. Review will be rejected until you choose a free time or move the other booking.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.error,
                 ),
@@ -200,126 +245,217 @@ class _AdmissionSlotChartPanelState extends State<AdmissionSlotChartPanel> {
   );
 }
 
+int _minutes(String t) =>
+    int.parse(t.substring(0, 2)) * 60 + int.parse(t.substring(3, 5));
+String _hhmm(int m) =>
+    '${(m ~/ 60 % 24).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+
+/// Chart times inside a start–end range, or null when they leave a gap.
+/// Each time was checked for [step] minutes, so together they cover the range.
+List<SlotChartTime>? _covered(
+  AdmissionSlotChart chart,
+  int start,
+  int length,
+  int step,
+) {
+  final end = start + length;
+  if (end > 1440) return null;
+  final inside = [
+    for (final t in chart.times)
+      if (_minutes(t.time) >= start && _minutes(t.time) + step <= end) t,
+  ]..sort((a, b) => _minutes(a.time).compareTo(_minutes(b.time)));
+  var reach = start;
+  for (final t in inside) {
+    final m = _minutes(t.time);
+    if (m > reach) return null;
+    if (m + step > reach) reach = m + step;
+  }
+  return reach >= end ? inside : null;
+}
+
+/// Booked dates (at least) and term sessions for a range, or null when free.
+(int, int)? rangeClash(
+  AdmissionSlotChart chart,
+  String start,
+  int length,
+  int step,
+) {
+  final taken = (_covered(chart, _minutes(start), length, step) ?? const [])
+      .where((t) => t.taken)
+      .toList();
+  if (taken.isEmpty) return null;
+  final dates = {
+    for (final t in taken)
+      for (final c in t.clashes) c.date,
+  };
+  final count = [
+    dates.length,
+    ...taken.map((t) => t.clashCount),
+  ].reduce((a, b) => a > b ? a : b);
+  return (count, taken.first.sessionCount);
+}
+
+enum PlanPick { start, end, done }
+
+enum PlanRole { start, end, free }
+
+/// One grid cell for a plan's start–end pick.
+class PlanCell {
+  const PlanCell(this.cell, this.role, {this.chart, this.duration});
+  final BookingTimeCell cell;
+  final PlanRole role;
+  final SlotChartTime? chart;
+
+  /// The visit length an end cell sets.
+  final int? duration;
+  String get time => cell.slot.time;
+}
+
+/// Chart times as booking-style cells: free starts, then valid ends.
+List<PlanCell> planCells(
+  AdmissionSlotChart chart, {
+  required String start,
+  required int duration,
+  required List<int> durations,
+  required int step,
+  required PlanPick pick,
+}) {
+  final s = _minutes(start);
+  final byTime = {for (final t in chart.times) _minutes(t.time): t};
+  // Only ends whose whole range lies within opening hours.
+  final ends = <int, int>{
+    for (final length in durations)
+      if (_covered(chart, s, length, step) != null) s + length: length,
+  };
+  final endMinute = s + duration;
+  final keys = {
+    ...byTime.keys,
+    if (pick == PlanPick.end) ...ends.keys,
+    if (pick == PlanPick.done && byTime.containsKey(s) && endMinute <= 1440)
+      endMinute,
+  }.toList()..sort();
+  bool free(int length) =>
+      _covered(chart, s, length, step)?.every((t) => t.available) ?? false;
+  String status(SlotChartTime t) => switch (t.status) {
+    'available' when t.capacity > 1 => '${t.remaining} of ${t.capacity} left',
+    'available' => 'Available',
+    'taken' when t.clashCount < t.sessionCount =>
+      'Booked · ${t.clashCount} of ${t.sessionCount} dates',
+    'taken' => 'Booked',
+    _ => 'Past',
+  };
+  return [
+    for (final m in keys)
+      (() {
+        final t = byTime[m];
+        final time = _hhmm(m);
+        final slot = BookingSlot(
+          time,
+          t?.available ?? false,
+          0,
+          t != null && t.capacity > 1 ? t.remaining : null,
+          t?.status == 'past',
+          null,
+          t == null ? 'end_only' : (t.taken ? 'booked' : t.status),
+        );
+        PlanCell cell(
+          PlanRole role, {
+          required bool enabled,
+          String? label,
+          bool start = false,
+          bool end = false,
+          bool inRange = false,
+          int? length,
+        }) => PlanCell(
+          BookingTimeCell(
+            slot: slot,
+            date: '',
+            enabled: enabled,
+            start: start,
+            end: end,
+            inRange: inRange,
+            label: label ?? (t == null ? 'End only' : status(t)),
+          ),
+          role,
+          chart: t,
+          duration: length,
+        );
+        final isStart = pick != PlanPick.start && m == s && t != null;
+        if (isStart) {
+          return cell(
+            PlanRole.start,
+            enabled: true,
+            start: true,
+            label: 'Start · tap to clear',
+          );
+        }
+        if (pick == PlanPick.end) {
+          final length = ends[m];
+          final valid = length != null && free(length);
+          return cell(
+            PlanRole.end,
+            enabled: valid,
+            length: length,
+            label: valid
+                ? hoursLabel(length)
+                : length != null &&
+                      _covered(chart, s, length, step)!.any((t) => t.taken)
+                ? 'Booked'
+                : t?.status == 'past'
+                ? 'Past'
+                : 'Not a valid end',
+          );
+        }
+        if (pick == PlanPick.done && byTime.containsKey(s)) {
+          if (m == endMinute) {
+            return cell(
+              PlanRole.end,
+              enabled: true,
+              end: true,
+              label: 'End · tap to clear',
+            );
+          }
+          if (m > s && m < endMinute) {
+            return cell(
+              PlanRole.free,
+              enabled: t?.available ?? false,
+              inRange: true,
+              label: 'Selected range',
+            );
+          }
+        }
+        return cell(PlanRole.free, enabled: t?.available ?? false);
+      })(),
+  ];
+}
+
+/// Shows plan cells in the booking time grid so plans and bookings look alike.
 class _TimeGrid extends StatelessWidget {
   const _TimeGrid({
-    required this.times,
-    required this.selected,
+    required this.cells,
     required this.enabled,
     required this.onSelected,
     required this.onTaken,
   });
-  final List<SlotChartTime> times;
-  final String selected;
+  final List<PlanCell> cells;
   final bool enabled;
-  final ValueChanged<SlotChartTime> onSelected, onTaken;
+  final ValueChanged<PlanCell> onSelected;
+  final ValueChanged<SlotChartTime>? onTaken;
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) {
-      final columns = box.maxWidth >= 600
-          ? 6
-          : box.maxWidth >= 280 &&
-                MediaQuery.textScalerOf(context).scale(14) <= 20
-          ? 3
-          : 2;
-      final width = (box.maxWidth - (columns - 1) * 8.w) / columns;
-      final c = Theme.of(context).colorScheme;
-      return Wrap(
-        spacing: 8.w,
-        runSpacing: 8.h,
-        children: [
-          for (final t in times)
-            Builder(
-              builder: (context) {
-                final active = t.available && t.time == selected;
-                final label = switch (t.status) {
-                  'available' when t.capacity > 1 =>
-                    '${t.remaining} of ${t.capacity} left',
-                  'available' => 'Free',
-                  'taken' when t.clashCount < t.sessionCount =>
-                    'Taken · ${t.clashCount} ${t.clashCount == 1 ? 'date' : 'dates'}',
-                  'taken' => 'Taken',
-                  _ => 'Past',
-                };
-                final tap = !enabled
-                    ? null
-                    : t.available
-                    ? () => onSelected(t)
-                    : t.taken
-                    ? () => onTaken(t)
-                    : null;
-                final text = active
-                    ? c.onPrimary
-                    : t.available
-                    ? c.onSurface
-                    : t.taken
-                    ? c.error
-                    : c.onSurfaceVariant;
-                return SizedBox(
-                  width: width,
-                  child: Semantics(
-                    button: tap != null,
-                    selected: active,
-                    label: '${TimeFormat.display(t.time)}, $label',
-                    child: Material(
-                      color: active
-                          ? c.primary
-                          : t.available
-                          ? c.surface
-                          : t.taken
-                          ? c.error.withValues(alpha: .06)
-                          : c.onSurface.withValues(alpha: .04),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.r),
-                        side: BorderSide(
-                          color: active
-                              ? c.primary
-                              : t.taken
-                              ? c.error.withValues(alpha: .3)
-                              : c.outline.withValues(alpha: .4),
-                        ),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        key: ValueKey('admission-slot-${t.time}'),
-                        onTap: tap,
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 8.w,
-                            vertical: 12.h,
-                          ),
-                          child: ExcludeSemantics(
-                            child: Column(
-                              children: [
-                                Text(
-                                  TimeFormat.display(t.time),
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 14.sp,
-                                    fontWeight: FontWeight.w600,
-                                    color: text,
-                                  ),
-                                ),
-                                SizedBox(height: 4.h),
-                                Text(
-                                  active ? 'Selected' : label,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    color: text,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-        ],
-      );
-    },
-  );
+  Widget build(BuildContext context) {
+    final byTime = {for (final c in cells) c.time: c};
+    return BookingTimeGrid(
+      slots: [for (final c in cells) c.cell.slot],
+      cells: [for (final c in cells) c.cell],
+      selectedDate: '',
+      enabled: enabled,
+      onSelected: (slot) => onSelected(byTime[slot.time]!),
+      onUnavailable: onTaken == null
+          ? null
+          : (slot) {
+              final t = byTime[slot.time]?.chart;
+              if (t != null && t.taken) onTaken!(t);
+            },
+    );
+  }
 }

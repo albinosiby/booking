@@ -147,14 +147,49 @@ void main() {
     c.addPlan();
     expect(c.state.section, CourtSection.coaching);
     final id = c.state.selectedId!;
+    expect(c.state.draft.plans.map((p) => p.id), ['p1']);
     expect(c.state.selectedPlan!.courtIds, ['c1']);
     c.updatePlan(id, (p) => p.copyWith(courtIds: ['c1', 'c2'], seats: '4'));
     expect(c.state.coachingModel.selected!.seats, '4');
+    c.updatePlan(id, (p) => p.copyWith(price: '3000'));
+    expect(c.finishPlan(), isTrue);
+    expect(c.state.pendingPlan, isNull);
+    expect(c.state.draft.plans.map((p) => p.id), ['p1', id]);
     c.removeCourt('c2');
     expect(c.state.draft.plans.firstWhere((p) => p.id == id).courtIds, ['c1']);
     c.removePlan(id);
     expect(c.state.draft.plans.map((p) => p.id), ['p1']);
     expect(c.state.dirty, isTrue);
+  });
+
+  test('new court plan is cancelled without changing saved plans', () async {
+    final source = CourtSource()..configuration = courts().toJson();
+    final workspace = WorkspaceCubit(source);
+    await workspace.load();
+    final c = CourtSetupCubit(workspace, FakeCourtRepository(source), 'courts');
+    addTearDown(c.close);
+    addTearDown(workspace.close);
+    c.addPlan(coaching: false);
+    final id = c.state.selectedId!;
+    expect(c.state.selectedPlan!.followCourtHours, isTrue);
+    expect(c.state.draft.plans.map((p) => p.id), ['p1']);
+    c.updatePlan(
+      id,
+      (p) => p.copyWith(
+        courtIds: ['c2'],
+        allowance: '28',
+        expiryMonths: '1',
+        price: '3000',
+      ),
+    );
+    expect(c.state.selectedPlan!.toJson()['follow_court_hours'], isTrue);
+    expect(await c.saveChanges(), isFalse);
+    expect(source.configuration!['plans'], hasLength(1));
+    c.back();
+    expect(c.state.pendingPlan, isNull);
+    expect(c.state.selectedPlan, isNull);
+    expect(c.state.draft.plans.map((p) => p.id), ['p1']);
+    expect(c.state.dirty, isFalse);
   });
 
   test(
@@ -216,6 +251,7 @@ void main() {
     await tester.tap(section);
     await tester.pumpAndSettle();
     expect(find.text('Junior batch'), findsOneWidget);
+    await tester.ensureVisible(find.text('Junior batch'));
     await tester.tap(find.text('Junior batch'));
     await tester.pumpAndSettle();
     expect(find.text('Maximum students per class'), findsWidgets);
@@ -230,6 +266,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Number of play days'), findsWidgets);
     expect(find.text('Maximum students per class'), findsNothing);
+    expect(find.text('Follow court opening hours'), findsOneWidget);
+    expect(find.text('Allowed playing days and times'), findsNothing);
+    await tester.ensureVisible(find.text('Follow court opening hours'));
+    await tester.tap(find.text('Follow court opening hours'));
+    await tester.pumpAndSettle();
     expect(find.text('Allowed playing days and times'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

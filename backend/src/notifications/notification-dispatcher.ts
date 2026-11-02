@@ -4,6 +4,7 @@ import { PushFailure, PushSender } from "./fcm-sender";
 import type {
   BookingNotificationDetails,
   StaffCashNotificationDetails,
+  SubscriptionFeeDetails,
 } from "./notification-content";
 import { notificationDetailsSql } from "./notification-events";
 
@@ -15,7 +16,11 @@ const eligible = `m.active AND m.user_id=d.user_id AND m.organization_id=e.organ
    ((m.user_id=s.settled_by AND m.role='owner') OR
     (m.id=s.membership_id AND m.role<>'owner' AND (m.permissions ? 'collect_payments' OR m.permissions ? 'view_finance'))))
   OR
-  (e.kind<>'staff_cash_collected' AND (m.role='owner' OR (m.permissions ? 'manage_bookings' AND EXISTS (
+  (e.kind='subscription_fee_due' AND (m.role='owner' OR (m.permissions ? 'collect_payments' AND EXISTS (
+    SELECT 1 FROM staff_assignments a WHERE a.membership_id=m.id AND a.business_id=e.business_id
+    AND a.organization_id=e.organization_id AND (jsonb_array_length(a.resource_ids)=0 OR a.resource_ids ? e.resource_id::text)))))
+  OR
+  (e.kind NOT IN ('staff_cash_collected','subscription_fee_due') AND (m.role='owner' OR (m.permissions ? 'manage_bookings' AND EXISTS (
     SELECT 1 FROM staff_assignments a WHERE a.membership_id=m.id AND a.business_id=e.business_id
     AND a.organization_id=e.organization_id AND (jsonb_array_length(a.resource_ids)=0 OR a.resource_ids ? e.resource_id::text)))))
  )`;
@@ -31,7 +36,9 @@ type Target = {
   reference: string;
   booking_id: string | null;
   settlement_id: string | null;
+  admission_id: string | null;
   cash_details: StaffCashNotificationDetails | null;
+  fee_details: SubscriptionFeeDetails | null;
   for_staff: boolean;
   details: BookingNotificationDetails | null;
 };
@@ -43,6 +50,12 @@ export class NotificationDispatcher {
   ) {}
   async dispatch(limit = 20) {
     limit = Math.max(1, Math.min(40, Math.floor(limit)));
+    try {
+      await this.queueFees();
+    } catch {
+      // Fee alerts need their migration; booking and cash alerts still send.
+      console.error(JSON.stringify({ event: "subscription_fee_queue_failed" }));
+    }
     await this.expand(limit);
     const lease = randomUUID();
     const work = await this.db.transaction(async (db) => {
@@ -78,6 +91,24 @@ export class NotificationDispatcher {
       );
     return counts;
   }
+  /**
+   * Queues one alert per subscription month starting today in the
+   * subscription's own timezone; the first month is collected at signup.
+   */
+  private async queueFees() {
+    await this.db.query(
+      `INSERT INTO booking_notification_events(id,organization_id,business_id,resource_id,kind,reference,admission_id,due_on,fee_details)
+      SELECT gen_random_uuid(),a.organization_id,a.business_id,a.resource_id,'subscription_fee_due',a.reference,a.id,(i->>'due_on')::date,
+        jsonb_build_object('customer_name',a.customer_snapshot->>'name','space_name',r.name,
+          'amount_minor',(i->>'amount_minor')::integer,'currency',o.currency,'due_on',i->>'due_on')
+      FROM admissions a JOIN resources r ON r.id=a.resource_id JOIN organizations o ON o.id=a.organization_id
+      CROSS JOIN LATERAL jsonb_array_elements(a.plan_snapshot->'subscription'->'instalments') i
+      WHERE a.plan_snapshot ? 'subscription' AND NOT a.cancelled AND a.deleted_at IS NULL
+        AND a.expires_on>=current_date-1
+        AND (i->>'due_on')::date=(now() AT TIME ZONE a.timezone)::date AND (i->>'due_on')::date>a.starts_on
+      ON CONFLICT(admission_id,due_on) DO NOTHING`,
+    );
+  }
   private async expand(limit: number) {
     await this.db.transaction(async (db) => {
       const events = (
@@ -110,19 +141,21 @@ export class NotificationDispatcher {
   ): Promise<"sent" | "skipped" | "retry" | "dead"> {
     const target = (
       await this.db.query<Target>(
-        `SELECT d.token,d.version,e.kind,e.reference,e.booking_id,e.settlement_id,e.cash_details,(m.id=s.membership_id) AS for_staff,
+        `SELECT d.token,d.version,e.kind,e.reference,e.booking_id,e.settlement_id,e.admission_id,e.cash_details,e.fee_details,(m.id=s.membership_id) AS for_staff,
         COALESCE(h.details->'notification',CASE WHEN b.resource_id=e.resource_id
           THEN ${notificationDetailsSql} END) AS details
       FROM notification_deliveries n JOIN booking_notification_events e ON e.id=n.event_id
       LEFT JOIN staff_cash_settlements s ON s.id=e.settlement_id AND s.organization_id=e.organization_id
       LEFT JOIN booking_history h ON h.id=e.history_id
       LEFT JOIN bookings b ON b.id=e.booking_id AND b.organization_id=e.organization_id
+      LEFT JOIN admissions ad ON ad.id=e.admission_id AND ad.organization_id=e.organization_id
+        AND NOT ad.cancelled AND ad.deleted_at IS NULL
       JOIN notification_devices d ON d.id=n.device_id
       JOIN memberships m ON m.user_id=d.user_id
       WHERE n.event_id=$1 AND n.device_id=$2 AND n.lease_id=$3 AND n.state='processing'
       AND d.enabled AND n.recipient_user_id=d.user_id AND d.bound_at<=e.created_at
       AND d.last_seen_at>now()-interval '60 days' AND e.created_at>now()-interval '24 hours'
-      AND (e.kind='staff_cash_collected' OR b.id IS NOT NULL) AND ${eligible}`,
+      AND (e.kind='staff_cash_collected' OR b.id IS NOT NULL OR ad.id IS NOT NULL) AND ${eligible}`,
         [item.event_id, item.device_id, lease],
       )
     ).rows[0];
@@ -136,7 +169,9 @@ export class NotificationDispatcher {
         eventId: item.event_id,
         bookingId: target.booking_id,
         settlementId: target.settlement_id,
+        admissionId: target.admission_id,
         cashDetails: target.cash_details,
+        feeDetails: target.fee_details,
         forStaff: target.for_staff,
         userId: item.recipient_user_id,
         kind: target.kind,

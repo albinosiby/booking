@@ -44,7 +44,11 @@ import {
   expiryFrom,
   fixedDates,
   interval,
+  isSubscription,
+  reminderDays,
   slotChartSchema,
+  subscriptionPlan,
+  dueBy,
 } from "./admission.rules";
 type Row = Record<string, any>;
 class CoachClashException extends ConflictException {
@@ -73,6 +77,31 @@ const ymd = (v: unknown): string => {
     ? v.toISOString().slice(0, 10)
     : `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
 };
+/**
+ * Monthly fee position of a subscription: what is due by today, what is
+ * still owed of it, and the next fee. Plans are due in full at once.
+ */
+function feeStatus(a: Row) {
+  const today = localStamp(Date.now(), a.timezone).slice(0, 10);
+  const net = Number(a.net ?? 0);
+  if (!isSubscription(a.plan_snapshot))
+    return {
+      due_now_minor: a.total_minor,
+      owed_now_minor: Math.max(0, a.total_minor - net),
+      next_due_on: null,
+      next_due_minor: null,
+    };
+  const due = dueBy(a.plan_snapshot, today);
+  const next = (a.plan_snapshot.subscription.instalments as Row[]).find(
+    (i) => i.due_on > today,
+  );
+  return {
+    due_now_minor: due,
+    owed_now_minor: Math.max(0, due - net),
+    next_due_on: next?.due_on ?? null,
+    next_due_minor: next?.amount_minor ?? null,
+  };
+}
 @Injectable()
 export class AdmissionService {
   constructor(private readonly db: Database) {}
@@ -314,6 +343,7 @@ export class AdmissionService {
           name: p.name,
           durations: p.durations,
           default_duration_minutes: p.default_duration_minutes,
+          operating: p.operating,
         })),
         plans: (c.plans ?? [])
           .filter(
@@ -772,19 +802,28 @@ export class AdmissionService {
   ) {
     if (b.status !== "ready")
       throw new BadRequestException("This business is not ready.");
+    if ((v.plan_id === undefined) === (v.subscription === undefined))
+      throw new BadRequestException("Choose a plan or enter a subscription.");
     const c = b.configuration,
       pool = admissionSpaces(c).find(
         (p: Row) => p.id === v.resource_id && p.enabled,
       ),
-      plan = c?.plans?.find(
-        (p: Row) =>
-          p.id === v.plan_id &&
-          p.enabled &&
-          planSpaceIds(p).includes(v.resource_id),
-      );
+      plan: Row | undefined = v.subscription
+        ? subscriptionPlan(c, v.starts_on, v.subscription)
+        : c?.plans?.find(
+            (p: Row) =>
+              p.id === v.plan_id &&
+              p.enabled &&
+              planSpaceIds(p).includes(v.resource_id),
+          );
     if (!pool || !plan || plan.price_minor === null)
       throw new BadRequestException(
         "Choose an enabled space and plan with a price.",
+      );
+    const subscription = isSubscription(plan);
+    if (subscription && v.plan_amount_minor !== undefined)
+      throw new BadRequestException(
+        "Set a subscription's amount as its monthly fee.",
       );
     if (
       v.plan_amount_minor !== undefined &&
@@ -793,10 +832,13 @@ export class AdmissionService {
       throw new ForbiddenException(
         "Payment collection permission is required to change the plan amount.",
       );
-    const agreedAmount = v.plan_amount_minor ?? plan.price_minor;
     if ((plan.track_attendance !== false) !== (v.mode !== "membership"))
       throw new BadRequestException(
         "Use the tracking mode configured for this plan. Reload the plan before enrolling.",
+      );
+    if (subscription && (v.mode !== "fixed" || !v.weekdays.length))
+      throw new BadRequestException(
+        "A subscription reserves a weekly time slot. Choose its weekdays and time.",
       );
     if (v.mode === "membership" && v.weekdays.length)
       throw new BadRequestException(
@@ -812,15 +854,25 @@ export class AdmissionService {
       throw new BadRequestException(
         "Flexible plans do not have fixed weekdays.",
       );
-    if (v.mode === "fixed" && plan.allowance > 1000)
+    if (v.mode === "fixed" && !subscription && plan.allowance > 1000)
       throw new BadRequestException(
         "A fixed admission supports at most 1,000 reserved sessions. Use flexible attendance for larger plans.",
       );
     if (v.renewed_from) {
       const old = await this.find(m, v.renewed_from, db);
-      if (!["completed", "expired"].includes(old.status))
+      // An active term opens for renewal in its reminder window; the next
+      // term then starts after it so the two never overlap.
+      const early =
+        old.status === "active" &&
+        !old.cancelled &&
+        today >= addDate(ymd(old.expires_on), -reminderDays(c));
+      if (!["completed", "expired"].includes(old.status) && !early)
         throw new BadRequestException(
-          "Renew a completed or expired admission.",
+          "Renew a completed or expired admission, or an active one in its renewal reminder window.",
+        );
+      if (early && v.starts_on <= ymd(old.expires_on))
+        throw new BadRequestException(
+          `Start the renewal after the current term ends on ${ymd(old.expires_on)}.`,
         );
       if (old.business_id !== b.id || v.customer.id !== old.customer_id)
         throw new BadRequestException(
@@ -837,16 +889,13 @@ export class AdmissionService {
     }
     const sessions =
       v.mode === "fixed"
-        ? fixedDates(v.starts_on, expires, v.weekdays, plan.allowance).map(
-            (date) =>
-              interval(
-                pool,
-                plan,
-                date,
-                v.time,
-                v.duration_minutes,
-                b.timezone,
-              ),
+        ? fixedDates(
+            v.starts_on,
+            expires,
+            v.weekdays,
+            subscription ? 1000 : plan.allowance,
+          ).map((date) =>
+            interval(pool, plan, date, v.time, v.duration_minutes, b.timezone),
           )
         : [];
     if (
@@ -893,11 +942,22 @@ export class AdmissionService {
           throw await this.clash(db, m, b, pool, s, occupied, e);
         }
     }
+    if (subscription && sessions.length > 1000)
+      throw new BadRequestException(
+        "A subscription supports at most 1,000 reserved sessions. Choose fewer months or weekdays.",
+      );
+    const configured = plan.price_minor;
+    const agreedAmount = v.plan_amount_minor ?? configured;
     const snapshot = {
       ...plan,
-      configured_price_minor: plan.price_minor,
+      configured_price_minor: configured,
       price_minor: agreedAmount,
-      allowance: v.mode === "membership" ? 0 : plan.allowance,
+      allowance:
+        v.mode === "membership"
+          ? 0
+          : subscription
+            ? sessions.length
+            : plan.allowance,
       track_attendance: v.mode !== "membership",
       coach_name: coachName(
         await this.coachNames(db, b.organization_id),
@@ -947,23 +1007,31 @@ export class AdmissionService {
     const b = await this.business(m, v.business_id, v.resource_id, this.db);
     if (b.status !== "ready")
       throw new BadRequestException("This business is not ready.");
+    if ((v.plan_id === undefined) === (v.subscription === undefined))
+      throw new BadRequestException("Choose a plan or enter a subscription.");
     const c = b.configuration,
       pool = admissionSpaces(c).find(
         (p: Row) => p.id === v.resource_id && p.enabled,
       ),
-      plan = c?.plans?.find(
-        (p: Row) =>
-          p.id === v.plan_id &&
-          p.enabled &&
-          planSpaceIds(p).includes(v.resource_id),
-      );
+      plan: Row | undefined = v.subscription
+        ? subscriptionPlan(c, v.starts_on, {
+            ...v.subscription,
+            monthly_minor: 0,
+          })
+        : c?.plans?.find(
+            (p: Row) =>
+              p.id === v.plan_id &&
+              p.enabled &&
+              planSpaceIds(p).includes(v.resource_id),
+          );
     if (!pool || !plan)
       throw new BadRequestException("Choose an enabled space and plan.");
     if (plan.track_attendance === false)
       throw new BadRequestException(
         "Membership-only plans do not have scheduled weekdays.",
       );
-    if (plan.allowance > 1000)
+    const subscription = isSubscription(plan);
+    if (!subscription && plan.allowance > 1000)
       throw new BadRequestException(
         "A fixed admission supports at most 1,000 reserved sessions. Use flexible attendance for larger plans.",
       );
@@ -973,7 +1041,12 @@ export class AdmissionService {
       throw new BadRequestException(
         "Choose an activation date from today within plan validity.",
       );
-    const dates = fixedDates(v.starts_on, expires, v.weekdays, plan.allowance);
+    const dates = fixedDates(
+      v.starts_on,
+      expires,
+      v.weekdays,
+      subscription ? 1000 : plan.allowance,
+    );
     const minute = (t: string) =>
       Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -1371,7 +1444,7 @@ export class AdmissionService {
             v.resource_id,
             customerId,
             reference,
-            v.plan_id,
+            (q.plan as Row).id,
             JSON.stringify(q.plan),
             JSON.stringify(a.customer_snapshot),
             b.timezone,
@@ -1430,17 +1503,38 @@ export class AdmissionService {
         plan_id: z.uuid().optional(),
         previous_plans: z.enum(["true", "false"]).optional(),
         needs_renewal: z.enum(["true", "false"]).optional(),
+        reminder: z.enum(["due_soon", "unpaid"]).optional(),
+        subscription: z.enum(["true", "false"]).optional(),
         cursor: z.coerce.number().int().min(0).max(100000).default(0),
       })
       .strict()
       .parse(input);
     const m = await this.member(actor);
     const values: unknown[] = [m.organization_id];
+    const net =
+      "COALESCE((SELECT sum(CASE WHEN p.kind='collection' THEN p.amount_minor ELSE -p.amount_minor END) FROM admission_payments p WHERE p.admission_id=a.id),0)::integer";
     let where = "a.organization_id=$1";
     if (v.status !== "deleted") where += " AND a.deleted_at IS NULL";
     if (v.needs_renewal === "true")
       where +=
         " AND (now() AT TIME ZONE a.timezone)::date>a.expires_on AND NOT a.cancelled AND NOT EXISTS(SELECT 1 FROM admissions renewed WHERE renewed.renewed_from=a.id)";
+    const today = "(now() AT TIME ZONE a.timezone)::date",
+      window =
+        "COALESCE((b.configuration->>'renewal_reminder_days')::integer,3)",
+      fees =
+        "jsonb_array_elements(a.plan_snapshot->'subscription'->'instalments')";
+    // Due soon: a subscription's next monthly fee, or a term ending, inside
+    // the business's reminder window.
+    if (v.reminder === "due_soon")
+      where += ` AND NOT a.cancelled AND a.status IN ('active','upcoming','completed') AND (EXISTS(SELECT 1 FROM ${fees} i WHERE (i->>'due_on')::date>${today} AND (i->>'due_on')::date<=${today}+${window}) OR (${today}<=a.expires_on AND ${today}>=a.expires_on-${window} AND NOT EXISTS(SELECT 1 FROM admissions renewed WHERE renewed.renewed_from=a.id)))`;
+    // Collect now: subscription months already started but not fully paid,
+    // and ended plan terms still owed after renewal or cancellation.
+    if (v.reminder === "unpaid")
+      where += ` AND ((a.plan_snapshot ? 'subscription' AND COALESCE((SELECT sum((i->>'amount_minor')::integer) FROM ${fees} i WHERE (i->>'due_on')::date<=${today}),0)>${net}) OR (NOT a.plan_snapshot ? 'subscription' AND ${today}>a.expires_on AND (a.cancelled OR EXISTS(SELECT 1 FROM admissions renewed WHERE renewed.renewed_from=a.id)) AND a.total_minor>${net}))`;
+    if (v.subscription === "true")
+      where += " AND a.plan_snapshot ? 'subscription'";
+    if (v.subscription === "false")
+      where += " AND NOT a.plan_snapshot ? 'subscription'";
     const add = (sql: string, value: unknown) => {
       values.push(value);
       where += " AND " + sql.replaceAll("?", `$${values.length}`);
@@ -1466,7 +1560,7 @@ export class AdmissionService {
     values.push(v.cursor);
     const rows = (
       await this.db.query<Row>(
-        `SELECT a.*,b.name business_name,b.configuration business_configuration,r.name space_name,COALESCE((SELECT sum(CASE WHEN p.kind='collection' THEN p.amount_minor ELSE -p.amount_minor END) FROM admission_payments p WHERE p.admission_id=a.id),0)::integer net FROM admission_balances a JOIN businesses b ON b.id=a.business_id JOIN resources r ON r.id=a.resource_id WHERE ${where} ORDER BY ${v.needs_renewal === "true" ? "a.expires_on,a.id" : "a.created_at DESC,a.id"} LIMIT 51 OFFSET $${values.length}`,
+        `SELECT a.*,b.name business_name,b.configuration business_configuration,r.name space_name,${net} net FROM admission_balances a JOIN businesses b ON b.id=a.business_id JOIN resources r ON r.id=a.resource_id WHERE ${where} ORDER BY ${v.needs_renewal === "true" || v.reminder ? "a.expires_on,a.id" : "a.created_at DESC,a.id"} LIMIT 51 OFFSET $${values.length}`,
         values,
       )
     ).rows;
@@ -1475,8 +1569,64 @@ export class AdmissionService {
       items: rows.slice(0, 50).map(({ business_configuration, ...a }) => ({
         ...withCurrentCoach(a, business_configuration, names),
         ...moneyStatus(a.total_minor, a.net),
+        ...feeStatus(a),
+        renewal_open: this.renewalOpen(a, business_configuration),
       })),
       next_cursor: rows.length > 50 ? v.cursor + 50 : null,
+    };
+  }
+  /**
+   * Whether a term can be renewed now: once completed or expired, or while
+   * active inside its business's renewal reminder window. Renewed terms and
+   * existing renewals are checked by the caller.
+   */
+  private renewalOpen(a: Row, configuration: Row | undefined) {
+    if (a.deleted_at || a.cancelled) return false;
+    if (["completed", "expired"].includes(a.status)) return true;
+    if (a.status !== "active") return false;
+    const today = localStamp(Date.now(), a.timezone).slice(0, 10);
+    return today >= addDate(ymd(a.expires_on), -reminderDays(configuration));
+  }
+  /**
+   * Home payment reminders. `due_soon` lists running terms whose next month
+   * is due, with that month's price; `unpaid` lists ended terms still owed
+   * money after renewal or cancellation.
+   */
+  async paymentReminders(actor: Actor, input: unknown) {
+    const v = z
+      .object({
+        group: z.enum(["due_soon", "unpaid"]),
+        cursor: z.coerce.number().int().min(0).max(100000).default(0),
+      })
+      .strict()
+      .parse(input);
+    const member = await this.member(actor);
+    const amounts =
+      this.allowed(member, "view_finance") ||
+      this.allowed(member, "collect_payments");
+    if (v.group === "unpaid" && !amounts)
+      return { items: [], next_cursor: null };
+    const page = await this.list(actor, {
+      reminder: v.group,
+      cursor: v.cursor,
+    });
+    return {
+      ...page,
+      items: page.items.map((a: Row) =>
+        amounts
+          ? a
+          : {
+              ...a,
+              net: 0,
+              net_paid_minor: 0,
+              balance_minor: 0,
+              refund_due_minor: 0,
+              due_now_minor: 0,
+              owed_now_minor: 0,
+              next_due_minor: null,
+              payment_status: "hidden",
+            },
+      ),
     };
   }
   async expired(actor: Actor, input: unknown) {
@@ -1598,6 +1748,11 @@ export class AdmissionService {
       a.resource_id,
       this.db,
     );
+    const net = payments.reduce(
+      (n, p) =>
+        n + (p.kind === "collection" ? p.amount_minor : -p.amount_minor),
+      0,
+    );
     return {
       ...withCurrentCoach(
         a,
@@ -1612,15 +1767,10 @@ export class AdmissionService {
         )?.name ?? "Space",
       today: localStamp(Date.now(), a.timezone).slice(0, 10),
       local_now: localStamp(Date.now(), a.timezone),
-      ...moneyStatus(
-        a.total_minor,
-        payments.reduce(
-          (n, p) =>
-            n + (p.kind === "collection" ? p.amount_minor : -p.amount_minor),
-          0,
-        ),
-      ),
+      ...moneyStatus(a.total_minor, net),
+      ...feeStatus({ ...a, net }),
       renewal_id: renewal?.id ?? null,
+      renewal_open: this.renewalOpen(a, business.configuration),
       sessions: sessions.map((s) => ({
         ...s,
         local_start: localStamp(Date.parse(s.starts_at), a.timezone),
@@ -2179,6 +2329,161 @@ export class AdmissionService {
       },
     );
   }
+  /**
+   * Moves every remaining session of a subscription to new weekdays, time
+   * and hours from [from_date]; sessions before it stay as they are.
+   */
+  async reschedule(actor: Actor, id: string, input: unknown) {
+    const v = z
+      .object({
+        command_key: z.uuid(),
+        version: z.number().int().positive(),
+        from_date: calendarDate,
+        weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+        time: clock,
+        duration_minutes: z.number().int().min(30).max(1440),
+        reason: reasonSchema,
+      })
+      .strict()
+      .parse(input);
+    const original = await this.find(await this.member(actor), id);
+    return this.command(
+      actor,
+      original.business_id,
+      original.resource_id,
+      v.command_key,
+      "admission_schedule",
+      { id, ...v },
+      "manage_subscriptions",
+      async (db, m, b) => {
+        const a = await this.find(m, id, db);
+        if (a.version !== v.version)
+          throw new ConflictException("Admission changed. Refresh and retry.");
+        if (
+          !isSubscription(a.plan_snapshot) ||
+          a.mode !== "fixed" ||
+          a.cancelled ||
+          a.deleted_at ||
+          !["active", "upcoming"].includes(a.status)
+        )
+          throw new BadRequestException(
+            "Only an active or upcoming subscription can be rescheduled.",
+          );
+        const today = localStamp(Date.now(), a.timezone).slice(0, 10),
+          expires = ymd(a.expires_on);
+        if (
+          v.from_date < today ||
+          v.from_date < ymd(a.starts_on) ||
+          v.from_date > expires
+        )
+          throw new BadRequestException(
+            "Choose a date from today within the subscription.",
+          );
+        const pool = admissionSpaces(b.configuration).find(
+          (p: Row) => p.id === a.resource_id && p.enabled,
+        );
+        if (!pool || b.status !== "ready")
+          throw new BadRequestException("This space is unavailable.");
+        const from = new Date(
+          Math.max(zonedTime(v.from_date, "00:00", a.timezone), Date.now()),
+        ).toISOString();
+        const moving = (
+          await db.query<Row>(
+            "SELECT id FROM bookings WHERE admission_id=$1 AND status<>'cancelled' AND starts_at>=$2 FOR UPDATE",
+            [id, from],
+          )
+        ).rows.map((r) => r.id);
+        await db.query(
+          "UPDATE bookings SET status='cancelled',version=version+1 WHERE id=ANY($1::uuid[])",
+          [moving],
+        );
+        await db.query(
+          "DELETE FROM booking_allocations WHERE booking_id=ANY($1::uuid[])",
+          [moving],
+        );
+        const sessions = fixedDates(v.from_date, expires, v.weekdays, 1000)
+          .map((date) =>
+            interval(
+              pool,
+              a.plan_snapshot,
+              date,
+              v.time,
+              v.duration_minutes,
+              a.timezone,
+            ),
+          )
+          .filter((s) => Date.parse(s.starts_at) > Date.now());
+        if (
+          sessions.some(
+            (s) =>
+              localStamp(Date.parse(s.ends_at) - 1, a.timezone).slice(0, 10) >
+              expires,
+          )
+        )
+          throw new BadRequestException(
+            "Sessions must end within the subscription.",
+          );
+        for (let i = 1; i < sessions.length; i++)
+          if (
+            Date.parse(sessions[i].starts_at) <
+            Date.parse(sessions[i - 1].ends_at)
+          )
+            throw new BadRequestException(
+              "The weekly schedule contains overlapping sessions.",
+            );
+        if (sessions.length) {
+          const occupied = await this.allocations(
+            db,
+            b.id,
+            sessions[0].starts_at,
+            sessions.at(-1)!.ends_at,
+          );
+          for (const s of sessions)
+            try {
+              this.check(b, pool, a.plan_snapshot, s, occupied);
+            } catch (e) {
+              if (!(e instanceof ConflictException)) throw e;
+              throw await this.clash(db, m, b, pool, s, occupied, e);
+            }
+        }
+        await this.visits(db, m, actor, a, b, sessions);
+        const kept = Number(
+          (
+            await db.query<Row>(
+              "SELECT count(*)::integer n FROM bookings WHERE admission_id=$1 AND status<>'cancelled'",
+              [id],
+            )
+          ).rows[0].n,
+        );
+        if (kept < 1)
+          throw new BadRequestException(
+            "No sessions remain with this schedule. Choose other weekdays or an earlier date.",
+          );
+        await db.query(
+          "UPDATE admissions SET schedule=$2,allowance=$3,version=version+1 WHERE id=$1",
+          [
+            id,
+            JSON.stringify({
+              weekdays: v.weekdays,
+              time: v.time,
+              duration_minutes: v.duration_minutes,
+            }),
+            kept,
+          ],
+        );
+        await this.audit(db, m, actor, id, "rescheduled", {
+          from_date: v.from_date,
+          weekdays: v.weekdays,
+          time: v.time,
+          duration_minutes: v.duration_minutes,
+          moved: moving.length,
+          sessions: sessions.length,
+          reason: v.reason,
+        });
+        return { id };
+      },
+    );
+  }
   async cancel(actor: Actor, id: string, input: unknown) {
     const v = z
       .object({
@@ -2205,6 +2510,29 @@ export class AdmissionService {
           throw new BadRequestException(
             "Only an active or upcoming admission can be cancelled.",
           );
+        if (isSubscription(a.plan_snapshot)) {
+          // Stopping keeps only the monthly fees that have already started.
+          const today = localStamp(Date.now(), a.timezone).slice(0, 10);
+          const kept = (
+            a.plan_snapshot.subscription.instalments as Row[]
+          ).filter((i) => i.due_on <= today);
+          const snapshot = {
+            ...a.plan_snapshot,
+            subscription: {
+              ...a.plan_snapshot.subscription,
+              instalments: kept,
+              stopped_on: today,
+            },
+          };
+          await db.query(
+            "UPDATE admissions SET plan_snapshot=$2,total_minor=$3 WHERE id=$1",
+            [
+              id,
+              JSON.stringify(snapshot),
+              kept.reduce((n, i) => n + i.amount_minor, 0),
+            ],
+          );
+        }
         await db.query(
           "UPDATE admissions SET cancelled=true,version=version+1 WHERE id=$1",
           [id],

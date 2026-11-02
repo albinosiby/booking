@@ -17,6 +17,7 @@ class Routes {
       profile = '/profile',
       customers = '/customers',
       admissions = '/admissions',
+      subscriptions = '/profile/subscriptions',
       newAdmission = '/admissions/new',
       expenses = '/expenses',
       addExpense = '/expenses/new',

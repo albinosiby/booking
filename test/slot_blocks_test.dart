@@ -26,6 +26,7 @@ class Blocks implements SlotBlockRepository {
   Future<SlotBlockPage> list(
     String businessId,
     String date, {
+    String? spaceId,
     int cursor = 0,
   }) async => gate == null ? SlotBlockPage([], null) : await gate!.future;
   List<BlockSlot> grid = [

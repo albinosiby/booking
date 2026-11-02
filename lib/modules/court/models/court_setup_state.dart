@@ -12,6 +12,7 @@ class CourtSetupState extends WorkspaceState {
     required this.version,
     this.section = CourtSection.overview,
     this.selectedId,
+    this.pendingPlan,
     this.dirty = false,
     this.saving = false,
     this.editingReady = false,
@@ -41,6 +42,7 @@ class CourtSetupState extends WorkspaceState {
   final int version;
   final CourtSection section;
   final String? selectedId, formError;
+  final CourtPlan? pendingPlan;
   final bool resourceFlow;
   final bool dirty, saving, editingReady, allowExit;
   final LocalDraftStatus localDraftStatus;
@@ -64,10 +66,16 @@ class CourtSetupState extends WorkspaceState {
       CourtResourcesModel(draft.courts, selectedCourt);
   CourtPricingModel get pricingModel =>
       CourtPricingModel(draft.courts, selectedCourt, currency);
-  CourtPlan? get selectedPlan =>
-      draft.plans.where((p) => p.id == selectedId).firstOrNull;
-  CourtCoachingModel get coachingModel =>
-      CourtCoachingModel(draft.courts, draft.plans, selectedPlan, currency);
+  CourtPlan? get selectedPlan => pendingPlan?.id == selectedId
+      ? pendingPlan
+      : draft.plans.where((p) => p.id == selectedId).firstOrNull;
+  CourtCoachingModel get coachingModel => CourtCoachingModel(
+    draft.courts,
+    draft.plans,
+    selectedPlan,
+    currency,
+    reminderDays: draft.reminderDays,
+  );
   CourtReviewModel get reviewModel => CourtReviewModel(draft, currency);
   CourtSetupState copyWith({
     WorkspaceState? snapshot,
@@ -75,6 +83,8 @@ class CourtSetupState extends WorkspaceState {
     int? version,
     CourtSection? section,
     String? selectedId,
+    CourtPlan? pendingPlan,
+    bool clearPendingPlan = false,
     bool clearSelection = false,
     bool? dirty,
     bool? saving,
@@ -91,6 +101,7 @@ class CourtSetupState extends WorkspaceState {
     version: version ?? this.version,
     section: section ?? this.section,
     selectedId: clearSelection ? null : selectedId ?? this.selectedId,
+    pendingPlan: clearPendingPlan ? null : pendingPlan ?? this.pendingPlan,
     dirty: dirty ?? this.dirty,
     saving: saving ?? this.saving,
     editingReady: editingReady ?? this.editingReady,
@@ -112,6 +123,7 @@ class CourtSetupState extends WorkspaceState {
     version,
     section,
     selectedId,
+    pendingPlan,
     dirty,
     saving,
     editingReady,

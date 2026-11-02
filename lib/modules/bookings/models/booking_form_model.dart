@@ -116,7 +116,7 @@ class BookingDraft extends Equatable {
   ];
 }
 
-enum PoolBookingMode { singleVisit, swimming, coaching }
+enum PoolBookingMode { singleVisit, swimming, coaching, subscription }
 
 /// Business types whose bookings can also enroll a plan or coaching admission.
 const admissionBusinessTypes = {'pool', 'badminton', 'tennis', 'basketball'};

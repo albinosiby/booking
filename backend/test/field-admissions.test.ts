@@ -39,7 +39,9 @@ test("enrolment fields: ids, dates, mode, weekdays, time and duration", () => {
     ["resource_id", ""],
     ["resource_id", 5],
     ["plan_id", "x"],
-    ["plan_id", undefined],
+    // A missing plan is a subscription; the service requires exactly one.
+    ["subscription", { monthly_minor: -1, months: 1, ends_on: null }],
+    ["subscription", { monthly_minor: 1, months: 25, ends_on: null }],
     ["starts_on", ""],
     ["starts_on", " "],
     ["starts_on", "2033-02-30"],

@@ -4,6 +4,7 @@ import '../../modules/coaching/screens/coach_classes_screen.dart';
 import '../../modules/booking_blocks/models/slot_block_models.dart';
 import '../../modules/booking_blocks/screens/slot_block_screens.dart';
 import '../../modules/admissions/screens/admissions_screen.dart';
+import '../../modules/admissions/screens/subscriptions_screen.dart';
 import '../../modules/admissions/screens/admission_form_screen.dart';
 import '../../modules/admissions/screens/admission_detail_screen.dart';
 import '../../modules/admissions/repositories/admission_repository.dart';
@@ -375,12 +376,17 @@ GoRouter createRouter(
 
       GoRoute(path: '/admissions', builder: (c, s) => const AdmissionsScreen()),
       GoRoute(
+        path: Routes.subscriptions,
+        builder: (c, s) => const SubscriptionsScreen(),
+      ),
+      GoRoute(
         path: '/admissions/new',
         builder: (c, s) => AdmissionFormScreen(
           formKind:
               const {
                 'plans',
                 'coaching',
+                'subscription',
               }.contains(s.uri.queryParameters['kind'])
               ? s.uri.queryParameters['kind']
               : null,

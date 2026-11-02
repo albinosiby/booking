@@ -18,6 +18,7 @@ class RestSlotBlockRepository implements SlotBlockRepository {
   Future<SlotBlockPage> list(
     String businessId,
     String date, {
+    String? spaceId,
     int cursor = 0,
   }) async {
     final j = await api.retainedRead(
@@ -26,6 +27,7 @@ class RestSlotBlockRepository implements SlotBlockRepository {
         queryParameters: {
           'business_id': businessId,
           'date': date,
+          'resource_id': ?spaceId,
           'cursor': '$cursor',
         },
       ).toString(),

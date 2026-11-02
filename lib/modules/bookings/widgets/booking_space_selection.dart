@@ -193,6 +193,17 @@ class _PoolBookingOptions extends StatelessWidget {
               ? null
               : () => onMode!(PoolBookingMode.coaching),
         ),
+        const SizedBox(height: 10),
+        _BookingOptionButton(
+          key: const ValueKey('booking-mode-subscription'),
+          title: 'Subscription',
+          subtitle: 'Monthly fee with a reserved weekly slot',
+          icon: Icons.event_repeat_outlined,
+          selected: model.poolMode == PoolBookingMode.subscription,
+          onPressed: model.locked
+              ? null
+              : () => onMode!(PoolBookingMode.subscription),
+        ),
       ],
     ],
   );

@@ -72,6 +72,7 @@ class _CourtSetupScreenState extends State<CourtSetupScreen> {
       cubit: cubit,
       disabled: s.disabled,
       coaches: coaches,
+      creating: s.pendingPlan != null,
     ),
     CourtSection.review => CourtReviewScreen(
       model: s.reviewModel,
@@ -134,6 +135,8 @@ class _CourtSetupScreenState extends State<CourtSetupScreen> {
               label: Text(
                 s.resourceFlow && s.section == CourtSection.pricing
                     ? 'Court details'
+                    : s.pendingPlan != null
+                    ? 'Cancel new plan'
                     : s.selectedId != null
                     ? 'Back to list'
                     : 'All Court settings',
@@ -248,7 +251,10 @@ class _CourtSetupScreenState extends State<CourtSetupScreen> {
                   ? null
                   : () async {
                       if (form.currentState?.validate() == true) {
-                        if ([
+                        if (s.section == CourtSection.coaching &&
+                            s.pendingPlan != null) {
+                          cubit.finishPlan();
+                        } else if ([
                           CourtSection.overview,
                           CourtSection.review,
                         ].contains(s.section)) {

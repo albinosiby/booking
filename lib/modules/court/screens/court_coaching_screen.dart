@@ -14,10 +14,12 @@ class CourtCoachingScreen extends StatelessWidget {
     required this.cubit,
     required this.disabled,
     this.coaches = const [],
+    this.creating = false,
   });
   final CourtCoachingModel model;
   final CourtSetupCubit cubit;
   final bool disabled;
+  final bool creating;
 
   /// Team coaches of this business, to name assigned plan coaches.
   final List<PoolCoach> coaches;
@@ -52,13 +54,35 @@ class CourtCoachingScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          ConfigurationField(
+            key: const ValueKey('court-reminder-days'),
+            label: 'Payment reminder · days before a plan ends',
+            value: '${model.reminderDays}',
+            numeric: true,
+            enabled: !disabled,
+            validator: (v) =>
+                int.tryParse(v ?? '') == null ||
+                    int.parse(v!) < 0 ||
+                    int.parse(v) > 30
+                ? 'Enter 0–30 days'
+                : null,
+            onChanged: (v) {
+              final days = int.tryParse(v);
+              if (days != null) cubit.reminderDays(days);
+            },
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Home lists members whose plan ends within these days so staff can renew and collect next month.',
+          ),
+          const SizedBox(height: 16),
           CourtItemList(
             items: model.plans
                 .map(
                   (p) => (
                     p.id,
                     p.name,
-                    '${p.coaching ? 'Coaching' : 'Court plan'} · ${p.trackAttendance ? '${p.allowance} ${p.coaching ? 'classes' : 'play days'}' : 'Membership-only'} · ${p.validityLabel} · ${model.currency} ${p.price.isEmpty ? 'not set' : p.price}${p.coaching && p.trackAttendance ? ' · ${coachName(p)}' : ''}${p.enabled ? '' : ' · disabled'}',
+                    '${p.coaching ? 'Coaching' : 'Court plan'} · ${p.trackAttendance ? '${p.allowance} ${p.coaching ? 'classes' : 'play days'}' : 'Membership-only'} · ${p.validityLabel} · ${model.currency} ${p.price.isEmpty ? 'not set' : p.price}${p.trackAttendance && p.followCourtHours ? ' · Follows court hours' : ''}${p.coaching && p.trackAttendance ? ' · ${coachName(p)}' : ''}${p.enabled ? '' : ' · disabled'}',
                   ),
                 )
                 .toList(),
@@ -196,6 +220,7 @@ class CourtCoachingScreen extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         ConfigurationField(
+          key: ValueKey('court-plan-price-${p.id}'),
           label: 'Total plan price · ${model.currency}',
           value: p.price,
           numeric: true,
@@ -252,22 +277,38 @@ class CourtCoachingScreen extends StatelessWidget {
           const SizedBox(height: 20),
         ],
         if (p.trackAttendance) ...[
-          Text(
-            p.coaching
-                ? 'Coaching days and available times'
-                : 'Allowed playing days and times',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
-          CourtHoursEditor(
-            hours: p.hours,
-            openingWindows: selectedCourts.map((c) => c.hours.window).toList(),
-            allowedDays: commonOpeningDays(
-              selectedCourts.map((c) => c.hours.days),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Follow court opening hours'),
+            subtitle: const Text(
+              'Use each selected court’s current opening days and hours. Choose the member’s actual weekdays and time when creating an admission.',
             ),
-            enabled: !disabled,
-            onChanged: (h) => update((p) => p.copyWith(hours: h)),
+            value: p.followCourtHours,
+            onChanged: disabled
+                ? null
+                : (value) =>
+                      update((plan) => plan.copyWith(followCourtHours: value)),
           ),
+          if (!p.followCourtHours) ...[
+            Text(
+              p.coaching
+                  ? 'Coaching days and available times'
+                  : 'Allowed playing days and times',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            CourtHoursEditor(
+              hours: p.hours,
+              openingWindows: selectedCourts
+                  .map((c) => c.hours.window)
+                  .toList(),
+              allowedDays: commonOpeningDays(
+                selectedCourts.map((c) => c.hours.days),
+              ),
+              enabled: !disabled,
+              onChanged: (h) => update((p) => p.copyWith(hours: h)),
+            ),
+          ],
         ],
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -277,21 +318,22 @@ class CourtCoachingScreen extends StatelessWidget {
               ? null
               : (v) => update((p) => p.copyWith(enabled: v)),
         ),
-        TextButton.icon(
-          icon: const Icon(Icons.delete_outline),
-          label: const Text('Remove plan'),
-          onPressed: disabled
-              ? null
-              : () async {
-                  if (await confirmAction(
-                    context,
-                    'Remove ${p.name}?',
-                    'This plan definition will be removed. Existing admissions keep their purchased plan.',
-                  )) {
-                    cubit.removePlan(p.id);
-                  }
-                },
-        ),
+        if (!creating)
+          TextButton.icon(
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Remove plan'),
+            onPressed: disabled
+                ? null
+                : () async {
+                    if (await confirmAction(
+                      context,
+                      'Remove ${p.name}?',
+                      'This plan definition will be removed. Existing admissions keep their purchased plan.',
+                    )) {
+                      cubit.removePlan(p.id);
+                    }
+                  },
+          ),
       ],
     );
   }

@@ -253,7 +253,12 @@ void registerFeatureDependencies(GetIt di) {
     (session, id) => BookingDetailCubit(session, di(), id),
   );
   di.registerFactoryParam<BookingListCubit, WorkspaceSession, BookingListMode>(
-    (session, mode) => BookingListCubit(session, di(), mode),
+    (session, mode) => BookingListCubit(
+      session,
+      di(),
+      mode,
+      blockRepository: mode == BookingListMode.calendar ? di() : null,
+    ),
   );
   di.registerLazySingleton<HallRepository>(() => RestHallRepository(di()));
   di.registerFactoryParam<HallSetupCubit, WorkspaceSession, String>(

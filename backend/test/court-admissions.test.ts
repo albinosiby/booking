@@ -8,6 +8,7 @@ import { CourtService } from "../src/court/court.service";
 import { BookingService } from "../src/bookings/booking.service";
 import { AdmissionService } from "../src/admissions/admission.service";
 import { courtConfigurationSchema } from "../src/court/court.validation";
+import { fixedDates } from "../src/admissions/admission.rules";
 import { localStamp } from "../src/bookings/booking.inventory";
 delete process.env.DATABASE_URL;
 process.env.NODE_ENV = "test";
@@ -172,6 +173,87 @@ test("court configuration accepts optional coaching plans and validates coach co
   assert.match(
     JSON.stringify(courtConfigurationSchema.safeParse(outside).error),
     /within court hours/,
+  );
+  const following = structuredClone(outside);
+  following.plans = following.plans.map((p) => ({
+    ...p,
+    follow_court_hours: true,
+  }));
+  assert.equal(courtConfigurationSchema.safeParse(following).success, true);
+});
+test("28 play days can reserve fewer weekday visits within one month", () => {
+  assert.equal(
+    fixedDates("2030-06-04", "2030-07-04", [1, 2, 3, 4, 5, 6, 7], 28).length,
+    28,
+  );
+  assert.equal(
+    fixedDates("2030-06-04", "2030-07-04", [1, 2, 3, 4], 28).length,
+    19,
+  );
+});
+test("court admissions follow current court hours and appear on calendar", async () => {
+  const f = await fixture();
+  const current = await workspace.workspace(f.owner);
+  const business = current.businesses.find((b: any) => b.id === f.businessId);
+  const operating = {
+    ...hours,
+    all_day: false,
+    opens_at: "07:00",
+    closes_at: "22:00",
+  };
+  const narrow = {
+    ...hours,
+    all_day: false,
+    opens_at: "17:00",
+    closes_at: "18:00",
+  };
+  f.config.courts[0].operating = operating;
+  f.config.courts[0].tariffs[0].hours = operating;
+  f.config.plans = f.config.plans.map((p: any) => ({
+    ...p,
+    availability: narrow,
+    follow_court_hours: true,
+    ...(p.kind === "play"
+      ? {
+          allowance: 28,
+          expiry_mode: "after_months",
+          expiry_days: null,
+          expiry_months: 1,
+        }
+      : {}),
+  }));
+  await courts.configure(f.owner, f.businessId, {
+    version: business.version,
+    configuration: f.config,
+  });
+  await workspace.activate(f.owner, f.businessId);
+  const catalog = await service.catalog(f.owner);
+  const court = catalog.businesses.find((b: any) => b.id === f.businessId);
+  assert.equal(court.pools[0].operating.opens_at, "07:00");
+  const admission = await enroll(f, {
+    plan_id: f.config.plans[2].id,
+    time: "08:00",
+    weekdays: [1, 2, 3, 4],
+  });
+  const detail = await service.detail(f.owner, admission.id);
+  assert.equal(detail.allowance, 28);
+  assert.equal(detail.sessions.length, 19);
+  const calendar = await bookings.list(f.owner, {
+    business_id: f.businessId,
+    date: "2030-06-04",
+  });
+  assert.ok(
+    calendar.items.some(
+      (b: any) =>
+        b.admission_id === admission.id &&
+        b.resource_id === f.config.courts[0].id &&
+        new Date(b.starts_at).toISOString().includes("08:00"),
+    ),
+  );
+  await assert.rejects(
+    () =>
+      enroll(f, { plan_id: f.config.plans[2].id, time: "06:00" }, "9000000099"),
+    /operating hours/,
   );
 });
 test("catalog lists court businesses with their coaching plans", async () => {

@@ -3,12 +3,92 @@ import '../../../utils/helpers/validation.dart';
 import '../../bookings/models/booking_models.dart';
 
 class AdmissionPool extends Equatable {
-  const AdmissionPool(this.id, this.name, this.durations, this.defaultDuration);
+  const AdmissionPool(
+    this.id,
+    this.name,
+    this.durations,
+    this.defaultDuration, {
+    this.openDays = const [],
+    this.opensAt,
+    this.closesAt,
+    this.allDay = false,
+  });
   final String id, name;
   final List<int> durations;
   final int defaultDuration;
+  final List<int> openDays;
+  final String? opensAt, closesAt;
+  final bool allDay;
   @override
-  List<Object?> get props => [id, name, durations, defaultDuration];
+  List<Object?> get props => [
+    id,
+    name,
+    durations,
+    defaultDuration,
+    openDays,
+    opensAt,
+    closesAt,
+    allDay,
+  ];
+}
+
+/// Every subscription shares this plan id; its terms live on the admission.
+const subscriptionPlanId = '00000000-0000-4000-8000-000000000005';
+
+/// One monthly fee of a subscription.
+class AdmissionFee extends Equatable {
+  const AdmissionFee(this.dueOn, this.amount);
+  final String dueOn;
+  final int amount;
+  @override
+  List<Object?> get props => [dueOn, amount];
+}
+
+/// A staff-agreed subscription: a fee per month, or one fee for a custom period.
+class AdmissionSubscription extends Equatable {
+  const AdmissionSubscription({
+    required this.monthly,
+    this.months,
+    this.endsOn,
+    this.fees = const [],
+    this.stoppedOn,
+  });
+  factory AdmissionSubscription.fromJson(Map<String, dynamic> j) =>
+      AdmissionSubscription(
+        monthly: j['monthly_minor'],
+        months: j['months'],
+        endsOn: j['ends_on'],
+        stoppedOn: j['stopped_on'],
+        fees: List.unmodifiable(
+          (j['instalments'] as List? ?? const []).map(
+            (i) => AdmissionFee(i['due_on'], i['amount_minor']),
+          ),
+        ),
+      );
+  final int monthly;
+
+  /// Null for a custom period ending on [endsOn].
+  final int? months;
+  final String? endsOn, stoppedOn;
+  final List<AdmissionFee> fees;
+  String get periodLabel => months == null
+      ? 'Until ${endsOn ?? '—'}'
+      : '$months ${months == 1 ? 'month' : 'months'}';
+  @override
+  List<Object?> get props => [monthly, months, endsOn, fees, stoppedOn];
+}
+
+/// Dates from [start] to [expiry] inclusive that fall on [weekdays].
+int fixedSessionCount(String start, String expiry, List<int> weekdays) {
+  var date = DateTime.tryParse('${start}T00:00:00Z');
+  final end = DateTime.tryParse('${expiry}T00:00:00Z');
+  if (date == null || end == null || weekdays.isEmpty) return 0;
+  var count = 0;
+  while (!date!.isAfter(end) && count < 1000) {
+    if (weekdays.contains(date.weekday)) count++;
+    date = date.add(const Duration(days: 1));
+  }
+  return count;
 }
 
 class AdmissionPlan extends Equatable {
@@ -30,7 +110,30 @@ class AdmissionPlan extends Equatable {
     this.activeCount,
     this.trackAttendance = true,
   });
+
+  /// The plan-like stand-in a subscription uses in the form: [months] whole
+  /// months or a custom period until [endsOn], at [monthly] per month.
+  factory AdmissionPlan.subscriptionFor(
+    AdmissionBusiness business, {
+    int? months,
+    String? endsOn,
+    int monthly = 0,
+  }) => AdmissionPlan(
+    subscriptionPlanId,
+    'Subscription',
+    business.court ? 'play' : 'swimming',
+    [for (final p in business.pools) p.id],
+    0,
+    monthly * (months ?? 1),
+    null,
+    'Unassigned',
+    expiryMode: months == null ? 'fixed_date' : 'after_months',
+    expiryMonths: months,
+    expiryDate: months == null ? endsOn : null,
+  );
   final String id, name, kind, coach;
+  bool get subscription => id == subscriptionPlanId;
+
   bool matchesKind(String? filter) =>
       filter == null ||
       (filter == 'plans' ? kind != 'coaching' : kind == filter);
@@ -230,7 +333,27 @@ class Admission extends Equatable {
     this.deletedAt,
     this.deletedBy,
     this.deletionReason = '',
+    this.renewalOpen = false,
+    this.subscription,
+    this.dueNow = 0,
+    this.owedNow = 0,
+    this.nextDueOn,
+    this.nextDue,
   });
+
+  /// The server opened renewal: ended, or inside the reminder window.
+  final bool renewalOpen;
+
+  /// Monthly terms when this admission is a subscription.
+  final AdmissionSubscription? subscription;
+
+  /// Fees due by today, and how much of them is still unpaid.
+  final int dueNow, owedNow;
+
+  /// The next monthly fee; null when none is left or amounts are hidden.
+  final String? nextDueOn;
+  final int? nextDue;
+  bool get stopped => subscription != null && status == 'cancelled';
   final String id,
       reference,
       businessId,
@@ -263,7 +386,10 @@ class Admission extends Equatable {
   bool get canRenew =>
       !deleted &&
       renewalId == null &&
-      ['completed', 'expired'].contains(status);
+      (renewalOpen || ['completed', 'expired'].contains(status));
+
+  /// Renewing before this term ends starts the next term the day after it.
+  bool get earlyRenewal => canRenew && status == 'active';
   bool get canCheckIn =>
       mode == 'flexible' &&
       ['active', 'completed'].contains(status) &&
@@ -295,6 +421,12 @@ class Admission extends Equatable {
     deletedAt,
     deletedBy,
     deletionReason,
+    renewalOpen,
+    subscription,
+    dueNow,
+    owedNow,
+    nextDueOn,
+    nextDue,
   ];
 }
 
@@ -327,8 +459,15 @@ class AdmissionDraft extends Equatable {
     this.payments = const [],
     this.renewedFrom,
     this.amount,
+    this.months = 1,
+    this.endsOn,
   });
   final String? businessId, poolId, planId, renewedFrom;
+
+  /// A subscription's length: [months], or a custom period until [endsOn].
+  final int months;
+  final String? endsOn;
+  bool get subscription => planId == subscriptionPlanId;
 
   /// Null uses the configured price; an explicitly empty value is invalid.
   final String? amount;
@@ -354,6 +493,9 @@ class AdmissionDraft extends Equatable {
     bool resetPlan = false,
     String? amount,
     bool resetAmount = false,
+    int? months,
+    String? endsOn,
+    bool clearEndsOn = false,
   }) => AdmissionDraft(
     businessId: businessId ?? this.businessId,
     poolId: poolId ?? this.poolId,
@@ -370,6 +512,8 @@ class AdmissionDraft extends Equatable {
         resetAmount || resetPlan || (planId != null && planId != this.planId)
         ? null
         : amount ?? this.amount,
+    months: months ?? this.months,
+    endsOn: clearEndsOn ? null : endsOn ?? this.endsOn,
   );
   @override
   List<Object?> get props => [
@@ -385,5 +529,7 @@ class AdmissionDraft extends Equatable {
     payments,
     renewedFrom,
     amount,
+    months,
+    endsOn,
   ];
 }

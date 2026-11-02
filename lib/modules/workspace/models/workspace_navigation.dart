@@ -96,6 +96,7 @@ class WorkspaceNavigation {
       return workspace.hasPermission('manage_subscriptions');
     }
     if (path.startsWith('/admissions')) return admissions;
+    if (path.startsWith('/profile/subscriptions')) return admissions;
     if (path == '/booking/new' ||
         path.endsWith('/reschedule') ||
         path.startsWith('/bookings/blocks')) {

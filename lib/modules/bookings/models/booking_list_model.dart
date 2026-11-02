@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'booking_models.dart';
+import '../../booking_blocks/models/slot_block_models.dart';
 
 enum BookingListMode { bookings, calendar, payments }
 
@@ -10,6 +11,14 @@ class BookingSpaceFilter extends Equatable {
   List<Object?> get props => [businessId, spaceId, label];
 }
 
+class CalendarBlockEntry extends Equatable {
+  const CalendarBlockEntry(this.business, this.block);
+  final BookingBusiness business;
+  final SlotBlock block;
+  @override
+  List<Object?> get props => [business, block];
+}
+
 class BookingListModel extends Equatable {
   BookingListModel({
     this.catalog = const BookingCatalog(),
@@ -17,6 +26,9 @@ class BookingListModel extends Equatable {
     this.countsLoading = false,
     this.countsError,
     Iterable<BookingRecord> bookings = const [],
+    Iterable<CalendarBlockEntry> blocks = const [],
+    this.blocksLoading = false,
+    this.blocksError,
     Iterable<CollectionEntry> collections = const [],
     Iterable<CollectionTotal> totals = const [],
     this.loading = true,
@@ -37,6 +49,7 @@ class BookingListModel extends Equatable {
        dateCounts = Map.unmodifiable(dateCounts),
        outstanding = List.unmodifiable(outstanding),
        bookings = List.unmodifiable(bookings),
+       blocks = List.unmodifiable(blocks),
        collections = List.unmodifiable(collections),
        totals = List.unmodifiable(totals);
   final BookingCatalog catalog;
@@ -64,6 +77,9 @@ class BookingListModel extends Equatable {
   final bool countsLoading;
   final String? countsError;
   final List<BookingRecord> bookings;
+  final List<CalendarBlockEntry> blocks;
+  final bool blocksLoading;
+  final String? blocksError;
   final List<CollectionEntry> collections;
   final List<CollectionTotal> totals;
   int get cashReceivedNet => totals
@@ -93,6 +109,10 @@ class BookingListModel extends Equatable {
     bool? countsLoading,
     String? countsError,
     Iterable<BookingRecord>? bookings,
+    Iterable<CalendarBlockEntry>? blocks,
+    bool? blocksLoading,
+    String? blocksError,
+    bool clearBlocksError = false,
     Iterable<CollectionEntry>? collections,
     Iterable<CollectionTotal>? totals,
     bool? loading,
@@ -120,6 +140,9 @@ class BookingListModel extends Equatable {
     countsLoading: countsLoading ?? this.countsLoading,
     countsError: countsError,
     bookings: bookings ?? this.bookings,
+    blocks: blocks ?? this.blocks,
+    blocksLoading: blocksLoading ?? this.blocksLoading,
+    blocksError: clearBlocksError ? null : blocksError ?? this.blocksError,
     collections: collections ?? this.collections,
     totals: totals ?? this.totals,
     loading: loading ?? this.loading,
@@ -144,6 +167,9 @@ class BookingListModel extends Equatable {
     countsLoading,
     countsError,
     bookings,
+    blocks,
+    blocksLoading,
+    blocksError,
     collections,
     totals,
     loading,

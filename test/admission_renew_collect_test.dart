@@ -209,7 +209,7 @@ void main() {
       addTearDown(cubit.close);
       addTearDown(session.close);
       await cubit.loadForm(renewalId: 'admission', collectOnRenewal: true);
-      expect(cubit.state.error, contains('expired or completed'));
+      expect(cubit.state.error, contains('due for renewal'));
       repository.record = example(status: 'expired');
       await cubit.loadForm(renewalId: 'admission', collectOnRenewal: true);
       await cubit.review();
