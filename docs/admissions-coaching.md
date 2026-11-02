@@ -222,8 +222,10 @@ payment history and history, and offers:
 **Home:**
 
 - **Collect now** lists subscription months that have started but are not fully
-  paid, and ended plans still owed money. **Collect** takes any amount up to
-  what is due now; the rest stays until paid.
+  paid, upcoming and running plans with a balance, and ended plans still owed
+  after renewal or cancellation. Ended plans that were not renewed show their
+  balance under **Expired** instead. **Collect** takes any amount up to what is
+  due now; the rest stays until paid.
 - **Due soon** lists next monthly fees inside the business's reminder days
   (court settings, default 3) and plans ending soon.
 

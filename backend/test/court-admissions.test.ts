@@ -9,7 +9,7 @@ import { BookingService } from "../src/bookings/booking.service";
 import { AdmissionService } from "../src/admissions/admission.service";
 import { courtConfigurationSchema } from "../src/court/court.validation";
 import { fixedDates } from "../src/admissions/admission.rules";
-import { localStamp } from "../src/bookings/booking.inventory";
+import { addDate, localStamp } from "../src/bookings/booking.inventory";
 delete process.env.DATABASE_URL;
 process.env.NODE_ENV = "test";
 process.env.PGLITE_PATH = "memory://";
@@ -379,6 +379,64 @@ test("flexible court coaching checks in on a free court", async () => {
     Date.parse(detail.sessions[0].ends_at),
   );
 });
+test("Home lists a running plan's unpaid balance under Collect now", async () => {
+  const f = await fixture();
+  const reminders = async (group: string) =>
+    (await service.paymentReminders(f.owner, { group })).items.map((a: any) => [
+      a.id,
+      a.balance_minor,
+    ]);
+  const half = await enroll(f, {
+    plan_id: f.config.plans[2].id,
+    time: "08:00",
+    payments: [
+      {
+        method: "cash",
+        amount_minor: 100000,
+        reference: "",
+        received_at: new Date().toISOString(),
+      },
+    ],
+  });
+  const paid = await enroll(
+    f,
+    {
+      plan_id: f.config.plans[2].id,
+      time: "10:00",
+      payments: [
+        {
+          method: "cash",
+          amount_minor: 300000,
+          reference: "",
+          received_at: new Date().toISOString(),
+        },
+      ],
+    },
+    "9000000002",
+  );
+  // An upcoming or running plan with a balance is listed; a paid one is not.
+  assert.deepEqual(await reminders("unpaid"), [[half.id, 200000]]);
+  const today = localStamp(Date.now(), "UTC").slice(0, 10);
+  const move = (id: string, from: number, until: number) =>
+    db.query("UPDATE admissions SET starts_on=$2,expires_on=$3 WHERE id=$1", [
+      id,
+      addDate(today, from),
+      addDate(today, until),
+    ]);
+  await move(half.id, -20, 10);
+  assert.deepEqual(await reminders("unpaid"), [[half.id, 200000]]);
+  // Once ended and not renewed, the balance moves to Expired.
+  await move(half.id, -40, -5);
+  assert.deepEqual(await reminders("unpaid"), []);
+  assert.equal(
+    (await service.expired(f.owner, {})).items.find(
+      (a: any) => a.id === half.id,
+    )?.balance_minor,
+    200000,
+  );
+  assert.ok(paid.id);
+});
+
 test("courts with admission history cannot be deleted", async () => {
   const f = await fixture();
   await enroll(f);

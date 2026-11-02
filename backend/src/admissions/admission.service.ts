@@ -1529,9 +1529,11 @@ export class AdmissionService {
     if (v.reminder === "due_soon")
       where += ` AND NOT a.cancelled AND a.status IN ('active','upcoming','completed') AND (EXISTS(SELECT 1 FROM ${fees} i WHERE (i->>'due_on')::date>${today} AND (i->>'due_on')::date<=${today}+${window}) OR (${today}<=a.expires_on AND ${today}>=a.expires_on-${window} AND NOT EXISTS(SELECT 1 FROM admissions renewed WHERE renewed.renewed_from=a.id)))`;
     // Collect now: subscription months already started but not fully paid,
-    // and ended plan terms still owed after renewal or cancellation.
+    // plan terms still running with a balance, and ended plan terms still
+    // owed after renewal or cancellation. Ended terms not renewed are listed
+    // under Expired instead.
     if (v.reminder === "unpaid")
-      where += ` AND ((a.plan_snapshot ? 'subscription' AND COALESCE((SELECT sum((i->>'amount_minor')::integer) FROM ${fees} i WHERE (i->>'due_on')::date<=${today}),0)>${net}) OR (NOT a.plan_snapshot ? 'subscription' AND ${today}>a.expires_on AND (a.cancelled OR EXISTS(SELECT 1 FROM admissions renewed WHERE renewed.renewed_from=a.id)) AND a.total_minor>${net}))`;
+      where += ` AND ((a.plan_snapshot ? 'subscription' AND COALESCE((SELECT sum((i->>'amount_minor')::integer) FROM ${fees} i WHERE (i->>'due_on')::date<=${today}),0)>${net}) OR (NOT a.plan_snapshot ? 'subscription' AND a.total_minor>${net} AND ((NOT a.cancelled AND ${today}<=a.expires_on) OR (${today}>a.expires_on AND (a.cancelled OR EXISTS(SELECT 1 FROM admissions renewed WHERE renewed.renewed_from=a.id))))))`;
     if (v.subscription === "true")
       where += " AND a.plan_snapshot ? 'subscription'";
     if (v.subscription === "false")
@@ -1590,8 +1592,9 @@ export class AdmissionService {
   }
   /**
    * Home payment reminders. `due_soon` lists running terms whose next month
-   * is due, with that month's price; `unpaid` lists ended terms still owed
-   * money after renewal or cancellation.
+   * is due, with that month's price; `unpaid` lists money owed now: started
+   * subscription months, running plan balances, and ended terms still owed
+   * after renewal or cancellation.
    */
   async paymentReminders(actor: Actor, input: unknown) {
     const v = z

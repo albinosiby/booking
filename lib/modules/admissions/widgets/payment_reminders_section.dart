@@ -191,7 +191,7 @@ class _ReminderGroupState extends State<_ReminderGroup>
               Text(
                 dueSoon
                     ? 'Next monthly fees and plans ending in the next few days.'
-                    : 'Subscription months that have started, and ended plans, with money still owed. Enter any amount; the rest stays here until paid.',
+                    : 'Subscription months that have started, and plans with money still owed. Enter any amount; the rest stays here until paid.',
               ),
               if (state.loading)
                 const Padding(
