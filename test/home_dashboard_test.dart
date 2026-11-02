@@ -267,7 +267,7 @@ void main() {
       // Still loading balances: the page shows its layout, not a loader.
       expect(find.byType(AppLoadingState), findsNothing);
       expect(find.byType(LinearProgressIndicator), findsNothing);
-      expect(find.text('Payments to collect'), findsOneWidget);
+      expect(find.text('Collect payments'), findsOneWidget);
       repo.pending = null;
       repo.dueFailure = const AppException('Offline', code: 'NETWORK');
       gate.completeError(repo.dueFailure!);
@@ -371,19 +371,15 @@ void main() {
         expect(find.text('Upcoming today'), findsNothing);
         expect(find.text('Outstanding'), findsNothing);
         expect(find.text('Due amount to collect'), findsOneWidget);
-        expect(
-          tester.widget<AppEmptyState>(find.byType(AppEmptyState)).showCard,
-          isFalse,
-        );
-        final upcoming = tester.getTopLeft(
-          find.text('Upcoming space bookings'),
-        );
-        final payments = tester.getTopLeft(find.text('Payments to collect'));
+        expect(find.text('No more bookings today.'), findsOneWidget);
+        // Wide: schedule left, Collect right. Phone: Collect first.
+        final upcoming = tester.getTopLeft(find.text('Today’s schedule'));
+        final payments = tester.getTopLeft(find.text('Collect payments'));
         if (size.width > 900) {
           expect(upcoming.dy, payments.dy);
           expect(payments.dx, greaterThan(upcoming.dx));
         } else {
-          expect(payments.dy, greaterThan(upcoming.dy));
+          expect(upcoming.dy, greaterThan(payments.dy));
         }
         expect(tester.takeException(), isNull);
         if (const bool.fromEnvironment('HOME_PREVIEWS')) {

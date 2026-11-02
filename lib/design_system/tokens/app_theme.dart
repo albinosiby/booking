@@ -7,7 +7,15 @@ class AppColors {
       surface = Color(0xFF202020),
       lime = Color(0xFF5DD62C),
       forest = Color(0xFF337418),
-      white = Color(0xFFF8F8F8);
+      white = Color(0xFFF8F8F8),
+      // Money still owed: warm on dark, deeper for contrast on light.
+      amber = Color(
+        0xFFF5B83D,
+      ),
+      amberDeep = Color(0xFF8A5A00);
+
+  static Color owed(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? amber : amberDeep;
 }
 
 class AppTheme {

@@ -1,10 +1,7 @@
 import '../../workspace/models/workspace_navigation.dart';
-import '../../bookings/widgets/compact_booking_card.dart';
-import '../../bookings/models/compact_booking_model.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../auth/cubit/auth_cubit.dart';
 import '../widgets/home_greeting_card.dart';
-import '../../workspace/models/business_order.dart';
 import '../../bookings/widgets/booking_widgets.dart';
 import '../../bookings/models/booking_models.dart';
 import '../cubit/home_cubit.dart';
@@ -18,8 +15,7 @@ import '../../workspace/cubit/workspace_cubit.dart';
 import '../../workspace/models/workspace.dart';
 import '../../businesses/widgets/business_icon.dart';
 import '../../coaching/widgets/today_students_section.dart';
-import '../../admissions/widgets/expired_members_section.dart';
-import '../../admissions/widgets/payment_reminders_section.dart';
+import '../widgets/home_workboard.dart';
 import '../../admissions/repositories/admission_repository.dart';
 import '../../workspace/models/workspace_access.dart';
 import '../../booking_website/repositories/booking_website_link_repository.dart';
@@ -179,74 +175,12 @@ class _HomeScreenState extends State<HomeScreen> {
             const TodayStudentsSection(),
             const SizedBox(height: 28),
           ],
-          if (widget.memberships != null &&
-              [
-                'manage_subscriptions',
-                'collect_payments',
-                'view_bookings',
-                'manage_bookings',
-              ].any(workspace.hasPermission))
-            PaymentRemindersSection(
-              key: ValueKey(
-                'payment-reminders-${workspaceAccessScope(workspace)}',
-              ),
-              repository: widget.memberships!,
-              canRenew: workspace.hasPermission('manage_subscriptions'),
-              canCollect: workspace.hasPermission('collect_payments'),
-              showAmounts:
-                  workspace.hasPermission('view_finance') ||
-                  workspace.hasPermission('collect_payments'),
-              currency: workspace.organization?.currency ?? 'INR',
-            ),
-          if (widget.memberships != null &&
-              [
-                'manage_subscriptions',
-                'collect_payments',
-                'view_bookings',
-                'manage_bookings',
-              ].any(workspace.hasPermission))
-            ExpiredMembersSection(
-              key: ValueKey(
-                'expired-members-${workspaceAccessScope(workspace)}',
-              ),
-              repository: widget.memberships!,
-              canRenew: workspace.hasPermission('manage_subscriptions'),
-              canCollect: workspace.hasPermission('collect_payments'),
-              showAmounts:
-                  workspace.hasPermission('view_finance') ||
-                  workspace.hasPermission('collect_payments'),
-              currency: workspace.organization?.currency ?? 'INR',
-            ),
-          if (showStatus) ...[
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final showDue =
-                    workspace.hasPermission('view_finance') ||
-                    workspace.hasPermission('collect_payments');
-                final upcoming = WorkspaceNavigation(workspace).bookings
-                    ? _upcoming(context, s)
-                    : const SizedBox.shrink();
-                if (!showDue) return upcoming;
-                final due = _due(context, s);
-                if (constraints.maxWidth >= 900 &&
-                    MediaQuery.textScalerOf(context).scale(14) <= 21) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(flex: 3, child: upcoming),
-                      const SizedBox(width: 28),
-                      Expanded(flex: 2, child: due),
-                    ],
-                  );
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [upcoming, const SizedBox(height: 28), due],
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-          ],
+          HomeWorkboard(
+            key: ValueKey('home-workboard-${workspaceAccessScope(workspace)}'),
+            model: s,
+            cubit: cubit,
+            memberships: widget.memberships,
+          ),
           if (pending.isNotEmpty) ...[
             Text(
               ready.isEmpty ? 'Your businesses' : 'Finish your setup',
@@ -265,102 +199,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     },
   );
-  Widget _upcoming(BuildContext context, HomeScreenModel s) {
-    final bookings = s.dashboard?.upcoming ?? const <BookingRecord>[];
-    final currency = s.data.organization?.currency ?? 'INR';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Upcoming space bookings',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Today’s schedule, grouped by space.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 16),
-        // Data updates in place; a failed load keeps the last bookings.
-        if (s.dashboard == null && s.bookingError != null && !s.bookingLoading)
-          AppSectionFallback(
-            message: 'Couldn’t load bookings right now.',
-            onRetry: cubit.loadDashboard,
-          ),
-        if (s.dashboard != null && bookings.isEmpty)
-          const AppEmptyState(
-            showCard: false,
-            title: 'No bookings yet',
-            message: 'Upcoming bookings for your assigned spaces appear here.',
-            icon: Icons.calendar_month_outlined,
-          ),
-        for (final id in orderByBusiness(
-          bookings,
-          (b) => b.selection.businessId,
-          s.data.businesses.map((b) => b.id),
-        ).map((b) => b.selection.resourceId).toSet()) ...[
-          Text(
-            '${bookings.firstWhere((b) => b.selection.resourceId == id).businessName} · ${bookings.firstWhere((b) => b.selection.resourceId == id).spaceName}',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          for (final booking in bookings.where(
-            (b) => b.selection.resourceId == id,
-          ))
-            BookingCard(
-              booking: booking,
-              currency: currency,
-              canCollect: s.data.hasPermission('collect_payments'),
-            ),
-        ],
-      ],
-    );
-  }
-
-  Widget _due(BuildContext context, HomeScreenModel s) {
-    final currency = s.data.organization?.currency ?? 'INR';
-    final canCollect = s.data.hasPermission('collect_payments');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Payments to collect',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Unpaid balances across all dates.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 16),
-        // Data updates in place; a failed load keeps the last balances.
-        if (s.dueTotal == null && s.dueError != null && !s.dueLoading)
-          AppSectionFallback(
-            message: 'Couldn’t load payments to collect right now.',
-            onRetry: () => cubit.loadDue(),
-          ),
-        if (s.dueTotal != null && s.dueBookings.isEmpty && s.dueNext == null)
-          const AppEmptyState(
-            showCard: false,
-            title: 'No payments to collect',
-            message: 'Bookings with an unpaid balance will appear here.',
-            icon: Icons.task_alt_outlined,
-          ),
-        for (final booking in s.dueBookings)
-          CompactBookingCard(
-            model: CompactBookingModel.outstanding(booking),
-            currency: currency,
-            canCollect: canCollect,
-          ),
-        if (s.dueNext != null)
-          TextButton(
-            onPressed: s.dueLoading ? null : () => cubit.loadDue(more: true),
-            child: const Text('Load more balances'),
-          ),
-      ],
-    );
-  }
-
   Widget _metric(
     String label,
     String value,

@@ -5,7 +5,6 @@ import 'package:eden_booking/modules/admissions/cubit/expired_members_cubit.dart
 import 'package:eden_booking/modules/admissions/models/admission_models.dart';
 import 'package:eden_booking/modules/admissions/repositories/admission_repository.dart';
 import 'package:eden_booking/modules/admissions/screens/admission_detail_screen.dart';
-import 'package:eden_booking/modules/admissions/widgets/expired_members_section.dart';
 import 'package:eden_booking/modules/bookings/models/booking_models.dart';
 import 'package:eden_booking/modules/court/models/court_coaching.dart';
 import 'package:eden_booking/modules/pool/models/pool_configuration.dart';
@@ -15,7 +14,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'admissions_test.dart' show AdmissionsFake, workspace, example;
 import 'admission_type_selector_test.dart' show showForm;
 
@@ -301,115 +299,6 @@ void main() {
     ]);
     expect(tester.takeException(), isNull);
   });
-  for (final canRenew in [false, true]) {
-    testWidgets(
-      'Home preserves the ${canRenew ? 'renew-only' : 'collection-only'} permission flow',
-      (tester) async {
-        final repository = MembershipRepositoryFake();
-        await tester.pumpWidget(
-          ScreenUtilInit(
-            designSize: const Size(390, 844),
-            builder: (_, _) => MaterialApp(
-              home: Scaffold(
-                body: SingleChildScrollView(
-                  child: ExpiredMembersSection(
-                    repository: repository,
-                    canRenew: canRenew,
-                    canCollect: !canRenew,
-                    showAmounts: true,
-                    currency: 'INR',
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('Renew & collect'), findsNothing);
-        expect(find.text('Renew'), canRenew ? findsOneWidget : findsNothing);
-        expect(
-          find.text('Collect amount'),
-          canRenew ? findsNothing : findsOneWidget,
-        );
-        expect(tester.takeException(), isNull);
-        await tester.pumpWidget(const SizedBox());
-      },
-    );
-  }
-
-  for (final width in [320.0, 1280.0]) {
-    testWidgets(
-      'Home expiry actions fit $width and open renewal and collection',
-      (tester) async {
-        tester.view.physicalSize = Size(width, 1000);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        addTearDown(() => tester.pumpWidget(const SizedBox()));
-        final repository = MembershipRepositoryFake();
-        Uri? destination;
-        late final GoRouter router;
-        router = GoRouter(
-          routes: [
-            GoRoute(
-              path: '/',
-              builder: (context, state) => Scaffold(
-                body: SingleChildScrollView(
-                  child: ExpiredMembersSection(
-                    repository: repository,
-                    canRenew: true,
-                    canCollect: true,
-                    showAmounts: true,
-                    currency: 'INR',
-                  ),
-                ),
-              ),
-            ),
-            GoRoute(
-              path: '/admissions/new',
-              builder: (context, state) {
-                destination = state.uri;
-                return const Scaffold(body: Text('Renewal form'));
-              },
-            ),
-            GoRoute(
-              path: '/admissions/:id',
-              builder: (context, state) {
-                destination = state.uri;
-                return const Scaffold(body: Text('Payment detail'));
-              },
-            ),
-          ],
-        );
-        await tester.pumpWidget(
-          ScreenUtilInit(
-            designSize: const Size(390, 844),
-            builder: (context, _) => MaterialApp.router(
-              theme: AppTheme.build(Brightness.light),
-              routerConfig: router,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('Expired members · action needed'), findsOneWidget);
-        await tester.ensureVisible(find.text('Renew & collect'));
-        await tester.tap(find.text('Renew & collect'));
-        await tester.pumpAndSettle();
-        expect(destination?.queryParameters['renewal_id'], 'membership');
-        expect(destination?.queryParameters['collect'], 'true');
-        router.pop();
-        await tester.pumpAndSettle();
-        expect(find.text('Collect amount'), findsNothing);
-        await tester.ensureVisible(find.text('View membership'));
-        await tester.tap(find.text('View membership'));
-        await tester.pumpAndSettle();
-        expect(destination?.path, '/admissions/membership');
-        expect(tester.takeException(), isNull);
-        await tester.pumpWidget(const SizedBox());
-        router.dispose();
-      },
-    );
-  }
   test('expiry feed clears a deleted record on refresh', () async {
     final repository = MembershipRepositoryFake();
     final feed = ExpiredMembersCubit(repository);

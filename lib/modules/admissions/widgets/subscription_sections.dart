@@ -5,7 +5,6 @@ import '../../../utils/helpers/subscription_labels.dart';
 import '../../../utils/helpers/time_format.dart';
 import '../../bookings/models/booking_models.dart';
 import '../models/admission_models.dart';
-import 'payment_reminders_section.dart' show termMonth;
 
 /// How much of each monthly fee is paid, filling months in order.
 List<({AdmissionFee fee, int paid})> feeCoverage(Admission a) {
