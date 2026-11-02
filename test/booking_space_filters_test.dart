@@ -17,6 +17,7 @@ class FilterRepository extends FakeBookingRepository {
     String? query,
     String? status,
     int cursor = 0,
+    bool excludeAdmissions = false,
   }) async {
     filters.add((businessId, spaceId));
     return const BookingPageResult([], null);

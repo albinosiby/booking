@@ -437,6 +437,25 @@ test("Home lists a running plan's unpaid balance under Collect now", async () =>
   assert.ok(paid.id);
 });
 
+test("the Bookings page can leave plan sessions out of its list and counts", async () => {
+  const f = await fixture();
+  await enroll(f, { plan_id: f.config.plans[2].id, time: "08:00" });
+  const all = await bookings.list(f.owner, {});
+  assert.ok(all.items.some((b: any) => b.admission_id));
+  const page = await bookings.list(f.owner, { exclude_admissions: "true" });
+  assert.equal(page.items.filter((b: any) => b.admission_id).length, 0);
+  const range = { date: "2030-06-01", date_until: "2030-06-30" };
+  const counted = (await bookings.dateCounts(f.owner, range)).items.reduce(
+    (n: number, d: any) => n + d.count,
+    0,
+  );
+  const without = (
+    await bookings.dateCounts(f.owner, { ...range, exclude_admissions: "true" })
+  ).items.reduce((n: number, d: any) => n + d.count, 0);
+  assert.ok(counted > 0);
+  assert.equal(without, 0);
+});
+
 test("courts with admission history cannot be deleted", async () => {
   const f = await fixture();
   await enroll(f);

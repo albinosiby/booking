@@ -11,6 +11,7 @@ abstract interface class BookingRepository {
     String? spaceId,
     String? query,
     String? status,
+    bool excludeAdmissions = false,
   });
   Future<List<BookingSlot>> availability(
     BookingSelection selection, {
@@ -31,6 +32,8 @@ abstract interface class BookingRepository {
   Future<String> submit(BookingCommand command);
   Future<String?> commandResult(String key);
   Future<BookingRecord> detail(String id);
+
+  /// [excludeAdmissions] leaves plan and subscription sessions out.
   Future<BookingPageResult> list({
     String? date,
     String? dateUntil,
@@ -40,6 +43,7 @@ abstract interface class BookingRepository {
     String? query,
     String? status,
     int cursor = 0,
+    bool excludeAdmissions = false,
   });
   Future<CollectionPage> collections({
     String? date,

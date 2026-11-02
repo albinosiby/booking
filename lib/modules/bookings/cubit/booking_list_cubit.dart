@@ -108,6 +108,7 @@ class BookingListCubit extends Cubit<BookingListModel> {
           spaceId: captured.spaceId,
           query: captured.query.isEmpty ? null : captured.query,
           status: captured.status,
+          excludeAdmissions: mode == BookingListMode.bookings,
         );
         if (!isClosed && g == countGeneration && countScope(state) == filter) {
           emit(state.copyWith(dateCounts: counts, countsLoading: false));
@@ -268,6 +269,9 @@ class BookingListCubit extends Cubit<BookingListModel> {
           query: filter.query.isEmpty ? null : filter.query,
           status: filter.status,
           cursor: more ? filter.next! : 0,
+          // Plan and subscription sessions live in Admissions; the
+          // Calendar keeps them so held courts still look taken.
+          excludeAdmissions: mode == BookingListMode.bookings,
         );
         if (!isClosed && g == generation) {
           loadedFilter = resultKey(filter);
