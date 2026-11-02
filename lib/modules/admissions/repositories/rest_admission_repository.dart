@@ -3,6 +3,7 @@ import '../../../utils/services/rest_api_service.dart';
 import '../../../utils/exceptions/app_exception.dart';
 import '../../bookings/models/booking_models.dart';
 import '../models/admission_models.dart';
+import '../models/admission_slot_chart.dart';
 import 'admission_repository.dart';
 
 class RestAdmissionRepository
@@ -288,6 +289,19 @@ class RestAdmissionRepository
       ),
     );
   }
+
+  @override
+  Future<AdmissionSlotChart> slotChart(SlotChartRequest request) async =>
+      AdmissionSlotChart.fromJson(
+        Map<String, dynamic>.from(
+          await api.request(
+            '/admissions/slot-chart',
+            method: 'POST',
+            readOnly: true,
+            data: request.toJson(),
+          ),
+        ),
+      );
 
   @override
   Future<String> create(

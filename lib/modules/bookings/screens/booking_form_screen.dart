@@ -1,3 +1,4 @@
+import '../widgets/slot_holders_sheet.dart';
 import 'dart:async';
 import '../../admissions/widgets/admission_form_fields.dart';
 import '../../admissions/cubit/admission_cubit.dart';
@@ -442,6 +443,30 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
           selectedDate: s.draft.date,
           enabled: !s.locked,
           onSelected: cubit.chooseSlot,
+          // End-time cells describe extensions, not who starts there.
+          onUnavailable: s.choosingEnd
+              ? null
+              : (slot) {
+                  final selection = s.draft.selection;
+                  if (selection == null) return;
+                  final date = slot.date ?? selection.date;
+                  final duration =
+                      slot.duration ??
+                      s.option?.minimumDuration ??
+                      selection.duration;
+                  showSlotHoldersSheet(
+                    context,
+                    title:
+                        '${TimeFormat.display(slot.time)} on $date is ${slot.status == 'blocked' ? 'blocked' : 'taken'}',
+                    load: () => cubit.repository.slotHolders(
+                      businessId: selection.businessId,
+                      spaceId: selection.resourceId,
+                      date: date,
+                      time: slot.time,
+                      duration: duration,
+                    ),
+                  );
+                },
         )
       else if (!s.slotsLoading)
         Padding(

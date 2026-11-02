@@ -6,6 +6,7 @@ import '../../bookings/models/booking_models.dart';
 import '../../bookings/widgets/booking_widgets.dart';
 import '../cubit/admission_cubit.dart';
 import '../cubit/admission_state.dart';
+import 'admission_slot_chart.dart';
 
 class AdmissionScheduleFields extends StatelessWidget {
   const AdmissionScheduleFields({
@@ -127,6 +128,8 @@ class AdmissionScheduleFields extends StatelessWidget {
                   ),
               ],
             ),
+            SizedBox(height: 16.h),
+            AdmissionSlotChartPanel(cubit: cubit, state: s, enabled: enabled),
             SizedBox(height: 12.h),
             OutlinedButton.icon(
               icon: const Icon(Icons.schedule),

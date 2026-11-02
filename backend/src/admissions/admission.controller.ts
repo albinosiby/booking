@@ -39,6 +39,9 @@ export class AdmissionController {
   @Post("preview") preview(@Req() r: AuthRequest, @Body() v: unknown) {
     return this.service.preview(r.actor, v);
   }
+  @Post("slot-chart") slotChart(@Req() r: AuthRequest, @Body() v: unknown) {
+    return this.service.slotChart(r.actor, v);
+  }
   @Post("coach-conflicts") coachConflicts(
     @Req() r: AuthRequest,
     @Body() v: unknown,

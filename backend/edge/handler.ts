@@ -263,6 +263,9 @@ export function createHandler(
   add("POST", "/v1/admissions/preview", (i) =>
     services.admissions.preview(i.actor, i.body),
   );
+  add("POST", "/v1/admissions/slot-chart", (i) =>
+    services.admissions.slotChart(i.actor, i.body),
+  );
   add("POST", "/v1/admissions/coach-conflicts", (i) =>
     services.admissions.coachConflicts(i.actor, i.body),
   );
@@ -492,6 +495,9 @@ export function createHandler(
     b.commandResult(i.actor, i.params.key),
   );
   add("POST", "/v1/bookings/quote", (i) => b.quote(i.actor, i.body));
+  add("POST", "/v1/bookings/slot-holders", (i) =>
+    b.slotHolders(i.actor, i.body),
+  );
   add("POST", "/v1/bookings/availability", (i) =>
     b.availability(i.actor, i.body),
   );

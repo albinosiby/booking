@@ -116,6 +116,65 @@ Creation body includes `business_id`, `resource_id`, `plan_id`, `starts_on`, `mo
 
 The `admission_balances` view calculates fixed usage from ended sessions and flexible usage from distinct present dates. No cron job or live schema mutation is required for expiry/completion. Availability ignores future allocations on closed admissions while retaining occupancy of already-started visits. Tenant-scoped foreign keys prevent attaching visits to another admission's customer or pool. Business row locks serialize purchases/check-ins with ordinary booking capacity changes.
 
+## Weekly slot chart and who holds a slot
+
+A fixed admission reserves the same space inventory as ordinary bookings, so
+an allotted member's slot already shows as booked to normal bookings and to
+other admissions. The admission form now shows that occupancy before review.
+
+After choosing plan, activation date and weekdays, **Free start times** lists
+half-hour start times (from each applicable opening time) that fit the
+selected duration within space and plan hours. Each time is checked against
+every session date of the term, exactly as review does:
+
+- **Free** (or **N of M left** for shared pools and coaching seats): tap to
+  select it as the start time. The figure is the busiest date in the term.
+- **Taken · N dates**: at least one term date is full or blocked. Tap to see
+  up to three clashing dates with who holds each: member name, plan, weekdays,
+  expiry and admission number; booking customer and reference; or a slot block.
+  A taken time cannot be selected.
+- **Past**: the first session would already have started.
+
+**Start time** remains available for times not shown in the chart; review
+still checks them. When review rejects a clash, the message now begins with
+the clashing date and lists who holds the slot, followed by the original
+reason, for example `Tue, 4 Jun 2030 at 9:00 AM is held by Rahul (Morning
+swim AD-…). This space is no longer available. Choose another slot.` Coach
+overlap and slot-block messages keep their wording with the date prefixed. The
+whole purchase is still rejected on any clash; staff choose another time or
+move the other booking first.
+
+On the booking form, **Booked** and **Blocked** start times show a person icon.
+Tapping one lists who holds that space during that interval. End-time cells
+are not tappable. The public website availability is unchanged and never names
+holders.
+
+| Method | Route | Body | Permission |
+|---|---|---|---|
+| POST | `/v1/admissions/slot-chart` | `business_id`, `resource_id`, `plan_id`, `starts_on`, `weekdays` (1–7, unique, at least one), `duration_minutes` | `manage_subscriptions` |
+| POST | `/v1/bookings/slot-holders` | `business_id`, `resource_id`, `date`, `time`, `duration_minutes` | booking read access |
+
+`slot-chart` returns `expires_on`, `dates` and `slots[]` with `time`,
+`end_time`, `status` (`available`, `taken`, `past`), `capacity`,
+`remaining_capacity`, `session_count`, `clash_count` and up to three
+`clashes[]` (`date`, `label`, `reason`, `holder_count`, up to five `holders`).
+Holders carry `kind` (`admission`, `booking`, `block`), `reference`, `name`,
+`plan_name`, `weekdays`, `expires_on` and local start/end. Booking customer
+names in the chart and review message require `view_bookings` or
+`manage_bookings`; otherwise only the booking reference is shown. Both routes
+apply membership and business/resource scope. They are read-only and need no
+migration. The chart reads availability fresh each time (no cache) because it
+changes with every booking. A year of daily sessions takes roughly a few
+seconds to check; typical monthly plans return well under a second.
+
+**Release:** run backend `npm run build`, `npm run edge:check`,
+`npm run edge:build`, deploy the generated `booking-api` function, then release
+the Flutter client. An older API returns 404 for these routes; the chart then
+shows its error with Retry and the manual **Start time** still works.
+
+Verification: backend `test/admission-slot-chart.test.ts`; Flutter
+`test/admission_slot_chart_test.dart`.
+
 ## Membership-only plans and retained deletions
 
 In the business configuration, open **Plans** (pool) or **Plans & coaching**

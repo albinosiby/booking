@@ -29,6 +29,17 @@ export const createAdmissionSchema = enrollmentSchema.extend({
   command_key: z.uuid(),
   preview_token: z.string().regex(/^[a-f0-9]{64}$/),
 });
+/** A fixed weekly schedule to lay out before choosing a start time. */
+export const slotChartSchema = z
+  .object({
+    business_id: z.uuid(),
+    resource_id: z.uuid(),
+    plan_id: z.uuid(),
+    starts_on: calendarDate,
+    weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+    duration_minutes: z.number().int().min(30).max(1440),
+  })
+  .strict();
 export function expiryFrom(plan: Row, start: string) {
   if (plan.expiry_mode === "fixed_date") return plan.expiry_date as string;
   if (plan.expiry_mode === "after_start")

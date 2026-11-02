@@ -471,6 +471,7 @@ class BookingTimeGrid extends StatelessWidget {
     this.minimumDuration,
     this.selectedDate,
     this.cells,
+    this.onUnavailable,
   });
   final List<BookingSlot> slots;
   final List<BookingTimeCell>? cells;
@@ -479,6 +480,9 @@ class BookingTimeGrid extends StatelessWidget {
   final int? minimumDuration;
   final String? selectedDate;
   final ValueChanged<BookingSlot> onSelected;
+
+  /// Opens who holds a booked or blocked slot; such slots stay unselectable.
+  final ValueChanged<BookingSlot>? onUnavailable;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
@@ -508,6 +512,11 @@ class BookingTimeGrid extends StatelessWidget {
                 final inRange = cell?.inRange ?? false;
                 final selectable =
                     enabled && (cell?.enabled ?? slot.selectable);
+                final held =
+                    onUnavailable != null &&
+                    enabled &&
+                    !selectable &&
+                    (slot.status == 'booked' || slot.status == 'blocked');
                 final status =
                     cell?.label ??
                     (slot.status == 'blocked'
@@ -531,8 +540,10 @@ class BookingTimeGrid extends StatelessWidget {
                   child: Semantics(
                     button: true,
                     selected: active || inRange,
-                    enabled: selectable,
-                    label: '${TimeFormat.display(slot.time)}, $status',
+                    enabled: selectable || held,
+                    label: held
+                        ? '${TimeFormat.display(slot.time)}, $status, show who holds it'
+                        : '${TimeFormat.display(slot.time)}, $status',
                     child: Material(
                       color: active
                           ? c.primary
@@ -556,7 +567,11 @@ class BookingTimeGrid extends StatelessWidget {
                               ? 'booking-time-${cell.date}-${slot.time}'
                               : 'booking-time-${slot.time}',
                         ),
-                        onTap: selectable ? () => onSelected(slot) : null,
+                        onTap: selectable
+                            ? () => onSelected(slot)
+                            : held
+                            ? () => onUnavailable!(slot)
+                            : null,
                         child: Container(
                           constraints: const BoxConstraints(minHeight: 80),
                           padding: const EdgeInsets.symmetric(
@@ -588,6 +603,15 @@ class BookingTimeGrid extends StatelessWidget {
                                 textAlign: TextAlign.center,
                                 style: TextStyle(fontSize: 12, color: text),
                               ),
+                              if (held)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Icon(
+                                    Icons.person_search_outlined,
+                                    size: 16,
+                                    color: text,
+                                  ),
+                                ),
                             ],
                           ),
                         ),

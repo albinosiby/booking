@@ -18,8 +18,10 @@ import {
   addDate,
   localStamp,
   checkInventory,
+  inventoryRemaining,
   zonedTime,
 } from "../bookings/booking.inventory";
+import { holderText, slotHolders, slotLabel } from "../bookings/slot-holders";
 import { coachingConfiguration, isCoach } from "../workspace/coach.access";
 import {
   calendarDate,
@@ -42,8 +44,14 @@ import {
   expiryFrom,
   fixedDates,
   interval,
+  slotChartSchema,
 } from "./admission.rules";
 type Row = Record<string, any>;
+class CoachClashException extends ConflictException {
+  constructor() {
+    super("The coach has another overlapping class.");
+  }
+}
 /** Shows who coaches the admission's plan now, not who did when it was sold. */
 function withCurrentCoach(a: Row, config: Row | undefined, names: CoachNames) {
   if (a.plan_snapshot?.kind !== "coaching") return a;
@@ -398,7 +406,50 @@ export class AdmissionService {
             coach && !same.includes(r),
       )
     )
-      throw new ConflictException("The coach has another overlapping class.");
+      throw new CoachClashException();
+  }
+  /** Rows of this space's inventory that overlap a session. */
+  private holding(b: Row, pool: Row, s: Row, occupied: Row[]) {
+    const key = b.id + ":" + pool.id;
+    return occupied.filter(
+      (r) =>
+        r.inventory_key === key &&
+        Date.parse(r.starts_at) < Date.parse(s.ends_at) &&
+        Date.parse(r.ends_at) > Date.parse(s.starts_at),
+    );
+  }
+  /**
+   * Restates a session conflict with its date and, when the space itself is
+   * full, who holds it. The original reason is kept as the last sentence.
+   */
+  private async clash(
+    db: Queryable,
+    m: Row,
+    b: Row,
+    pool: Row,
+    s: Row,
+    occupied: Row[],
+    e: ConflictException,
+  ) {
+    const when = slotLabel(s.local_start);
+    const plain = new ConflictException(`${when}: ${e.message}`);
+    if (e instanceof SlotBlockedException || e instanceof CoachClashException)
+      return plain;
+    const holders = (
+      await slotHolders(
+        db,
+        m.organization_id,
+        this.holding(b, pool, s, occupied),
+        this.allowed(m, "view_bookings") || this.allowed(m, "manage_bookings"),
+        b.timezone,
+      )
+    ).filter((h) => h.kind !== "block");
+    if (!holders.length) return plain;
+    const names = holders.slice(0, 3).map(holderText).join(", ");
+    const more = holders.length > 3 ? ` and ${holders.length - 3} more` : "";
+    return new ConflictException(
+      `${when} is held by ${names}${more}. ${e.message}`,
+    );
   }
   /** The caller's coaching classes on one local date, each with its students. */
   async classes(actor: Actor, input: unknown) {
@@ -834,7 +885,13 @@ export class AdmissionService {
         sessions[0].starts_at,
         sessions.at(-1)!.ends_at,
       );
-      for (const s of sessions) this.check(b, pool, plan, s, occupied);
+      for (const s of sessions)
+        try {
+          this.check(b, pool, plan, s, occupied);
+        } catch (e) {
+          if (!(e instanceof ConflictException)) throw e;
+          throw await this.clash(db, m, b, pool, s, occupied, e);
+        }
     }
     const snapshot = {
       ...plan,
@@ -874,6 +931,214 @@ export class AdmissionService {
       const b = await this.business(m, v.business_id, v.resource_id, db, true);
       return this.previewIn(db, m, b, v);
     });
+  }
+  /**
+   * Start times for a fixed weekly schedule. Each time is checked against
+   * every session date of the term, as preview does, and names who holds
+   * the dates that clash.
+   */
+  async slotChart(actor: Actor, input: unknown) {
+    const v = slotChartSchema.parse(input);
+    const m = await this.member(actor);
+    if (!this.allowed(m, "manage_subscriptions"))
+      throw new ForbiddenException(
+        "Subscription management permission is required.",
+      );
+    const b = await this.business(m, v.business_id, v.resource_id, this.db);
+    if (b.status !== "ready")
+      throw new BadRequestException("This business is not ready.");
+    const c = b.configuration,
+      pool = admissionSpaces(c).find(
+        (p: Row) => p.id === v.resource_id && p.enabled,
+      ),
+      plan = c?.plans?.find(
+        (p: Row) =>
+          p.id === v.plan_id &&
+          p.enabled &&
+          planSpaceIds(p).includes(v.resource_id),
+      );
+    if (!pool || !plan)
+      throw new BadRequestException("Choose an enabled space and plan.");
+    if (plan.track_attendance === false)
+      throw new BadRequestException(
+        "Membership-only plans do not have scheduled weekdays.",
+      );
+    if (plan.allowance > 1000)
+      throw new BadRequestException(
+        "A fixed admission supports at most 1,000 reserved sessions. Use flexible attendance for larger plans.",
+      );
+    const today = localStamp(Date.now(), b.timezone).slice(0, 10);
+    const expires = expiryFrom(plan, v.starts_on);
+    if (v.starts_on < today || !expires || expires < v.starts_on)
+      throw new BadRequestException(
+        "Choose an activation date from today within plan validity.",
+      );
+    const dates = fixedDates(v.starts_on, expires, v.weekdays, plan.allowance);
+    const minute = (t: string) =>
+      Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+    const pad = (n: number) => String(n).padStart(2, "0");
+    // Offer half-hour steps from each opening time that applies.
+    const anchors = [
+      pool.operating,
+      ...(plan.follow_court_hours ? [] : [plan.availability]),
+    ]
+      .filter((h: Row | undefined) => h && !h.all_day)
+      .map((h: Row) => minute(h.opens_at));
+    const starts = new Set<number>();
+    for (const a of anchors.length ? anchors : [0])
+      for (let n = 0; n < 48; n++) starts.add((a + n * 30) % 1440);
+    const times = [...starts]
+      .sort((x, y) => x - y)
+      .map((t) => `${pad(Math.floor(t / 60))}:${pad(t % 60)}`);
+    const day = 86400000,
+      lo = Math.floor(Date.parse(dates[0] + "T00:00:00Z") / day) - 2,
+      hi = Math.floor(Date.parse(dates.at(-1)! + "T00:00:00Z") / day) + 3;
+    const occupied = await this.allocations(
+      this.db,
+      b.id,
+      new Date(lo * day).toISOString(),
+      new Date((hi + 1) * day).toISOString(),
+    );
+    // Index by UTC day so each session only scans its neighbours.
+    const buckets = new Map<number, Row[]>();
+    for (const r of occupied) {
+      const from = Math.floor(Date.parse(r.starts_at) / day),
+        to = Math.floor((Date.parse(r.ends_at) - 1) / day);
+      for (let d = Math.max(from, lo); d <= Math.min(to, hi); d++) {
+        const list = buckets.get(d) ?? [];
+        list.push(r);
+        buckets.set(d, list);
+      }
+    }
+    const near = (s: Row) => {
+      const found = new Set<Row>();
+      const last = Math.floor((Date.parse(s.ends_at) - 1) / day);
+      for (let d = Math.floor(Date.parse(s.starts_at) / day); d <= last; d++)
+        for (const r of buckets.get(d) ?? []) found.add(r);
+      return [...found];
+    };
+    const key = b.id + ":" + pool.id,
+      court = c?.kind === "court_v1",
+      coaching = plan.kind === "coaching";
+    const capacity = coaching ? plan.class_seats : (pool.capacity ?? 1);
+    const left = (s: Row, rows: Row[]) => {
+      let remaining = capacity;
+      if (!court || !coaching)
+        remaining = inventoryRemaining(
+          {
+            inventory_keys: [key],
+            occupied_from: s.starts_at,
+            occupied_until: s.ends_at,
+            capacity: pool.capacity ?? 1,
+            quantity: 1,
+          },
+          rows,
+        );
+      if (coaching)
+        remaining = Math.min(
+          remaining,
+          plan.class_seats -
+            rows.filter(
+              (r) =>
+                r.plan_id === plan.id &&
+                r.inventory_key === key &&
+                Date.parse(r.starts_at) === Date.parse(s.starts_at) &&
+                Date.parse(r.ends_at) === Date.parse(s.ends_at),
+            ).length,
+        );
+      return Math.max(0, remaining);
+    };
+    const now = Date.now();
+    const slots: Row[] = [];
+    for (const time of times) {
+      let sessions: Row[];
+      try {
+        sessions = dates.map((date) =>
+          interval(pool, plan, date, time, v.duration_minutes, b.timezone),
+        );
+      } catch (e) {
+        // Preview would reject this time on some date, so it is not offered.
+        if (e instanceof BadRequestException) continue;
+        throw e;
+      }
+      if (
+        sessions.some(
+          (s, i) =>
+            localStamp(Date.parse(s.ends_at) - 1, b.timezone).slice(0, 10) >
+              expires ||
+            (i > 0 &&
+              Date.parse(s.starts_at) < Date.parse(sessions[i - 1].ends_at)),
+        )
+      )
+        continue;
+      const base = {
+        time,
+        end_time: sessions[0].local_end.slice(11, 16),
+        session_count: sessions.length,
+        capacity,
+      };
+      if (Date.parse(sessions[0].starts_at) < now) {
+        slots.push({
+          ...base,
+          status: "past",
+          remaining_capacity: 0,
+          clash_count: 0,
+          clashes: [],
+        });
+        continue;
+      }
+      let remaining = capacity;
+      const clashes: Row[] = [];
+      for (const s of sessions) {
+        const rows = near(s);
+        try {
+          this.check(b, pool, plan, s, rows);
+          remaining = Math.min(remaining, left(s, rows));
+        } catch (e) {
+          if (!(e instanceof ConflictException)) throw e;
+          clashes.push({
+            s,
+            reason: e.message,
+            rows: this.holding(b, pool, s, rows),
+          });
+        }
+      }
+      slots.push({
+        ...base,
+        status: clashes.length ? "taken" : "available",
+        remaining_capacity: clashes.length ? 0 : remaining,
+        clash_count: clashes.length,
+        clashes: clashes.slice(0, 3),
+      });
+    }
+    const holders = await slotHolders(
+      this.db,
+      m.organization_id,
+      slots.flatMap((s) => s.clashes.flatMap((x: Row) => x.rows)),
+      this.allowed(m, "view_bookings") || this.allowed(m, "manage_bookings"),
+      b.timezone,
+    );
+    return {
+      timezone: b.timezone,
+      expires_on: expires,
+      dates,
+      slots: slots.map((slot) => ({
+        ...slot,
+        clashes: slot.clashes.map((x: Row) => {
+          const ids = new Set(x.rows.map((r: Row) => String(r.booking_id)));
+          const held = holders.filter((h) => ids.has(h.source));
+          return {
+            date: x.s.date,
+            label: slotLabel(x.s.local_start),
+            starts_at: x.s.starts_at,
+            ends_at: x.s.ends_at,
+            reason: x.reason,
+            holder_count: held.length,
+            holders: held.slice(0, 5),
+          };
+        }),
+      })),
+    };
   }
   private async payment(
     db: Queryable,

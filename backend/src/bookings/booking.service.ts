@@ -2,6 +2,7 @@ import { voiceAccess } from "../agent-calls/agent-call-policy";
 import { recordBookingHistory } from "./booking-history";
 import { bookingAvailability } from "./booking.availability";
 import { inventoryAllocations } from "../slot-blocks/inventory-blocks";
+import { slotHolders } from "./slot-holders";
 import { postBookingPayment, systemAccounts } from "../accounts/ledger";
 import {
   Injectable,
@@ -24,12 +25,14 @@ import {
   customerEditSchema,
   moneyStatus,
   calendarDate,
+  clock,
 } from "./booking.validation";
 import {
   bookingOptions,
   buildQuote,
   checkInventory,
   localStamp,
+  zonedTime,
 } from "./booking.inventory";
 type Row = Record<string, any>;
 @Injectable()
@@ -246,6 +249,52 @@ export class BookingService {
         v.exclude_booking_id,
       );
     });
+  }
+  /**
+   * Who holds a space during one local interval. Staff-only: public
+   * availability never names the people occupying a slot.
+   */
+  async slotHolders(actor: Actor, input: unknown) {
+    const v = z
+      .object({
+        business_id: z.uuid(),
+        resource_id: z.uuid(),
+        date: calendarDate,
+        time: clock,
+        duration_minutes: z.number().int().min(1).max(1440),
+      })
+      .strict()
+      .parse(input);
+    const m = await this.member(actor);
+    if (!this.canRead(m))
+      throw new ForbiddenException("Booking access is required.");
+    const b = await this.access(m, v.business_id, v.resource_id);
+    const layout =
+      b.configuration?.kind === "turf_v1"
+        ? b.configuration.layouts?.find((l: Row) => l.id === v.resource_id)
+        : null;
+    const keys = (layout ? layout.section_ids : [v.resource_id]).map(
+      (id: string) => b.id + ":" + id,
+    );
+    const from = zonedTime(v.date, v.time, b.timezone),
+      until = from + v.duration_minutes * 60000;
+    const rows = await inventoryAllocations(
+      this.db,
+      b.id,
+      new Date(from).toISOString(),
+      new Date(until).toISOString(),
+      keys,
+    );
+    return {
+      timezone: b.timezone,
+      items: await slotHolders(
+        this.db,
+        m.organization_id,
+        rows,
+        true,
+        b.timezone,
+      ),
+    };
   }
   private async command(
     actor: Actor,

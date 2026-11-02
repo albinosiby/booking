@@ -60,6 +60,12 @@ export class BookingController {
   @Post("quote") quote(@Req() r: AuthRequest, @Body() body: unknown) {
     return this.service.quote(r.actor, body);
   }
+  @Post("slot-holders") slotHolders(
+    @Req() r: AuthRequest,
+    @Body() body: unknown,
+  ) {
+    return this.service.slotHolders(r.actor, body);
+  }
   @Post("availability") availability(
     @Req() r: AuthRequest,
     @Body() body: unknown,

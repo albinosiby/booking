@@ -1,6 +1,7 @@
 import '../../workspace/repositories/refreshable_reads.dart';
 import '../../../utils/services/rest_api_service.dart';
 import '../models/booking_models.dart';
+import '../models/slot_holder.dart';
 import 'booking_repository.dart';
 
 class RestBookingRepository implements BookingRepository, RefreshableReads {
@@ -67,6 +68,33 @@ class RestBookingRepository implements BookingRepository, RefreshableReads {
     return List.unmodifiable(
       (j['slots'] as List).map(
         (s) => BookingSlot.fromJson(Map<String, dynamic>.from(s)),
+      ),
+    );
+  }
+
+  @override
+  Future<List<SlotHolder>> slotHolders({
+    required String businessId,
+    required String spaceId,
+    required String date,
+    required String time,
+    required int duration,
+  }) async {
+    final j = await api.request(
+      '/bookings/slot-holders',
+      readOnly: true,
+      method: 'POST',
+      data: {
+        'business_id': businessId,
+        'resource_id': spaceId,
+        'date': date,
+        'time': time,
+        'duration_minutes': duration,
+      },
+    );
+    return List.unmodifiable(
+      (j['items'] as List).map(
+        (h) => SlotHolder.fromJson(Map<String, dynamic>.from(h)),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import '../models/booking_models.dart';
+import '../models/slot_holder.dart';
 
 abstract interface class BookingRepository {
   Stream<void> get changes;
@@ -15,6 +16,15 @@ abstract interface class BookingRepository {
     BookingSelection selection, {
     String? excludeId,
     bool endTimes = false,
+  });
+
+  /// Staff-only: who holds a space during one local interval.
+  Future<List<SlotHolder>> slotHolders({
+    required String businessId,
+    required String spaceId,
+    required String date,
+    required String time,
+    required int duration,
   });
   Future<BookingQuote> quote(BookingSelection selection, {String? excludeId});
   Future<List<BookingCustomer>> customers(String phone);

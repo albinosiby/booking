@@ -1,4 +1,5 @@
 import '../models/admission_models.dart';
+import '../models/admission_slot_chart.dart';
 import '../../bookings/models/booking_models.dart';
 
 abstract interface class MembershipActions {
@@ -24,6 +25,9 @@ abstract class AdmissionRepository {
   });
   Future<Admission> detail(String id);
   Future<AdmissionPreview> preview(AdmissionDraft draft);
+
+  /// Weekly start times checked against every session date of the term.
+  Future<AdmissionSlotChart> slotChart(SlotChartRequest request);
   Future<String> create(
     AdmissionDraft draft,
     AdmissionPreview preview,

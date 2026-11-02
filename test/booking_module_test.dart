@@ -19,6 +19,7 @@ import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_repository_interface.dart';
 import 'package:eden_booking/modules/bookings/models/booking_models.dart';
+import 'package:eden_booking/modules/bookings/models/slot_holder.dart';
 import 'package:eden_booking/modules/bookings/models/booking_detail_model.dart';
 import 'package:eden_booking/modules/bookings/models/booking_list_model.dart';
 import 'package:eden_booking/modules/bookings/cubit/booking_form_cubit.dart';
@@ -136,6 +137,20 @@ class FakeBookingRepository implements BookingRepository {
   Future<BookingQuote> quote(BookingSelection s, {String? excludeId}) async {
     quoteCalls++;
     return delayedQuote == null ? makeQuote(s) : await delayedQuote!.future;
+  }
+
+  List<SlotHolder> holders = const [];
+  int holderCalls = 0;
+  @override
+  Future<List<SlotHolder>> slotHolders({
+    required String businessId,
+    required String spaceId,
+    required String date,
+    required String time,
+    required int duration,
+  }) async {
+    holderCalls++;
+    return holders;
   }
 
   @override
