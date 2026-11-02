@@ -464,9 +464,26 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                       ),
                       const SizedBox(height: 12),
                       AppCard(
+                        child: ExpenseChart(
+                          values: summary.bars(f),
+                          selectedDay: s.selectedDay,
+                          onDay: cubit.selectDay,
+                          // The daily breakdown below has the one Show all days.
+                          filter: f,
+                          currency: catalog.currency,
+                          onMonth: (m) => cubit.setFilter(
+                            f.copy(
+                              anchor: DateTime(f.anchor.year, m),
+                              yearly: false,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      AppCard(
                         child: f.yearly
                             ? const Text(
-                                'Select a month in View trend to see daily expenses.',
+                                'Select a month in the chart to see daily expenses.',
                               )
                             : ExpenseDailyBreakdown(
                                 summary: summary,
@@ -492,29 +509,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                                 exporting: s.exporting,
                               ),
                       ),
-                      const SizedBox(height: 8),
-                      AppCard(
-                        child: ExpansionTile(
-                          key: const ValueKey('expense-view-trend'),
-                          title: const Text('View trend'),
-                          children: [
-                            ExpenseChart(
-                              values: summary.bars(f),
-                              selectedDay: s.selectedDay,
-                              onDay: cubit.selectDay,
-                              onClearDay: () => cubit.selectDay(null),
-                              filter: f,
-                              currency: catalog.currency,
-                              onMonth: (m) => cubit.setFilter(
-                                f.copy(
-                                  anchor: DateTime(f.anchor.year, m),
-                                  yearly: false,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+
                       if (summary.categories.isNotEmpty) ...[
                         const FinanceSection('By category'),
                         FinanceBreakdown(
@@ -808,7 +803,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                                 values: summary.bars(f),
                                 selectedDay: s.selectedDay,
                                 onDay: cubit.selectDay,
-                                onClearDay: () => cubit.selectDay(null),
+                                // The daily breakdown below has the one Show all days.
                                 filter: f,
                                 currency: catalog!.currency,
                                 onMonth: (m) => cubit.setFilter(
