@@ -468,7 +468,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                           values: summary.bars(f),
                           selectedDay: s.selectedDay,
                           onDay: cubit.selectDay,
-                          onClearDay: () => cubit.selectDay(null),
+                          // The daily breakdown below has the one Show all days.
                           filter: f,
                           currency: catalog.currency,
                           onMonth: (m) => cubit.setFilter(
@@ -803,7 +803,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                                 values: summary.bars(f),
                                 selectedDay: s.selectedDay,
                                 onDay: cubit.selectDay,
-                                onClearDay: () => cubit.selectDay(null),
+                                // The daily breakdown below has the one Show all days.
                                 filter: f,
                                 currency: catalog!.currency,
                                 onMonth: (m) => cubit.setFilter(

@@ -380,7 +380,11 @@ void main() {
           expect(find.text('Net cash received ₹ 0.00'), findsOneWidget);
           expect(find.text('Net bank received ₹ 0.00'), findsOneWidget);
         } else {
-          expect(find.text('15 Oct 2026 · ₹ 300.00'), findsOneWidget);
+          expect(find.text('Selected day’s expenses'), findsWidgets);
+          expect(find.text('Total expenses ₹ 300.00'), findsOneWidget);
+          expect(find.text('Net spent ₹ 300.00'), findsOneWidget);
+          // One Show all days, from the daily breakdown.
+          expect(find.text('Show all days'), findsOneWidget);
         }
         final chart = tester.widget<FinancePeriodChart>(
           find.byType(FinancePeriodChart),

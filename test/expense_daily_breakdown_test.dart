@@ -50,11 +50,13 @@ void main() {
     );
     expect(find.text('Expenses ₹ 200.00'), findsOneWidget);
     expect(find.text('Reversals ₹ 50.00'), findsOneWidget);
-    expect(find.text('Net spent ₹ 150.00'), findsOneWidget);
+    // Before a day is chosen the card reads Net; Net spent is the day view.
+    expect(find.text('Net ₹ 150.00'), findsOneWidget);
     expect(
-      find.text('Maintenance · Lights repair · Main Turf · ₹ 200.00'),
+      find.text('Maintenance · Lights repair · Main Turf'),
       findsOneWidget,
     );
+    expect(find.text('₹ 200.00'), findsOneWidget);
     expect(find.text('Cash ₹ 50.00'), findsOneWidget);
     expect(find.text('UPI ₹ 100.00'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('expense-day-2026-10-15')));
