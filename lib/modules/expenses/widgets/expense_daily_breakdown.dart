@@ -46,25 +46,32 @@ class ExpenseDailyBreakdown extends StatelessWidget {
         ),
         if (selectedDay != null) ...[
           TextButton(onPressed: onClearDay, child: const Text('Show all days')),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              if (onAddExpense != null)
-                OutlinedButton.icon(
-                  key: const ValueKey('expense-day-add'),
-                  onPressed: onAddExpense,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add expense'),
-                ),
-              if (onDownloadDay != null)
-                FilledButton.tonalIcon(
-                  key: const ValueKey('expense-day-download'),
-                  onPressed: exporting ? null : onDownloadDay,
-                  icon: const Icon(Icons.download_outlined, size: 18),
-                  label: Text(exporting ? 'Preparing…' : 'Download'),
-                ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final actions = <Widget>[
+                if (onAddExpense != null)
+                  OutlinedButton.icon(
+                    key: const ValueKey('expense-day-add'),
+                    onPressed: onAddExpense,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add expense'),
+                  ),
+                if (onDownloadDay != null)
+                  FilledButton.tonalIcon(
+                    key: const ValueKey('expense-day-download'),
+                    onPressed: exporting ? null : onDownloadDay,
+                    icon: const Icon(Icons.download_outlined, size: 18),
+                    label: Text(exporting ? 'Preparing…' : 'Download'),
+                  ),
+              ];
+              if (constraints.maxWidth < 300) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [for (final action in actions) action],
+                );
+              }
+              return Wrap(spacing: 8, runSpacing: 4, children: actions);
+            },
           ),
         ],
         if (entries.isEmpty)
@@ -114,14 +121,13 @@ class ExpenseDailyBreakdown extends StatelessWidget {
                       runSpacing: 4,
                       children: [
                         Text(
-                          'Expenses ${financeMoney(entry.value.gross, currency)}',
+                          '${selectedDay == null ? 'Expenses' : 'Total expenses'} ${financeMoney(entry.value.gross, currency)}',
                         ),
-                        if (entry.value.reversals != 0)
-                          Text(
-                            'Reversals ${financeMoney(entry.value.reversals, currency)}',
-                          ),
                         Text(
-                          'Net spent ${financeMoney(entry.value.net, currency)}',
+                          'Reversals ${financeMoney(entry.value.reversals, currency)}',
+                        ),
+                        Text(
+                          '${selectedDay == null ? 'Net' : 'Net spent'} ${financeMoney(entry.value.net, currency)}',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         if (selectedDay != null) ...[
@@ -139,8 +145,38 @@ class ExpenseDailyBreakdown extends StatelessWidget {
                       for (final purpose in entry.value.purposes)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 3),
-                          child: Text(
-                            '${purpose.category} · ${purpose.reason} · ${purpose.space} · ${financeMoney(purpose.amount, currency)}',
+                          child: LayoutBuilder(
+                            builder: (context, constraints) =>
+                                constraints.maxWidth < 280 ||
+                                    MediaQuery.textScalerOf(context).scale(14) >
+                                        20
+                                ? Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${purpose.category} · ${purpose.reason} · ${purpose.space}',
+                                      ),
+                                      Text(
+                                        financeMoney(purpose.amount, currency),
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          '${purpose.category} · ${purpose.reason} · ${purpose.space}',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        financeMoney(purpose.amount, currency),
+                                      ),
+                                    ],
+                                  ),
                           ),
                         ),
                       if (entry.value.purposeCount >
