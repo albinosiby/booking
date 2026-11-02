@@ -69,7 +69,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ? NewBookingFab(onPressed: () => context.push('/booking/new'))
             : null,
         children: [
-          if (s.status == LoadStatus.loading) const AppLoadingState(),
           if (widget.websiteLinks != null &&
               workspace.organization != null) ...[
             Align(
@@ -257,7 +256,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ...pending.map((b) => _business(context, b, workspace.isOwner)),
           ],
 
-          if (s.error != null) AppErrorWidget(message: s.error!),
+          // Home keeps what it has; only an empty page gets a fallback.
+          if (s.error != null && workspace.organization == null)
+            const AppSectionFallback(
+              message: 'Couldn’t load your workspace right now.',
+            ),
         ],
       );
     },
@@ -278,13 +281,13 @@ class _HomeScreenState extends State<HomeScreen> {
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 16),
-        if (s.bookingLoading)
-          AppLoadingState(
-            initial: s.dashboard == null,
-            label: s.dashboard == null ? 'Loading bookings…' : null,
+        // Data updates in place; a failed load keeps the last bookings.
+        if (s.dashboard == null && s.bookingError != null && !s.bookingLoading)
+          AppSectionFallback(
+            message: 'Couldn’t load bookings right now.',
+            onRetry: cubit.loadDashboard,
           ),
-        if (s.bookingError != null) AppErrorWidget(message: s.bookingError!),
-        if (s.dashboard != null && s.bookingError == null && bookings.isEmpty)
+        if (s.dashboard != null && bookings.isEmpty)
           const AppEmptyState(
             showCard: false,
             title: 'No bookings yet',
@@ -330,16 +333,13 @@ class _HomeScreenState extends State<HomeScreen> {
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 16),
-        if (s.dueLoading)
-          AppLoadingState(
-            initial: s.dueTotal == null,
-            label: s.dueTotal == null ? 'Loading balances…' : null,
+        // Data updates in place; a failed load keeps the last balances.
+        if (s.dueTotal == null && s.dueError != null && !s.dueLoading)
+          AppSectionFallback(
+            message: 'Couldn’t load payments to collect right now.',
+            onRetry: () => cubit.loadDue(),
           ),
-        if (s.dueError != null) AppErrorWidget(message: s.dueError!),
-        if (s.dueTotal != null &&
-            s.dueError == null &&
-            s.dueBookings.isEmpty &&
-            s.dueNext == null)
+        if (s.dueTotal != null && s.dueBookings.isEmpty && s.dueNext == null)
           const AppEmptyState(
             showCard: false,
             title: 'No payments to collect',

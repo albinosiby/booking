@@ -139,7 +139,14 @@ class _ReminderGroupState extends State<_ReminderGroup>
             '${bookingMoney(due(a), widget.currency)} due · ${a.planName}',
       ),
     );
-    if (result != null && mounted) await cubit.collect(a, result.$1);
+    if (result != null && mounted) await act(() => cubit.collect(a, result.$1));
+  }
+
+  /// Home shows no inline errors: a failed action is reported once.
+  Future<void> act(Future<void> Function() action) async {
+    await action();
+    final error = cubit.state.error;
+    if (mounted && error != null) showMessage(context, error);
   }
 
   /// What to collect now: started subscription months, or a plan's balance.
@@ -158,10 +165,8 @@ class _ReminderGroupState extends State<_ReminderGroup>
   ) => BlocBuilder<PaymentRemindersCubit, PaymentRemindersState>(
     bloc: cubit,
     builder: (context, state) {
-      if (!state.loading &&
-          state.error == null &&
-          state.uncertainId == null &&
-          state.items.isEmpty) {
+      // Hidden until there is something to collect; loads update in place.
+      if (state.uncertainId == null && state.items.isEmpty) {
         return const SizedBox.shrink();
       }
       final theme = Theme.of(context);
@@ -193,12 +198,6 @@ class _ReminderGroupState extends State<_ReminderGroup>
                     ? 'Next monthly fees and plans ending in the next few days.'
                     : 'Subscription months that have started, and plans with money still owed. Enter any amount; the rest stays here until paid.',
               ),
-              if (state.loading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: LinearProgressIndicator(),
-                ),
-              if (state.error != null) AppErrorWidget(message: state.error!),
               if (state.uncertainId != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -212,7 +211,7 @@ class _ReminderGroupState extends State<_ReminderGroup>
                       TextButton(
                         onPressed: state.collectingId != null
                             ? null
-                            : cubit.retry,
+                            : () => act(cubit.retry),
                         child: const Text('Retry'),
                       ),
                     ],

@@ -235,6 +235,63 @@ void main() {
     await repo.events.close();
   });
 
+  testWidgets(
+    'Home shows no loaders and a calm fallback when a section fails',
+    (tester) async {
+      final source = BookingSource(), repo = HomeBookings();
+      getIt.registerSingleton<WorkspaceRepository>(source);
+      registerFeatureDependencies(getIt);
+      await getIt.unregister<BookingRepository>();
+      getIt.registerSingleton<BookingRepository>(repo);
+      await getIt.unregister<HomeCubit>();
+      getIt.registerFactoryParam<HomeCubit, WorkspaceCubit, void>(
+        (workspace, _) =>
+            HomeCubit(SessionDashboardRepository(workspace), repo),
+      );
+      final workspace = WorkspaceCubit(source);
+      await workspace.load();
+      addTearDown(workspace.close);
+      addTearDown(repo.events.close);
+      final gate = Completer<OutstandingPage>();
+      repo.pending = gate;
+      await tester.pumpWidget(
+        BlocProvider.value(
+          value: workspace,
+          child: ScreenUtilInit(
+            designSize: const Size(390, 844),
+            builder: (_, _) => MaterialApp(home: const HomeScreen()),
+          ),
+        ),
+      );
+      await tester.pump();
+      // Still loading balances: the page shows its layout, not a loader.
+      expect(find.byType(AppLoadingState), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.text('Payments to collect'), findsOneWidget);
+      repo.pending = null;
+      repo.dueFailure = const AppException('Offline', code: 'NETWORK');
+      gate.completeError(repo.dueFailure!);
+      await tester.pumpAndSettle();
+      expect(find.text('Offline'), findsNothing);
+      expect(find.byType(AppErrorWidget), findsNothing);
+      expect(
+        find.text('Couldn’t load payments to collect right now.'),
+        findsOneWidget,
+      );
+      repo.dueFailure = null;
+      expect(find.text('Try again'), findsOneWidget);
+    await tester.ensureVisible(find.text('Try again'));
+    await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Couldn’t load payments to collect right now.'),
+        findsNothing,
+      );
+      expect(find.text('Customer booking'), findsWidgets);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   for (final size in [
     const Size(1280, 1000),
     const Size(390, 844),

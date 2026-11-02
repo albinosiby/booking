@@ -62,9 +62,8 @@ class _ExpiredMembersSectionState extends State<ExpiredMembersSection>
   ) => BlocBuilder<ExpiredMembersCubit, ExpiredMembersState>(
     bloc: cubit,
     builder: (context, state) {
-      if (!state.loading && state.error == null && state.items.isEmpty) {
-        return const SizedBox.shrink();
-      }
+      // Hidden until there is someone to renew; loads update in place.
+      if (state.items.isEmpty) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.only(bottom: 24),
         child: AppCard(
@@ -89,12 +88,6 @@ class _ExpiredMembersSectionState extends State<ExpiredMembersSection>
               const Text(
                 'Renew a plan, collect outstanding fees, or open membership details to delete it while keeping history and dues.',
               ),
-              if (state.loading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: LinearProgressIndicator(),
-                ),
-              if (state.error != null) AppErrorWidget(message: state.error!),
               for (final admission in state.items)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
