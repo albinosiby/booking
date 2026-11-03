@@ -157,6 +157,24 @@ class WorkspaceCubit extends Cubit<WorkspaceState> implements WorkspaceSession {
         );
       }
     } catch (e) {
+      if (isClosed || generation != _generation) return;
+      final source = repository;
+      if (e is AppException &&
+          e.code == 'NETWORK' &&
+          source is OfflineWorkspace) {
+        // Offline: reopen the last authorized workspace so retained pages
+        // stay readable. Writes still require the server.
+        Workspace? saved;
+        try {
+          saved = await (source as OfflineWorkspace).offlineWorkspace();
+        } catch (_) {}
+        if (saved != null && !isClosed && generation == _generation) {
+          final data = _retainLogo(saved);
+          emit(WorkspaceState(status: LoadStatus.ready, data: data));
+          _loadLogo(data, generation);
+          return;
+        }
+      }
       if (!isClosed && generation == _generation) {
         emit(
           WorkspaceState(

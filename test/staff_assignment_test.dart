@@ -52,6 +52,22 @@ class StaffRepository extends Fake implements WorkspaceRepository {
   }
 }
 
+/// [StaffRepository] whose owner membership has [id], so screens can tell
+/// which team member is the signed-in user.
+class SignedInAs extends StaffRepository {
+  SignedInAs(this.id);
+  final String id;
+  @override
+  Future<Workspace> load() async {
+    final w = await super.load();
+    return Workspace(
+      organization: w.organization,
+      membership: {...?w.membership, 'id': id},
+      businesses: w.businesses,
+    );
+  }
+}
+
 void main() {
   tearDown(() async {
     await getIt.reset();

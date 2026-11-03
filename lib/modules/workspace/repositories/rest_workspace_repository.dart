@@ -10,6 +10,7 @@ class RestWorkspaceRepository
     implements
         WorkspaceRepository,
         WorkspaceAccessRecovery,
+        OfflineWorkspace,
         WorkspaceLogoRepository,
         WorkspaceLogoEvents,
         RefreshableReads,
@@ -41,6 +42,12 @@ class RestWorkspaceRepository
     );
     await api.authorizeReads(json);
     return Workspace.fromJson(json);
+  }
+
+  @override
+  Future<Workspace?> offlineWorkspace() async {
+    final json = await api.offlineWorkspace();
+    return json == null ? null : Workspace.fromJson(json);
   }
 
   @override

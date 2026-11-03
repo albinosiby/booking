@@ -11,14 +11,15 @@ import 'package:eden_booking/modules/team/repositories/team_repository.dart';
 import 'package:eden_booking/modules/team/screens/staff_assignment_screen.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_repository_interface.dart';
-import 'staff_assignment_test.dart' show StaffRepository;
+import 'staff_assignment_test.dart' show SignedInAs, StaffRepository;
 
 Map<String, dynamic> member({
+  String id = 'person',
   String role = 'staff',
   bool active = true,
   bool pending = false,
 }) => {
-  'id': 'person',
+  'id': id,
   'display_name': 'Alex',
   'email': 'alex@example.com',
   'role': role,
@@ -71,12 +72,13 @@ void main() {
     await team.close();
   });
   test(
-    'removal guards owners, inactive and pending members and prevents duplicate requests',
+    'removal guards yourself, inactive and pending members and prevents duplicate requests',
     () async {
-      final source = RemovalSource(), session = WorkspaceCubit(RemovalSource());
+      final source = RemovalSource(),
+          session = WorkspaceCubit(SignedInAs('me'));
       await session.load();
       for (final target in [
-        member(role: 'owner'),
+        member(id: 'me', role: 'owner'),
         member(active: false),
         member(pending: true),
       ]) {
@@ -89,6 +91,14 @@ void main() {
         expect(await c.remove(), isFalse);
         await c.close();
       }
+      // Another owner can be removed; the server keeps at least one owner.
+      final coOwner = StaffAssignmentCubit(
+        session,
+        LocalApiTeamRepository(source),
+        member: member(role: 'owner'),
+      );
+      expect(coOwner.canRemove, isTrue);
+      await coOwner.close();
       final c = StaffAssignmentCubit(
         session,
         LocalApiTeamRepository(source),

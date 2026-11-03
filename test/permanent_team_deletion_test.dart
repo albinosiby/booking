@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eden_booking/di/injection.dart';
@@ -8,6 +9,8 @@ import 'package:eden_booking/modules/team/models/team_deletion_target.dart';
 import 'package:eden_booking/modules/team/repositories/team_repository.dart';
 import 'package:eden_booking/modules/team/screens/team_screen.dart';
 import 'package:eden_booking/modules/team/widgets/team_desktop_widgets.dart';
+import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
+import 'staff_assignment_test.dart' show SignedInAs;
 
 Map<String, dynamic> person(String id, String role, bool active) => {
   'id': id,
@@ -63,39 +66,40 @@ class Deletions extends Fake implements TeamRepository {
 
 void main() {
   tearDown(() async => getIt.reset());
-  test(
-    'only removed staff/managers and cancelled invitations are eligible',
-    () {
-      expect(
-        TeamDeletionTarget.member(person('owner', 'owner', false)).eligible,
-        isFalse,
-      );
-      expect(
-        TeamDeletionTarget.member(person('active', 'staff', true)).eligible,
-        isFalse,
-      );
-      expect(
-        TeamDeletionTarget.member(person('former', 'staff', false)).eligible,
-        isTrue,
-      );
-      expect(
-        TeamDeletionTarget.invitation(invitation('pending')).eligible,
-        isFalse,
-      );
-      expect(
-        TeamDeletionTarget.invitation(
-          invitation('cancelled', cancelled: true),
-        ).eligible,
-        isTrue,
-      );
-      expect(
-        TeamDeletionTarget.invitation(
-          invitation('accepted', cancelled: true, accepted: true),
-        ).eligible,
-        isFalse,
-      );
-    },
-  );
+  test('only removed team members and cancelled invitations are eligible', () {
+    expect(
+      TeamDeletionTarget.member(person('owner', 'owner', false)).eligible,
+      isTrue,
+    );
+    expect(
+      TeamDeletionTarget.member(person('owner', 'owner', true)).eligible,
+      isFalse,
+    );
+    expect(
+      TeamDeletionTarget.member(person('active', 'staff', true)).eligible,
+      isFalse,
+    );
+    expect(
+      TeamDeletionTarget.member(person('former', 'staff', false)).eligible,
+      isTrue,
+    );
+    expect(
+      TeamDeletionTarget.invitation(invitation('pending')).eligible,
+      isFalse,
+    );
+    expect(
+      TeamDeletionTarget.invitation(
+        invitation('cancelled', cancelled: true),
+      ).eligible,
+      isTrue,
+    );
+    expect(
+      TeamDeletionTarget.invitation(
+        invitation('accepted', cancelled: true, accepted: true),
+      ).eligible,
+      isFalse,
+    );
+  });
   test(
     'Cubit guards active records, coalesces clicks and retains deletion after a failed refresh',
     () async {
@@ -151,10 +155,16 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
         final r = Deletions();
         getIt.registerFactory<TeamCubit>(() => TeamCubit(r));
+        final workspace = WorkspaceCubit(SignedInAs('owner'));
+        addTearDown(workspace.close);
+        await workspace.load();
         await tester.pumpWidget(
           ScreenUtilInit(
             designSize: const Size(390, 844),
-            builder: (_, _) => const MaterialApp(home: TeamScreen()),
+            builder: (_, _) => BlocProvider.value(
+              value: workspace,
+              child: const MaterialApp(home: TeamScreen()),
+            ),
           ),
         );
         await tester.pumpAndSettle();

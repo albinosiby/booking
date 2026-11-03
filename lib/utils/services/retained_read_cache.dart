@@ -41,19 +41,26 @@ class RetainedReadCache {
     required this.store,
     required this.identity,
     DateTime Function()? now,
-    this.maxEntries = 80,
+    this.maxEntries = 150,
     this.maxBytes = 2 * 1024 * 1024,
+    this.offlineFor = const Duration(days: 7),
   }) : now = now ?? DateTime.now;
   final ReadSnapshotStore store;
   final String? Function() identity;
   final DateTime Function() now;
   final int maxEntries, maxBytes;
+
+  /// Snapshots older than their retention are kept this long, but are shown
+  /// only when the server cannot be reached.
+  final Duration offlineFor;
   final _entries = <String, _Snapshot>{};
   final _pending = <String, Future<dynamic>>{};
   final _failures = <String, (Object, DateTime)>{};
   final _updates = StreamController<String>.broadcast();
   Stream<String> get updates => _updates.stream;
   String? _scope, _user;
+  String? _session, _sessionUser;
+  DateTime? _sessionSaved;
   Object? _denied;
   int _epoch = 0;
   Timer? _timer;
@@ -61,11 +68,21 @@ class RetainedReadCache {
   bool get _authorized =>
       _scope != null && _user != null && _user == identity();
 
-  /// Called only after an authoritative workspace read. The scope includes the
-  /// backend, user, organization, membership permissions and assigned spaces.
-  Future<void> authorize(String scope) async {
-    if (_authorized && _scope == scope) return;
+  /// Called after an authoritative workspace read, or with the last authorized
+  /// workspace while offline. The scope includes the backend, user,
+  /// organization, membership permissions and assigned spaces. [session] is the
+  /// authoritative workspace payload kept for [offlineSession].
+  Future<void> authorize(String scope, {String? session}) async {
     final user = identity();
+    if (session != null && user != null) {
+      _session = session;
+      _sessionUser = user;
+      _sessionSaved = now();
+    }
+    if (_authorized && _scope == scope) {
+      if (session != null) _schedulePersist();
+      return;
+    }
     final epoch = ++_epoch;
     _scope = scope;
     _user = user;
@@ -103,7 +120,39 @@ class RetainedReadCache {
 
   bool _usable(_Snapshot e) {
     final age = now().difference(e.savedAt);
-    return !age.isNegative && age < e.retainFor;
+    return !age.isNegative &&
+        age < (e.retainFor > offlineFor ? e.retainFor : offlineFor);
+  }
+
+  static bool _offline(Object e) => e is AppException && e.code == 'NETWORK';
+
+  /// The last authorized workspace payload for the signed-in user, used only
+  /// when the server cannot be reached. Access denial or sign-out clears it.
+  Future<String?> offlineSession() async {
+    final user = identity();
+    if (user == null || _denied != null) return null;
+    if (_sessionUser == user && _session != null) {
+      final age = now().difference(_sessionSaved!);
+      return !age.isNegative && age < offlineFor ? _session : null;
+    }
+    try {
+      await _disk;
+      final raw = await store.read();
+      if (raw == null || identity() != user) return null;
+      final data = jsonDecode(raw) as Map;
+      final saved = data['session'];
+      if (data['user'] != user || saved is! Map) return null;
+      final at = DateTime.fromMillisecondsSinceEpoch(saved['saved'] as int);
+      final age = now().difference(at);
+      if (age.isNegative || age >= offlineFor) return null;
+      _session = saved['data'] as String;
+      _sessionUser = user;
+      _sessionSaved = at;
+      return _session;
+    } catch (_) {
+      // Unreadable storage means there is nothing to show offline.
+      return null;
+    }
   }
 
   Future<dynamic> read(
@@ -118,17 +167,32 @@ class RetainedReadCache {
     final coolingDown =
         failure != null && now().difference(failure.$2).inSeconds < 10;
     final value = _entries.remove(key);
-    if (value != null &&
-        _usable(value) &&
-        now().difference(value.savedAt) < retainFor) {
+    if (value != null && _usable(value)) {
       _entries[key] = value;
-      if (!coolingDown && now().difference(value.savedAt) >= freshFor) {
-        // Observe failure through updates; never leak an unhandled future.
-        unawaited(
-          _fetch(key, fetch, freshFor, retainFor).catchError((_) => null),
-        );
+      final age = now().difference(value.savedAt);
+      if (age < retainFor && age < value.retainFor) {
+        if (!coolingDown && age >= freshFor) {
+          // Observe failure through updates; never leak an unhandled future.
+          unawaited(
+            _fetch(key, fetch, freshFor, retainFor).catchError((_) => null),
+          );
+        }
+        return jsonDecode(value.json);
       }
-      return jsonDecode(value.json);
+      // Past retention: wait for the server, and show the old snapshot only
+      // when the server cannot be reached.
+      if (coolingDown) {
+        if (_offline(failure.$1)) return jsonDecode(value.json);
+        throw failure.$1;
+      }
+      try {
+        return await _fetch(key, fetch, freshFor, retainFor);
+      } catch (e) {
+        if (_offline(e) && _authorized && identical(_entries[key], value)) {
+          return jsonDecode(value.json);
+        }
+        rethrow;
+      }
     }
     if (coolingDown) throw failure.$1;
     return _fetch(key, fetch, freshFor, retainFor);
@@ -209,7 +273,8 @@ class RetainedReadCache {
     _failures.clear();
     _timer?.cancel();
     _queue(() => store.clear());
-    if (_entries.isNotEmpty) _schedulePersist();
+    // Rewrites kept snapshots and the offline workspace session.
+    _schedulePersist();
     if (notify) _updates.add('*');
   }
 
@@ -217,6 +282,7 @@ class RetainedReadCache {
     _epoch++;
     _scope = null;
     _user = null;
+    _session = _sessionUser = _sessionSaved = null;
     _denied = error;
     _entries.clear();
     _pending.clear();
@@ -237,7 +303,13 @@ class RetainedReadCache {
       _trim();
       final payload = jsonEncode({
         'scope': _scope,
+        'user': _user,
         'items': _entries.map((k, v) => MapEntry(k, v.toJson())),
+        if (_session != null && _sessionUser == _user)
+          'session': {
+            'data': _session,
+            'saved': _sessionSaved!.millisecondsSinceEpoch,
+          },
       });
       _queue(() => store.write(payload));
     });

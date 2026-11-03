@@ -72,9 +72,13 @@ class RestApiService {
             handler.reject(
               DioException(
                 requestOptions: options,
-                error: const AppException(
-                  'Your session could not be refreshed. Sign in again.',
-                ),
+                // An offline token refresh is a connectivity failure, so
+                // retained reads can still fall back to their snapshots.
+                error: e is AppException && e.code == 'NETWORK'
+                    ? e
+                    : const AppException(
+                        'Your session could not be refreshed. Sign in again.',
+                      ),
               ),
             );
           }
@@ -106,7 +110,12 @@ class RestApiService {
   late final StreamSubscription _authChanges;
   Stream<String> get readUpdates => readCache?.updates ?? const Stream.empty();
 
-  Future<void> authorizeReads(Map<String, dynamic> workspace) async {
+  /// [remember] keeps [workspace] for [offlineWorkspace]; pass false when the
+  /// workspace itself came from that offline copy.
+  Future<void> authorizeReads(
+    Map<String, dynamic> workspace, {
+    bool remember = true,
+  }) async {
     Object? canonical(Object? value) {
       if (value is Map) {
         final keys = value.keys.map((k) => k.toString()).toList()..sort();
@@ -136,7 +145,18 @@ class RestApiService {
           },
         }),
       ),
+      session: remember ? jsonEncode(workspace) : null,
     );
+  }
+
+  /// The last authorized workspace, reopened while the server cannot be
+  /// reached so retained pages stay readable. Writes still need the server.
+  Future<Map<String, dynamic>?> offlineWorkspace() async {
+    final saved = await readCache?.offlineSession();
+    if (saved == null) return null;
+    final workspace = Map<String, dynamic>.from(jsonDecode(saved) as Map);
+    await authorizeReads(workspace, remember: false);
+    return workspace;
   }
 
   Future<dynamic> retainedRead(
@@ -283,6 +303,21 @@ class RestApiService {
         throw AppException(
           body['message']?.toString() ?? 'Request failed.',
           code: body['code']?.toString() ?? 'REQUEST_ERROR',
+        );
+      }
+      final status = e.response?.statusCode;
+      if (status != null) {
+        // The server answered, so this is not a connection problem. Gateway
+        // errors keep the NETWORK code because the outcome is unknown.
+        if (const [502, 503, 504].contains(status)) {
+          throw const AppException(
+            'The server is temporarily unavailable. Try again shortly.',
+            code: 'NETWORK',
+          );
+        }
+        throw AppException(
+          'The request failed ($status). Try again.',
+          code: 'REQUEST_ERROR',
         );
       }
       throw const AppException(

@@ -39,6 +39,12 @@ abstract interface class WorkspaceLogoEvents {
   Stream<void> get logoChanges;
 }
 
+/// Optional offline capability: the last authorized workspace, used only when
+/// load() cannot reach the server.
+abstract interface class OfflineWorkspace {
+  Future<Workspace?> offlineWorkspace();
+}
+
 /// Transport access failures are reconciled before feature errors are delivered.
 abstract interface class WorkspaceAccessRecovery {
   void setAccessRecovery(Future<void> Function()? recover);

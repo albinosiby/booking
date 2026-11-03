@@ -13,7 +13,9 @@ class RestAdmissionRepository
   final RestApiService api;
   @override
   Future<AdmissionPage> expiredMembers({int cursor = 0}) async {
-    final response = await api.request('/admissions/expired?cursor=$cursor');
+    final response = await api.retainedRead(
+      '/admissions/expired?cursor=$cursor',
+    );
     return AdmissionPage(
       List<Admission>.unmodifiable((response['items'] as List).map(decode)),
       response['next_cursor'],
@@ -22,7 +24,7 @@ class RestAdmissionRepository
 
   @override
   Future<AdmissionPage> paymentReminders(String group, {int cursor = 0}) async {
-    final response = await api.request(
+    final response = await api.retainedRead(
       '/admissions/payment-reminders?group=$group&cursor=$cursor',
     );
     return AdmissionPage(

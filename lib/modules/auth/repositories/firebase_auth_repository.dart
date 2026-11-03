@@ -71,6 +71,15 @@ class FirebaseAuthRepository implements AuthRepository {
     await _auth.currentUser?.getIdToken(true);
   });
   @override
-  Future<String?> token({bool refresh = false}) async =>
-      _auth.currentUser?.getIdToken(refresh);
+  Future<String?> token({bool refresh = false}) async {
+    try {
+      return await _auth.currentUser?.getIdToken(refresh);
+    } on FirebaseAuthException catch (e) {
+      if (e.code != 'network-request-failed') rethrow;
+      throw const AppException(
+        'Cannot reach the server. Check your connection and try again.',
+        code: 'NETWORK',
+      );
+    }
+  }
 }
