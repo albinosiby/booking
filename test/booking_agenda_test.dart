@@ -133,6 +133,24 @@ class CalendarBlocks extends Fake implements SlotBlockRepository {
 
 void main() {
   tearDown(() => getIt.reset());
+  test('calendar filter indicator tracks every filter type', () {
+    expect(BookingListModel().hasActiveFilters, isFalse);
+    expect(BookingListModel().activeFilterCount, 0);
+    expect(BookingListModel(businessId: 'business').hasActiveFilters, isTrue);
+    expect(BookingListModel(spaceId: 'space').hasActiveFilters, isTrue);
+    expect(BookingListModel(status: 'confirmed').hasActiveFilters, isTrue);
+    expect(BookingListModel(query: ' Guest ').hasActiveFilters, isTrue);
+    expect(BookingListModel(query: '  ').hasActiveFilters, isFalse);
+    expect(
+      BookingListModel(
+        businessId: 'business',
+        spaceId: 'space',
+        status: 'confirmed',
+        query: 'Guest',
+      ).activeFilterCount,
+      4,
+    );
+  });
   testWidgets('calendar block card shows space and blocked time', (
     tester,
   ) async {
@@ -675,6 +693,29 @@ void main() {
     expect(find.text('Booking status'), findsOneWidget);
     await tester.tap(find.text('Apply filters'));
     await tester.pumpAndSettle();
+    final badge = find.byKey(const ValueKey('booking-filter-badge'));
+    expect(tester.widget<Badge>(badge).isLabelVisible, isFalse);
+    await tester.tap(find.byTooltip('Filter bookings'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), 'Guest');
+    await tester.tap(find.text('Apply filters'));
+    await tester.pumpAndSettle();
+    expect(cubit.state.query, 'Guest');
+    expect(tester.widget<Badge>(badge).isLabelVisible, isTrue);
+    expect(
+      find.descendant(of: badge, matching: find.text('1')),
+      findsOneWidget,
+    );
+    final activeButton = tester.widget<IconButton>(
+      find.ancestor(of: badge, matching: find.byType(IconButton)),
+    );
+    expect(activeButton.style?.backgroundColor?.resolve({}), isNotNull);
+    await tester.tap(find.byTooltip('Filter bookings, active filters'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reset filters'));
+    await tester.pumpAndSettle();
+    expect(cubit.state.hasActiveFilters, isFalse);
+    expect(tester.widget<Badge>(badge).isLabelVisible, isFalse);
     expect(
       find.byKey(const ValueKey('calendar-empty-message')),
       findsOneWidget,

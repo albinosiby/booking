@@ -171,7 +171,10 @@ class BookingAgendaView extends StatelessWidget {
       if (calendar && s.blocksLoading)
         const AppLoadingState(label: 'Loading blocked slots…'),
       if (calendar && s.blocksError != null)
-        AppErrorWidget(message: s.blocksError!, onRetry: cubit.load),
+        AppErrorWidget(
+          message: 'Blocked slots could not be loaded. ${s.blocksError!}',
+          onRetry: cubit.refresh,
+        ),
       if (calendar && s.blocks.isNotEmpty) ...[
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
@@ -244,9 +247,24 @@ class BookingAgendaView extends StatelessWidget {
             ),
           ),
         IconButton(
-          tooltip: 'Filter bookings',
+          tooltip: s.hasActiveFilters
+              ? 'Filter bookings, active filters'
+              : 'Filter bookings',
           onPressed: () => filters(context),
-          icon: const Icon(Icons.tune_rounded),
+          style: s.hasActiveFilters
+              ? IconButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primaryContainer,
+                  foregroundColor: theme.colorScheme.onPrimaryContainer,
+                )
+              : null,
+          icon: Badge(
+            key: const ValueKey('booking-filter-badge'),
+            isLabelVisible: s.hasActiveFilters,
+            label: Text('${s.activeFilterCount}'),
+            backgroundColor: theme.colorScheme.primary,
+            textColor: theme.colorScheme.onPrimary,
+            child: const Icon(Icons.tune_rounded),
+          ),
         ),
         IconButton(
           tooltip: 'Refresh bookings',
@@ -312,7 +330,7 @@ class BookingAgendaView extends StatelessWidget {
                         ),
                         if (s.countsError != null)
                           TextButton.icon(
-                            onPressed: cubit.refreshCounts,
+                            onPressed: cubit.retryCounts,
                             icon: const Icon(Icons.refresh, size: 16),
                             label: const Text('Retry booking counts'),
                           ),
@@ -438,7 +456,7 @@ class BookingAgendaView extends StatelessWidget {
                 ),
                 if (s.countsError != null)
                   TextButton.icon(
-                    onPressed: cubit.refreshCounts,
+                    onPressed: cubit.retryCounts,
                     icon: const Icon(Icons.refresh, size: 16),
                     label: const Text('Retry booking counts'),
                   ),

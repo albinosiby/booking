@@ -9,9 +9,11 @@ class HomeGreetingCard extends StatefulWidget {
     required this.organization,
     this.logo,
     this.heroImage,
+    this.onWebsite,
   });
   final String name, organization;
   final Uint8List? logo, heroImage;
+  final VoidCallback? onWebsite;
   @override
   State<HomeGreetingCard> createState() => _HomeGreetingCardState();
 }
@@ -46,35 +48,30 @@ class _HomeGreetingCardState extends State<HomeGreetingCard>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context), colors = theme.colorScheme;
+    final theme = Theme.of(context);
     final firstName = widget.name.trim().split(RegExp(r'\s+')).first;
     final greeting = now.hour < 12
         ? 'Good morning'
         : now.hour < 17
         ? 'Good afternoon'
         : 'Good evening';
-    final icon = now.hour < 12
-        ? Icons.wb_sunny_outlined
-        : now.hour < 17
-        ? Icons.light_mode_outlined
-        : Icons.nightlight_outlined;
-    final dark = theme.brightness == Brightness.dark;
+    const foreground = Colors.white;
     Widget mark(double size) => Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: .7),
+        color: foreground.withValues(alpha: .18),
         borderRadius: BorderRadius.circular(size / 3),
       ),
       clipBehavior: Clip.antiAlias,
       child: widget.logo == null
-          ? Icon(Icons.business_outlined, color: colors.primary, size: size / 2)
+          ? Icon(Icons.business_outlined, color: foreground, size: size / 2)
           : Image.memory(
               widget.logo!,
               fit: BoxFit.cover,
               excludeFromSemantics: true,
               errorBuilder: (_, _, _) =>
-                  Icon(Icons.business_outlined, color: colors.primary),
+                  const Icon(Icons.business_outlined, color: foreground),
             ),
     );
     return LayoutBuilder(
@@ -82,118 +79,158 @@ class _HomeGreetingCardState extends State<HomeGreetingCard>
         final wide =
             constraints.maxWidth >= 600 &&
             MediaQuery.textScalerOf(context).scale(14) <= 21;
+        final stackedHeader =
+            !wide && MediaQuery.textScalerOf(context).scale(14) > 20;
+        final date = MaterialLocalizations.of(context).formatMediumDate(now);
+        final dateBadge = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: .34),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            date,
+            style: theme.textTheme.labelSmall?.copyWith(color: foreground),
+          ),
+        );
+        Widget fallback() => Image.asset(
+          'assets/branding/turf_booking_fallback.png',
+          key: const ValueKey('home-hero-fallback'),
+          fit: BoxFit.cover,
+          excludeFromSemantics: true,
+        );
         return Container(
           width: double.infinity,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: colors.primary.withValues(alpha: dark ? .24 : .18),
-            ),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color.alphaBlend(
-                  colors.primary.withValues(alpha: dark ? .16 : .10),
-                  colors.surface,
-                ),
-                colors.surface,
-              ],
-            ),
+            color: const Color(0xFF082E22),
+            border: Border.all(color: foreground.withValues(alpha: .14)),
           ),
           child: Stack(
             children: [
               Positioned.fill(
-                child: Opacity(
-                  opacity: dark ? .28 : .16,
-                  child: widget.heroImage == null
-                      ? Image.asset(
-                          'assets/branding/turf_booking_fallback.png',
-                          key: const ValueKey('home-hero-fallback'),
-                          fit: BoxFit.cover,
-                          excludeFromSemantics: true,
-                        )
-                      : Image.memory(
-                          widget.heroImage!,
-                          key: const ValueKey('home-hero-uploaded'),
-                          fit: BoxFit.cover,
-                          excludeFromSemantics: true,
-                          errorBuilder: (_, _, _) => Image.asset(
-                            'assets/branding/turf_booking_fallback.png',
-                            key: const ValueKey('home-hero-fallback'),
-                            fit: BoxFit.cover,
-                            excludeFromSemantics: true,
-                          ),
-                        ),
+                child: ClipRect(
+                  child: Transform.scale(
+                    scale: widget.heroImage == null ? 2.1 : 1,
+                    alignment: Alignment.centerRight,
+                    child: Opacity(
+                      opacity: .84,
+                      child: widget.heroImage == null
+                          ? fallback()
+                          : Image.memory(
+                              widget.heroImage!,
+                              key: const ValueKey('home-hero-uploaded'),
+                              fit: BoxFit.cover,
+                              excludeFromSemantics: true,
+                              errorBuilder: (_, _, _) => fallback(),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        const Color(0xFF06291D).withValues(alpha: .96),
+                        const Color(0xFF06291D).withValues(alpha: .78),
+                        const Color(0xFF06291D).withValues(alpha: .42),
+                      ],
+                    ),
+                  ),
                 ),
               ),
               Padding(
                 padding: EdgeInsets.all(wide ? 28 : 20),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(icon, color: colors.primary, size: 20),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  MaterialLocalizations.of(
-                                    context,
-                                  ).formatFullDate(now),
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: colors.onSurfaceVariant,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: wide ? 190 : 165),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (stackedHeader) ...[
+                        Row(
+                          children: [
+                            mark(32),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: Text(
+                                widget.organization,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: foreground,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        dateBadge,
+                      ] else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  mark(32),
+                                  const SizedBox(width: 9),
+                                  Expanded(
+                                    child: Text(
+                                      widget.organization,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.labelLarge
+                                          ?.copyWith(
+                                            color: foreground,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Semantics(
-                            header: true,
-                            child: Text(
-                              firstName.isEmpty
-                                  ? greeting
-                                  : '$greeting, $firstName',
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -.5,
+                                ],
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Here’s your day at a glance.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colors.onSurfaceVariant,
+                            const SizedBox(width: 8),
+                            dateBadge,
+                          ],
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        child: Semantics(
+                          header: true,
+                          child: Text(
+                            firstName.isEmpty
+                                ? greeting
+                                : '$greeting, $firstName',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              color: foreground,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -.5,
                             ),
                           ),
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  widget.organization,
-                                  style: theme.textTheme.labelLarge,
-                                ),
-                              ),
-                              if (!wide) ...[
-                                const SizedBox(width: 12),
-                                mark(36),
-                              ],
-                            ],
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                    if (wide) ...[const SizedBox(width: 28), mark(72)],
-                  ],
+                      if (widget.onWebsite != null)
+                        OutlinedButton.icon(
+                          key: const ValueKey('home-booking-website'),
+                          onPressed: widget.onWebsite,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: foreground,
+                            backgroundColor: foreground.withValues(alpha: .13),
+                            side: BorderSide(
+                              color: foreground.withValues(alpha: .38),
+                            ),
+                          ),
+                          icon: const Icon(Icons.language_outlined, size: 18),
+                          label: const Text('Booking website'),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ],

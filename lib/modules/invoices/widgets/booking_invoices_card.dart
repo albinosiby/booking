@@ -31,8 +31,20 @@ class BookingInvoicesCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Invoice', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(
+                    Icons.description_outlined,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Invoice',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               const Text(
                 'Uses the booking\'s current amount paid and balance due. Each new invoice is saved below and never changes.',
               ),

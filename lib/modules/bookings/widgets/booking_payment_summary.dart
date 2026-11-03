@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../models/booking_models.dart';
 
-/// A receipt-style overview; transaction/activity histories intentionally stay
-/// outside the booking details presentation.
+/// The recorded balance and payment-method totals for a booking.
 class BookingPaymentSummary extends StatelessWidget {
   const BookingPaymentSummary({
     super.key,
@@ -21,6 +20,17 @@ class BookingPaymentSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = booking, theme = Theme.of(context), colors = theme.colorScheme;
     final refund = b.refundDue > 0, unpaid = b.balance > 0;
+    final recordedByMethod = <String, int>{};
+    for (final payment in b.payments) {
+      recordedByMethod.update(
+        payment.method,
+        (amount) =>
+            amount +
+            (payment.kind == 'refund' ? -payment.amount : payment.amount),
+        ifAbsent: () =>
+            payment.kind == 'refund' ? -payment.amount : payment.amount,
+      );
+    }
     final accent = refund ? colors.error : colors.primary;
     Widget line(String label, int amount, {bool emphasized = false}) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -52,36 +62,52 @@ class BookingPaymentSummary extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Payment', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 12),
           Row(
             children: [
-              Flexible(
-                flex: 2,
+              Icon(Icons.account_balance_wallet_outlined, color: accent),
+              const SizedBox(width: 10),
+              Expanded(
                 child: Text(
-                  refund
-                      ? 'Refund due'
-                      : unpaid
-                      ? 'Balance due'
-                      : 'Paid in full',
-                  style: theme.textTheme.labelLarge?.copyWith(color: accent),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                flex: 3,
-                child: Text(
-                  bookingMoney(refund ? b.refundDue : b.balance, currency),
-                  textAlign: TextAlign.end,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    color: accent,
+                  'Payment Summary',
+                  style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
+          Text(
+            bookingMoney(refund ? b.refundDue : b.balance, currency),
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: accent,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            refund
+                ? 'Refund due'
+                : unpaid
+                ? 'Balance due'
+                : 'No payment pending',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                line('Booking total', b.total, emphasized: true),
+                line('Amount received', b.netPaid),
+              ],
+            ),
+          ),
           if (b.discountMinor > 0) ...[
             line('Subtotal', b.subtotal ?? b.total + b.discountMinor),
             line('Discount', -b.discountMinor),
@@ -91,9 +117,19 @@ class BookingPaymentSummary extends StatelessWidget {
                 style: theme.textTheme.bodySmall,
               ),
           ],
-          line('Received', b.netPaid),
-          line('Booking total', b.total, emphasized: true),
-          const SizedBox(height: 8),
+          for (final entry in recordedByMethod.entries)
+            if (entry.value != 0)
+              line(
+                '${switch (entry.key) {
+                  'cash' => 'Cash',
+                  'upi' => 'UPI',
+                  'card' => 'Card',
+                  'bank_transfer' => 'Bank transfer',
+                  _ => entry.key,
+                }} recorded',
+                entry.value,
+              ),
+          const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(

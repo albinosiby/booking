@@ -418,14 +418,18 @@ void main() {
         );
         addTearDown(router.dispose);
         final boundary = GlobalKey();
+        final previewTheme =
+            const bool.fromEnvironment('HOME_PREVIEWS') && size.width == 390
+            ? AppTheme.build(Brightness.light)
+            : darkTheme();
         await tester.pumpWidget(
           BlocProvider.value(
             value: workspace,
             child: ScreenUtilInit(
               designSize: const Size(390, 844),
               builder: (_, _) => MaterialApp.router(
-                theme: darkTheme().copyWith(
-                  textTheme: darkTheme().textTheme.apply(fontFamily: 'Roboto'),
+                theme: previewTheme.copyWith(
+                  textTheme: previewTheme.textTheme.apply(fontFamily: 'Roboto'),
                 ),
                 routerConfig: router,
                 builder: (context, child) => MediaQuery(
@@ -441,8 +445,18 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('All businesses'), findsNothing);
         expect(find.text('Upcoming today'), findsNothing);
-        expect(find.text('Outstanding'), findsNothing);
-        expect(find.text('Due amount to collect'), findsOneWidget);
+        expect(find.text('Outstanding'), findsOneWidget);
+        expect(find.text('Across all bookings'), findsOneWidget);
+        expect(find.text('Bookings today'), findsOneWidget);
+        expect(find.text('Received today'), findsOneWidget);
+        if (size.width < 900) {
+          final before = tester.getTopLeft(find.text('Collect payments')).dy;
+          await tester.ensureVisible(find.text('Outstanding'));
+          await tester.tap(find.text('Outstanding'));
+          await tester.pumpAndSettle();
+          final after = tester.getTopLeft(find.text('Collect payments')).dy;
+          expect(after, lessThan(before));
+        }
         expect(find.text('No more bookings today.'), findsOneWidget);
         // Wide: schedule left, Collect right. Phone: Collect first.
         final upcoming = tester.getTopLeft(find.text('Today’s schedule'));
@@ -455,6 +469,11 @@ void main() {
         }
         expect(tester.takeException(), isNull);
         if (const bool.fromEnvironment('HOME_PREVIEWS')) {
+          tester
+              .state<ScrollableState>(find.byType(Scrollable).first)
+              .position
+              .jumpTo(0);
+          await tester.pumpAndSettle();
           await tester.runAsync(() async {
             final render =
                 boundary.currentContext!.findRenderObject()

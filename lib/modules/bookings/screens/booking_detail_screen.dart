@@ -1,12 +1,15 @@
 import '../widgets/booking_payment_summary.dart';
+import '../widgets/booking_history_sections.dart';
+import '../widgets/booking_detail_overview.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
 import '../models/booking_detail_model.dart';
-import '../models/booking_models.dart' show BookingRecord, bookingMoney;
+import '../models/booking_models.dart' show bookingMoney;
 import '../cubit/booking_detail_cubit.dart';
 import '../widgets/booking_widgets.dart';
 import '../../invoices/repositories/invoice_repository.dart';
@@ -35,6 +38,11 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   final paymentEditorKey = GlobalKey();
   bool paymentSheetOpen = false;
   bool closingPaymentSheet = false;
+  Future<void> copyReference(String reference) async {
+    await Clipboard.setData(ClipboardData(text: reference));
+    if (mounted) showMessage(context, 'Booking reference copied.');
+  }
+
   void collect() {
     if (cubit.state.locked || !cubit.state.canCollectPending) return;
     if (cubit.state.action != BookingDetailAction.collection) {
@@ -245,24 +253,6 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     if (mounted && action != null) cubit.begin(action);
   }
 
-  String bookingSchedule(BuildContext context, BookingRecord b) {
-    final start = DateTime.tryParse(b.localStart);
-    final end = DateTime.tryParse(b.localEnd);
-    if (start == null || end == null) {
-      return '${bookingLocal(b.localStart)} → ${bookingLocal(b.localEnd)}';
-    }
-    final localizations = MaterialLocalizations.of(context);
-    String time(DateTime date) => localizations.formatTimeOfDay(
-      TimeOfDay.fromDateTime(date),
-      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
-    );
-    final sameDay =
-        start.year == end.year &&
-        start.month == end.month &&
-        start.day == end.day;
-    return '${localizations.formatMediumDate(start)} · ${time(start)}–${sameDay ? '' : '${localizations.formatMediumDate(end)} '}${time(end)}';
-  }
-
   @override
   void initState() {
     super.initState();
@@ -311,7 +301,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   'Retry this action to verify its outcome before leaving.',
                 )
               : bookingBack(context),
-          title: 'Booking details',
+          title: 'Booking Details',
           showAppBar: true,
           compactHeader: true,
           actions: [
@@ -328,31 +318,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
           maxWidth: 760,
           header: b == null
               ? null
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 10,
-                      runSpacing: 6,
-                      children: [
-                        SelectableText(
-                          b.reference,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        BookingStatusChip(status: b.status),
-                        if (b.checkedIn)
-                          Chip(
-                            label: Text(
-                              b.automaticallyCheckedIn
-                                  ? 'Auto checked in'
-                                  : 'Checked in',
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+              : BookingReferenceBanner(
+                  booking: b,
+                  onCopy: () => copyReference(b.reference),
                 ),
           children: [
             if (s.loading)
@@ -383,31 +351,6 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
-              AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      b.spaceName,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    if (b.optionName.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(b.optionName),
-                    ],
-                    const SizedBox(height: 10),
-                    Text(
-                      bookingSchedule(context, b),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(b.businessName),
-                    const SizedBox(height: 4),
-                    Text(b.customer.name),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
               BookingPaymentSummary(
                 booking: b,
                 currency: s.catalog.currency,
@@ -422,36 +365,24 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               ),
               if (b.websitePayment != null) ...[
                 const SizedBox(height: 12),
-                AppCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Unverified website payment',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 6),
-                      SelectableText(
-                        'Transaction ID: ${b.websitePayment!['transaction_id']}',
-                      ),
-                      const Text(
-                        'Check your bank before recording this payment. The submitted reference does not change the balance.',
-                      ),
-                      ReviewMore(
-                        title: 'Submitted payment details',
-                        children: [
-                          Text(
-                            'Submitted: ${b.websitePayment!['percentage']}% · ${bookingMoney(b.websitePayment!['amount_minor'] as int, s.catalog.currency)}',
-                          ),
-                          SelectableText(
-                            'UPI ID: ${b.websitePayment!['upi_id']}',
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                WebsitePaymentReviewCard(
+                  booking: b,
+                  currency: s.catalog.currency,
                 ),
               ],
+              const SizedBox(height: 12),
+              BookingInformationCard(booking: b),
+              if (!editing && invoicesAvailable(getIt)) ...[
+                BookingInvoicesSection(
+                  key: ValueKey('invoices-${b.id}'),
+                  create: () => getIt<BookingInvoicesCubit>(param1: b.id),
+                ),
+              ],
+              const SizedBox(height: 18),
+              BookingPaymentHistory(
+                payments: b.payments,
+                currency: s.catalog.currency,
+              ),
               if (!editing && s.catalog.canManage) ...[
                 const SizedBox(height: 16),
                 Text('Actions', style: Theme.of(context).textTheme.titleMedium),
@@ -513,13 +444,6 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   ],
                 ),
               ),
-              if (!editing && invoicesAvailable(getIt)) ...[
-                const SizedBox(height: 12),
-                BookingInvoicesSection(
-                  key: ValueKey('invoices-${b.id}'),
-                  create: () => getIt<BookingInvoicesCubit>(param1: b.id),
-                ),
-              ],
               const SizedBox(height: 12),
               if (editing && !isPaymentAction(s.action))
                 AppCard(

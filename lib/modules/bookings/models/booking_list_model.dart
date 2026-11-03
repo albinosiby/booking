@@ -98,6 +98,12 @@ class BookingListModel extends Equatable {
       );
   final bool loading, loadingMore, hasLoaded;
   final String? businessId, spaceId, date, status, error;
+  int get activeFilterCount =>
+      (businessId == null ? 0 : 1) +
+      (spaceId == null ? 0 : 1) +
+      (status == null ? 0 : 1) +
+      (query.trim().isEmpty ? 0 : 1);
+  bool get hasActiveFilters => activeFilterCount > 0;
   final bool dueView;
   final List<BookingOutstanding> outstanding;
   final int balanceTotal, refundTotal;

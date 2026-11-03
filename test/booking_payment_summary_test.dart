@@ -9,9 +9,151 @@ import 'package:eden_booking/modules/bookings/screens/booking_detail_screen.dart
 import 'package:eden_booking/modules/bookings/models/booking_detail_model.dart';
 import 'package:eden_booking/modules/bookings/cubit/booking_detail_cubit.dart';
 import 'package:eden_booking/modules/bookings/widgets/booking_payment_summary.dart';
+import 'package:eden_booking/modules/bookings/widgets/booking_detail_overview.dart';
 import 'booking_module_test.dart' show form, customer;
 
 void main() {
+  testWidgets('booking details show payment method history and website ID', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(() async {
+      final (workspace, repository, controller) = await form();
+      customer(controller);
+      await controller.review();
+      await controller.confirm();
+      final id = controller.state.resultId!;
+      final row = repository.records[id]!;
+      final total = row['total_minor'] as int;
+      row['website_payment_submission'] = {
+        'percentage': 50,
+        'amount_minor': total ~/ 2,
+        'transaction_id': 'UPI-DETAIL-123',
+        'upi_id': 'venue@upi',
+        'status': 'pending_verification',
+      };
+      row['payments'] = [
+        {
+          'id': 'cash-collection',
+          'kind': 'collection',
+          'method': 'cash',
+          'amount_minor': total,
+          'reference': '',
+          'local_received': '2030-06-04T09:00',
+          'collector_name': 'Owner',
+        },
+      ];
+      await controller.close();
+      return (workspace, repository, id);
+    }))!;
+    final (workspace, repository, id) = fixture;
+    await getIt.reset();
+    getIt.registerFactoryParam<BookingDetailCubit, WorkspaceCubit, String>(
+      (session, bookingId) =>
+          BookingDetailCubit(session, repository, bookingId),
+    );
+    addTearDown(getIt.reset);
+    addTearDown(workspace.close);
+    tester.view.physicalSize = const Size(390, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ScreenUtilInit(
+        designSize: const Size(390, 844),
+        builder: (context, _) => BlocProvider.value(
+          value: workspace,
+          child: MaterialApp(
+            theme: AppTheme.build(Brightness.light),
+            home: BookingDetailScreen(id: id),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Fully paid'), findsOneWidget);
+    expect(find.text('No payment pending'), findsOneWidget);
+    expect(find.text('Cash recorded'), findsOneWidget);
+    expect(find.text('Payment history · 1'), findsOneWidget);
+    expect(find.text('Collected by Owner'), findsOneWidget);
+    expect(find.text('Transaction ID: UPI-DETAIL-123'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('website UPI claim stays visible beside recorded cash', (
+    tester,
+  ) async {
+    final record = (await tester.runAsync(() async {
+      final (workspace, repository, controller) = await form();
+      customer(controller);
+      await controller.review();
+      await controller.confirm();
+      final row = repository.records[controller.state.resultId!]!;
+      final total = row['total_minor'] as int;
+      row['website_payment_submission'] = {
+        'percentage': 50,
+        'amount_minor': total ~/ 2,
+        'transaction_id': 'UPI-TEST-123',
+        'upi_id': 'venue@upi',
+        'status': 'pending_verification',
+      };
+      final unpaid = await repository.detail(controller.state.resultId!);
+      expect(unpaid.paymentStatus, 'unpaid');
+      row['payments'] = [
+        {
+          'id': 'cash-collection',
+          'kind': 'collection',
+          'method': 'cash',
+          'amount_minor': total,
+          'reference': '',
+          'local_received': '2030-06-04T09:00',
+          'collector_name': 'Owner',
+        },
+      ];
+      final paid = await repository.detail(controller.state.resultId!);
+      expect(paid.paymentStatus, 'paid');
+      await controller.close();
+      await workspace.close();
+      return paid;
+    }))!;
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ScreenUtilInit(
+        designSize: const Size(390, 844),
+        builder: (context, child) => MaterialApp(
+          theme: AppTheme.build(Brightness.light),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: Column(
+                children: [
+                  BookingPaymentSummary(booking: record, currency: 'INR'),
+                  WebsitePaymentReviewCard(booking: record, currency: 'INR'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No payment pending'), findsOneWidget);
+    expect(find.text('Cash recorded'), findsOneWidget);
+    expect(
+      find.text('Website payment · Verify before collecting'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Submitted: 50%'), findsOneWidget);
+    expect(
+      tester
+          .widget<SelectableText>(
+            find.byKey(const ValueKey('booking-website-transaction-id')),
+          )
+          .data,
+      'Transaction ID: UPI-TEST-123',
+    );
+    expect(tester.takeException(), isNull);
+  });
   test(
     'check-in records arrival without changing payment or final booking status',
     () async {
@@ -210,10 +352,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Payment'), findsOneWidget);
+      expect(find.text('Payment Summary'), findsOneWidget);
       expect(find.text('Balance due'), findsOneWidget);
       expect(find.text('Booking total'), findsOneWidget);
-      expect(find.text('Received'), findsOneWidget);
+      expect(find.text('Amount received'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('booking-summary-collect')));
       expect(tapped, isTrue);
       expect(tester.takeException(), isNull);

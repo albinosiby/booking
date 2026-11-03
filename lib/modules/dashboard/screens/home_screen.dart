@@ -3,7 +3,6 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../auth/cubit/auth_cubit.dart';
 import '../widgets/home_greeting_card.dart';
 import '../../bookings/widgets/booking_widgets.dart';
-import '../../bookings/models/booking_models.dart';
 import '../cubit/home_cubit.dart';
 import '../models/home_screen_model.dart';
 import '../../../di/injection.dart';
@@ -16,6 +15,7 @@ import '../../workspace/models/workspace.dart';
 import '../../businesses/widgets/business_icon.dart';
 import '../../coaching/widgets/today_students_section.dart';
 import '../widgets/home_workboard.dart';
+import '../widgets/home_parts.dart' show homeMoney;
 import '../../admissions/repositories/admission_repository.dart';
 import '../../workspace/models/workspace_access.dart';
 import '../../booking_website/repositories/booking_website_link_repository.dart';
@@ -31,6 +31,19 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final cubit = getIt<HomeCubit>(param1: context.read<WorkspaceCubit>());
+  final workboardAnchor = GlobalKey();
+
+  void showCollections() {
+    final target = workboardAnchor.currentContext;
+    if (target != null) {
+      Scrollable.ensureVisible(
+        target,
+        duration: const Duration(milliseconds: 320),
+        alignment: .08,
+      );
+    }
+  }
+
   @override
   void dispose() {
     cubit.close();
@@ -58,6 +71,14 @@ class _HomeScreenState extends State<HomeScreen> {
           organization: workspace.organization?.name ?? 'Your organization',
           logo: workspace.logo,
           heroImage: s.heroImage,
+          onWebsite:
+              widget.websiteLinks != null && workspace.organization != null
+              ? () => showBookingWebsiteLink(
+                  context,
+                  context.read<WorkspaceCubit>(),
+                  widget.websiteLinks!(),
+                )
+              : null,
         ),
         maxWidth: 1200,
         scrollId: 'home-dashboard',
@@ -72,23 +93,6 @@ class _HomeScreenState extends State<HomeScreen> {
               onRetry: cubit.refreshBookings,
             ),
             const SizedBox(height: 12),
-          ],
-          if (widget.websiteLinks != null &&
-              workspace.organization != null) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                key: const ValueKey('home-booking-website'),
-                onPressed: () => showBookingWebsiteLink(
-                  context,
-                  context.read<WorkspaceCubit>(),
-                  widget.websiteLinks!(),
-                ),
-                icon: const Icon(Icons.language_outlined),
-                label: const Text('Booking website'),
-              ),
-            ),
-            const SizedBox(height: 16),
           ],
           if (s.needsAccountSetup)
             Material(
@@ -142,33 +146,39 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   if (WorkspaceNavigation(workspace).bookings)
                     _metric(
-                      'Today’s bookings',
+                      'Bookings today',
                       metricsUnavailable ? '—' : '${s.dashboard?.today ?? 0}',
                       constraints.maxWidth,
+                      icon: Icons.event_available_outlined,
                     ),
                   if (workspace.hasPermission('view_finance'))
                     _metric(
-                      'Collected today',
+                      'Received today',
                       metricsUnavailable
                           ? '—'
-                          : bookingMoney(
+                          : homeMoney(
                               s.dashboard?.collected ?? 0,
                               workspace.organization?.currency ?? 'INR',
                             ),
                       constraints.maxWidth,
+                      icon: Icons.account_balance_wallet_outlined,
+                      positive: (s.dashboard?.collected ?? 0) > 0,
                     ),
                   if (workspace.hasPermission('view_finance'))
                     _metric(
-                      'Due amount to collect',
+                      'Outstanding',
                       s.dueTotal == null &&
                               (s.dueError != null ||
                                   s.dashboard?.outstanding == null)
                           ? '—'
-                          : bookingMoney(
+                          : homeMoney(
                               s.dueTotal ?? s.dashboard?.outstanding ?? 0,
                               workspace.organization?.currency ?? 'INR',
                             ),
                       constraints.maxWidth,
+                      icon: Icons.payments_outlined,
+                      detail: 'Across all bookings',
+                      onTap: showCollections,
                       fullRow:
                           constraints.maxWidth <
                           780 *
@@ -183,11 +193,16 @@ class _HomeScreenState extends State<HomeScreen> {
             const TodayStudentsSection(),
             const SizedBox(height: 28),
           ],
-          HomeWorkboard(
-            key: ValueKey('home-workboard-${workspaceAccessScope(workspace)}'),
-            model: s,
-            cubit: cubit,
-            memberships: widget.memberships,
+          KeyedSubtree(
+            key: workboardAnchor,
+            child: HomeWorkboard(
+              key: ValueKey(
+                'home-workboard-${workspaceAccessScope(workspace)}',
+              ),
+              model: s,
+              cubit: cubit,
+              memberships: widget.memberships,
+            ),
           ),
           if (pending.isNotEmpty) ...[
             Text(
@@ -211,7 +226,11 @@ class _HomeScreenState extends State<HomeScreen> {
     String label,
     String value,
     double width, {
+    required IconData icon,
     bool fullRow = false,
+    bool positive = false,
+    String? detail,
+    VoidCallback? onTap,
   }) => SizedBox(
     width: fullRow
         ? width
@@ -221,16 +240,52 @@ class _HomeScreenState extends State<HomeScreen> {
         ? (width - 12) / 2
         : width,
     child: AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12)),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-          ),
-        ],
+      onTap: onTap,
+      padding: EdgeInsets.zero,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        color: onTap != null
+            ? AppColors.owed(context).withValues(alpha: .08)
+            : positive
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: .07)
+            : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 18,
+                  color: onTap != null
+                      ? AppColors.owed(context)
+                      : Theme.of(context).colorScheme.primary,
+                ),
+                if (onTap != null) ...[
+                  const Spacer(),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 18,
+                    color: AppColors.owed(context),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 7),
+            Text(label, style: Theme.of(context).textTheme.labelMedium),
+            const SizedBox(height: 3),
+            Text(
+              value,
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            if (detail != null) ...[
+              const SizedBox(height: 3),
+              Text(detail, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ],
+        ),
       ),
     ),
   );

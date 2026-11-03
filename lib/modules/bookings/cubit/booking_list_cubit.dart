@@ -134,6 +134,14 @@ class BookingListCubit extends Cubit<BookingListModel> {
     }
   }
 
+  void retryCounts() {
+    final source = repository;
+    if (source is RefreshableReads) {
+      (source as RefreshableReads).invalidateReads();
+    }
+    refreshCounts();
+  }
+
   Future<void> loadBlocks(
     BookingCatalog catalog,
     BookingListModel filter,
