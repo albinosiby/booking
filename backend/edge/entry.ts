@@ -3,6 +3,7 @@ import { SupportService } from "../src/support/support.service";
 import { AgentCallService } from "../src/agent-calls/agent-calls.service";
 import { CallWalletService } from "../src/call-wallet/call-wallet.service";
 import { AdminService } from "../src/admin/admin.service";
+import { AdminCallBillingService } from "../src/admin/admin-call-billing.service";
 import { AdminSarvamService } from "../src/admin/admin-sarvam.service";
 import { AdminMcpService } from "../src/admin/admin-mcp.service";
 import { AdminMcpAuthService } from "../src/admin/admin-mcp-auth";
@@ -53,6 +54,7 @@ export const services = {
   bookings,
   sarvam,
   admin,
+  adminBilling: new AdminCallBillingService(db as never, admin),
   adminSarvam: new AdminSarvamService(db as never, admin, sarvam, workspace),
   adminMcp: new AdminMcpService(db as never, sarvam, workspace),
   adminMcpAuth: new AdminMcpAuthService(db as never),

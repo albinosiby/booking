@@ -5,12 +5,22 @@ import '../../../config/routes/routes.dart';
 import '../../../design_system/design_system.dart';
 import '../cubit/call_wallet_cubit.dart';
 import '../models/call_wallet_models.dart';
-import 'recharge_sheet.dart';
 
-/// Opens the recharge sheet, then runs checkout through the cubit.
-Future<void> startRecharge(BuildContext context, CallWalletCubit cubit) async {
-  final amount = await showRechargeSheet(context, cubit.state.wallet);
-  if (amount != null) await cubit.recharge(amount);
+/// Opens the Recharge page; the balance is read again when the owner returns.
+Future<void> openRecharge(BuildContext context, CallWalletCubit cubit) async {
+  await context.push(Routes.callWalletRecharge);
+  await cubit.load();
+}
+
+class WalletLowBadge extends StatelessWidget {
+  const WalletLowBadge({super.key, required this.wallet});
+  final CallWallet wallet;
+  @override
+  Widget build(BuildContext context) => AppStatusBadge(
+    label: wallet.empty ? 'Recharge needed' : 'Low balance',
+    icon: Icons.warning_amber_rounded,
+    color: Theme.of(context).colorScheme.error,
+  );
 }
 
 String rechargePhaseLabel(RechargePhase phase) => switch (phase) {
@@ -82,8 +92,11 @@ class WalletEntryTile extends StatelessWidget {
       ),
       title: Text(entry.title),
       subtitle: Text(
-        '${local.formatMediumDate(entry.createdAt)}, '
-        '${local.formatTimeOfDay(TimeOfDay.fromDateTime(entry.createdAt))}',
+        [
+          '${local.formatMediumDate(entry.createdAt)}, '
+              '${local.formatTimeOfDay(TimeOfDay.fromDateTime(entry.createdAt))}',
+          if (entry.details.isNotEmpty) entry.details,
+        ].join('\n'),
       ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -133,14 +146,7 @@ class CallWalletCard extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text('Call wallet', style: t.textTheme.titleLarge),
-                if (!s.loading && w.low)
-                  AppStatusBadge(
-                    label: w.balancePaise <= 0
-                        ? 'Recharge needed'
-                        : 'Low balance',
-                    icon: Icons.warning_amber_rounded,
-                    color: t.colorScheme.error,
-                  ),
+                if (!s.loading && w.low) WalletLowBadge(wallet: w),
               ],
             ),
             const SizedBox(height: 16),
@@ -152,11 +158,24 @@ class CallWalletCard extends StatelessWidget {
                 key: const ValueKey('call-wallet-balance'),
                 style: t.textTheme.displaySmall,
               ),
-              const SizedBox(height: 4),
-              Text(
-                'About ${w.minutesLeft} minutes of calls · '
-                '${rupees(w.ratePaisePerMinute)} per minute',
-              ),
+              if (w.rateSet) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'About ${w.minutesLeft} minutes of calls · '
+                  '${rupees(w.ratePaisePerMinute)} per minute',
+                ),
+              ],
+              if (w.low) ...[
+                const SizedBox(height: 12),
+                Text(
+                  w.empty
+                      ? 'Your balance has run out. Recharge so callers can keep booking by phone.'
+                      : 'Your balance is running low. Recharge to avoid interruptions.',
+                  style: t.textTheme.bodyMedium?.copyWith(
+                    color: t.colorScheme.error,
+                  ),
+                ),
+              ],
             ],
             if (s.notice != null) ...[
               const SizedBox(height: 16),
@@ -181,7 +200,7 @@ class CallWalletCard extends StatelessWidget {
               icon: Icons.account_balance_wallet_outlined,
               onPressed: s.loading || !w.rechargeEnabled
                   ? null
-                  : () => startRecharge(context, cubit),
+                  : () => openRecharge(context, cubit),
             ),
             if (!s.loading && !w.rechargeEnabled) ...[
               const SizedBox(height: 8),

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { admin } from "../../../lib/api";
-import { date, label } from "../../../lib/format";
+import { date, label, rupees } from "../../../lib/format";
 import { Badge, Tabs, PageHeader, EmptyState } from "../../../components/ui";
 import { Icon } from "../../../components/icon";
 
@@ -17,6 +17,7 @@ type CallRequest = {
   id: string;
   organization_id: string;
   organization_name: string;
+  wallet_balance_paise: number | string | null;
   user_name: string;
   user_email: string;
   status: string;
@@ -73,6 +74,12 @@ export default async function AgentRequests({
                   <h2>{request.organization_name}</h2>
                   <p className="request-requester">{request.user_name}</p>
                   <p className="request-email">{request.user_email}</p>
+                  <p className="request-email">
+                    Call balance:{" "}
+                    {request.wallet_balance_paise == null
+                      ? "—"
+                      : rupees(request.wallet_balance_paise)}
+                  </p>
                 </div>
                 <div className="request-services">
                   <span className="request-caption">Requested services</span>

@@ -10,26 +10,31 @@ import { z } from "zod";
 import { Database, Queryable } from "../common/database";
 import type { Actor } from "../common/auth.guard";
 import { WorkspaceService } from "../workspace/workspace.service";
+import { enqueueCallWalletNotification } from "../notifications/notification-events";
+import {
+  ORDER_MAX_PAISE,
+  ORDER_MIN_PAISE,
+  customMinPaise,
+  effectiveBilling,
+  validRecharge,
+  type Billing,
+} from "./call-billing";
 import {
   PaymentGateway,
   verifyPaymentEvent,
   type GatewayOrder,
 } from "./payment-gateway";
 
-export const DEFAULT_RATE_PAISE_PER_MINUTE = 500;
-const MIN_RECHARGE_PAISE = 10000,
-  MAX_RECHARGE_PAISE = 5000000,
-  PRESETS_PAISE = [50000, 100000, 200000, 500000];
-const orderId = z.string().regex(/^booking_[A-Za-z0-9_-]{8,40}$/);
 const createSchema = z
   .object({
     amount_paise: z
       .number()
       .int()
-      .min(MIN_RECHARGE_PAISE, "Recharge at least ₹100.")
-      .max(MAX_RECHARGE_PAISE, "Recharge at most ₹50,000."),
+      .min(ORDER_MIN_PAISE, "Recharge at least ₹100.")
+      .max(ORDER_MAX_PAISE, "Recharge at most ₹50,000."),
   })
   .strict();
+const orderId = z.string().regex(/^booking_[A-Za-z0-9_-]{8,40}$/);
 const historySchema = z
   .object({ offset: z.coerce.number().int().min(0).max(100000).default(0) })
   .strict();
@@ -46,7 +51,7 @@ export type OrderStatus =
   | "cancelled"
   | "expired";
 
-async function lockWallet(db: Queryable, org: string) {
+export async function lockWallet(db: Queryable, org: string) {
   await db.query(
     "INSERT INTO call_wallets(organization_id) VALUES($1) ON CONFLICT DO NOTHING",
     [org],
@@ -59,7 +64,78 @@ async function lockWallet(db: Queryable, org: string) {
   ).rows[0];
 }
 
-/** Charges each started minute once per call. Calls before the wallet existed are free. */
+export type WalletEntry = {
+  kind: "recharge" | "call_charge" | "adjustment";
+  amount: number;
+  reference: string;
+  callSeconds?: number;
+  rate?: number | null;
+  note?: string;
+  adminEmail?: string;
+  paymentMode?: string | null;
+  externalReference?: string | null;
+};
+
+/** Appends one ledger entry to a locked wallet, once per (kind, reference).
+ * A debit that crosses the low or empty threshold queues one owner alert;
+ * a credit back above it re-arms that alert. */
+export async function applyEntry(
+  tx: Queryable,
+  w: any,
+  billing: Billing,
+  e: WalletEntry,
+) {
+  const next = Number(w.balance_paise) + e.amount;
+  const id = randomUUID();
+  const inserted = await tx.query(
+    `INSERT INTO call_wallet_ledger(id,organization_id,kind,amount_paise,balance_after_paise,reference,call_seconds,note,
+      rate_paise_per_minute,admin_email,payment_mode,external_reference)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING RETURNING id`,
+    [
+      id,
+      w.organization_id,
+      e.kind,
+      e.amount,
+      next,
+      e.reference,
+      e.callSeconds ?? null,
+      e.note ?? "",
+      e.rate ?? null,
+      e.adminEmail ?? null,
+      e.paymentMode ?? null,
+      e.externalReference ?? null,
+    ],
+  );
+  if (!inserted.rows.length) return null;
+  let low = Boolean(w.low_alert_sent),
+    empty = Boolean(w.empty_alert_sent),
+    alert: "call_wallet_low" | "call_wallet_empty" | null = null;
+  if (e.amount < 0) {
+    if (next <= 0 && !empty) [alert, empty, low] = ["call_wallet_empty", true, true];
+    else if (next > 0 && next < billing.low_balance_paise && !low)
+      [alert, low] = ["call_wallet_low", true];
+  } else {
+    if (next > 0) empty = false;
+    if (next >= billing.low_balance_paise) low = false;
+  }
+  await tx.query(
+    "UPDATE call_wallets SET balance_paise=$2,low_alert_sent=$3,empty_alert_sent=$4,updated_at=now() WHERE organization_id=$1",
+    [w.organization_id, next, low, empty],
+  );
+  if (alert) {
+    const rate = billing.rate_paise_per_minute ?? 0;
+    await enqueueCallWalletNotification(tx, id, w.organization_id, alert, {
+      balance_paise: next,
+      minutes_left: rate > 0 && next > 0 ? Math.floor(next / rate) : 0,
+      currency: "INR",
+    });
+  }
+  return { id, balance_paise: next };
+}
+
+/** Charges each started minute once per call at the client's current rate.
+ * Calls before the wallet existed are free; with no rate set, the call is
+ * recorded at ₹0 so a later rate is never applied retroactively. */
 export async function chargeCall(
   db: Database,
   org: string,
@@ -75,19 +151,48 @@ export async function chargeCall(
       Date.parse(startedAt) < new Date(w.billing_starts_at).getTime()
     )
       return;
-    const amount = Math.ceil(seconds / 60) * Number(w.rate_paise_per_minute);
-    const next = Number(w.balance_paise) - amount;
-    const inserted = await tx.query(
-      `INSERT INTO call_wallet_ledger(id,organization_id,kind,amount_paise,balance_after_paise,reference,call_seconds)
-   VALUES($1,$2,'call_charge',$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING id`,
-      [randomUUID(), org, -amount, next, interactionId, Math.round(seconds)],
-    );
-    if (inserted.rows.length)
-      await tx.query(
-        "UPDATE call_wallets SET balance_paise=$2,updated_at=now() WHERE organization_id=$1",
-        [org, next],
-      );
+    const billing = await effectiveBilling(tx, w);
+    const rate = billing.rate_paise_per_minute;
+    await applyEntry(tx, w, billing, {
+      kind: "call_charge",
+      amount: 0 - Math.ceil(seconds / 60) * (rate ?? 0),
+      reference: interactionId,
+      callSeconds: Math.round(seconds),
+      rate: rate ?? 0,
+      note: rate == null ? "No call rate was set." : "",
+    });
   });
+}
+
+/** What each listed call cost, keyed by interaction ID. */
+export async function callCharges(db: Queryable, org: string, ids: string[]) {
+  const charges = new Map<string, number>();
+  if (!ids.length) return charges;
+  const rows = (
+    await db.query<any>(
+      "SELECT reference,amount_paise FROM call_wallet_ledger WHERE organization_id=$1 AND kind='call_charge' AND reference = ANY($2::text[])",
+      [org, ids],
+    )
+  ).rows;
+  for (const r of rows) charges.set(r.reference, 0 - Number(r.amount_paise));
+  return charges;
+}
+
+export function ledgerItem(r: any) {
+  return {
+    id: r.id,
+    kind: r.kind,
+    amount_paise: Number(r.amount_paise),
+    balance_after_paise: Number(r.balance_after_paise),
+    reference: r.reference,
+    call_seconds: r.call_seconds == null ? null : Number(r.call_seconds),
+    rate_paise_per_minute:
+      r.rate_paise_per_minute == null ? null : Number(r.rate_paise_per_minute),
+    payment_method: r.payment_method ?? r.payment_mode ?? "",
+    external_reference: r.external_reference ?? "",
+    note: r.note,
+    created_at: new Date(r.created_at).toISOString(),
+  };
 }
 
 function gatewayStatus(g: GatewayOrder): OrderStatus {
@@ -119,23 +224,37 @@ export class CallWalletService {
   private async summary(org: string) {
     const w = (
       await this.db.query<any>(
-        "SELECT balance_paise,rate_paise_per_minute FROM call_wallets WHERE organization_id=$1",
+        "SELECT * FROM call_wallets WHERE organization_id=$1",
         [org],
       )
     ).rows[0];
+    const b = await effectiveBilling(this.db, w);
     const balance = Number(w?.balance_paise ?? 0),
-      rate = Number(w?.rate_paise_per_minute ?? DEFAULT_RATE_PAISE_PER_MINUTE);
+      rate = b.rate_paise_per_minute;
+    const plans = [...b.plans_paise].sort((x, y) => x - y);
+    const customMin = customMinPaise(b);
     const recent = await this.page(org, 0, 20);
     return {
       currency: "INR",
       balance_paise: balance,
-      rate_paise_per_minute: rate,
-      minutes_left: rate > 0 && balance > 0 ? Math.floor(balance / rate) : 0,
+      rate_paise_per_minute: rate ?? 0,
+      rate_set: rate != null,
+      minutes_left: rate && balance > 0 ? Math.floor(balance / rate) : 0,
+      low_balance_paise: b.low_balance_paise,
       recharge: {
-        enabled: this.gateway.configured(),
-        min_paise: MIN_RECHARGE_PAISE,
-        max_paise: MAX_RECHARGE_PAISE,
-        presets_paise: PRESETS_PAISE,
+        enabled: this.gateway.configured() && rate != null,
+        plans_paise: plans,
+        custom_enabled: b.custom_enabled,
+        custom_min_paise: customMin,
+        custom_max_paise: b.custom_max_paise,
+        // Read by app builds released before admin-managed plans.
+        presets_paise: plans,
+        min_paise: b.custom_enabled
+          ? Math.min(customMin, plans[0] ?? customMin)
+          : (plans[0] ?? ORDER_MIN_PAISE),
+        max_paise: b.custom_enabled
+          ? Math.max(b.custom_max_paise, plans.at(-1) ?? 0)
+          : (plans.at(-1) ?? ORDER_MIN_PAISE),
       },
       transactions: recent.items,
       next_offset: recent.next_offset,
@@ -144,30 +263,32 @@ export class CallWalletService {
   private async page(org: string, offset: number, limit: number) {
     const rows = (
       await this.db.query<any>(
-        `SELECT l.id,l.kind,l.amount_paise,l.balance_after_paise,l.reference,l.call_seconds,l.note,l.created_at,o.payment_method
+        `SELECT l.*,o.payment_method
    FROM call_wallet_ledger l LEFT JOIN call_wallet_orders o ON l.kind='recharge' AND o.order_id=l.reference
    WHERE l.organization_id=$1 ORDER BY l.created_at DESC,l.id LIMIT $2 OFFSET $3`,
         [org, limit + 1, offset],
       )
     ).rows;
     return {
-      items: rows.slice(0, limit).map((r) => ({
-        id: r.id,
-        kind: r.kind,
-        amount_paise: Number(r.amount_paise),
-        balance_after_paise: Number(r.balance_after_paise),
-        reference: r.reference,
-        call_seconds: r.call_seconds == null ? null : Number(r.call_seconds),
-        payment_method: r.payment_method ?? "",
-        note: r.note,
-        created_at: new Date(r.created_at).toISOString(),
-      })),
+      items: rows.slice(0, limit).map(ledgerItem),
       next_offset: rows.length > limit ? offset + limit : null,
     };
   }
   async createOrder(actor: Actor, input: unknown) {
     const v = createSchema.parse(input);
     const m = await this.workspace.member(actor, true);
+    const billing = await effectiveBilling(
+      this.db,
+      (
+        await this.db.query<any>(
+          "SELECT * FROM call_wallets WHERE organization_id=$1",
+          [m.organization_id],
+        )
+      ).rows[0],
+    );
+    if (billing.rate_paise_per_minute == null)
+      throw new ConflictException("Online recharge is not available yet.");
+    validRecharge(billing, v.amount_paise);
     const recent = Number(
       (
         await this.db.query<any>(
@@ -297,17 +418,11 @@ export class CallWalletService {
           "The paid amount does not match this recharge.",
         );
       const w = await lockWallet(tx, order.organization_id);
-      const next = Number(w.balance_paise) + amount;
-      const inserted = await tx.query(
-        `INSERT INTO call_wallet_ledger(id,organization_id,kind,amount_paise,balance_after_paise,reference)
-     VALUES($1,$2,'recharge',$3,$4,$5) ON CONFLICT DO NOTHING RETURNING id`,
-        [randomUUID(), order.organization_id, amount, next, id],
-      );
-      if (inserted.rows.length)
-        await tx.query(
-          "UPDATE call_wallets SET balance_paise=$2,updated_at=now() WHERE organization_id=$1",
-          [order.organization_id, next],
-        );
+      await applyEntry(tx, w, await effectiveBilling(tx, w), {
+        kind: "recharge",
+        amount,
+        reference: id,
+      });
       await tx.query(
         "UPDATE call_wallet_orders SET status='paid',cf_payment_id=$2,payment_method=$3,paid_at=now(),updated_at=now() WHERE order_id=$1",
         [id, g.payment?.cfPaymentId || null, g.payment?.method || null],

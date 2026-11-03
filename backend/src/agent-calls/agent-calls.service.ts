@@ -12,7 +12,7 @@ import type { Actor } from "../common/auth.guard";
 import type { WorkspaceService } from "../workspace/workspace.service";
 import type { SarvamService } from "../sarvam/sarvam.service";
 import { serviceSelection } from "./agent-call-policy";
-import { chargeCall } from "../call-wallet/call-wallet.service";
+import { callCharges, chargeCall } from "../call-wallet/call-wallet.service";
 
 const requestSchema = z
   .object({
@@ -278,6 +278,7 @@ export class AgentCallService {
         await this.storeCall(m.organization_id, provider_scope, item);
         await this.backfillCharge(m.organization_id, item);
       }
+      result.items = await this.withCharges(m.organization_id, result.items);
       if (result.total === 0) {
         const saved = await this.savedCalls(m.organization_id, q);
         if (saved.total > 0)
@@ -302,13 +303,28 @@ export class AgentCallService {
       };
     }
   }
+  /** Adds what the wallet was charged for each call; uncharged calls show none. */
+  private async withCharges(org: string, items: any[]) {
+    const charges = await callCharges(
+      this.db,
+      org,
+      items.map((i) => i.interaction_id).filter((i) => typeof i === "string"),
+    );
+    return items.map((i) => ({
+      ...i,
+      charge_paise: charges.get(i.interaction_id) ?? null,
+    }));
+  }
   private async savedCalls(org: string, q: z.infer<typeof historySchema>) {
-    const items = (
-      await this.db.query<any>(
-        "SELECT data FROM agent_call_logs WHERE organization_id=$1 AND started_at >= $2 AND started_at < $3 ORDER BY started_at DESC,interaction_id LIMIT 50 OFFSET $4",
-        [org, q.start, q.end, q.offset],
-      )
-    ).rows.map((r) => r.data);
+    const items = await this.withCharges(
+      org,
+      (
+        await this.db.query<any>(
+          "SELECT data FROM agent_call_logs WHERE organization_id=$1 AND started_at >= $2 AND started_at < $3 ORDER BY started_at DESC,interaction_id LIMIT 50 OFFSET $4",
+          [org, q.start, q.end, q.offset],
+        )
+      ).rows.map((r) => r.data),
+    );
     const total = Number(
       (
         await this.db.query<any>(

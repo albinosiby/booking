@@ -13,7 +13,13 @@ class BookingNotification extends Equatable {
   final String eventId, bookingId, userId, kind;
   final String? settlementId;
   bool get cashCollection => kind == 'staff_cash_collected';
-  String get route => cashCollection ? '/payments' : '/booking/$bookingId';
+  bool get callWallet => walletKinds.contains(kind);
+  String get route => cashCollection
+      ? '/payments'
+      : callWallet
+      ? '/profile/agent-calls/wallet'
+      : '/booking/$bookingId';
+  static const walletKinds = ['call_wallet_low', 'call_wallet_empty'];
   final String? title, body;
   static final _uuid = RegExp(
     r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$',
@@ -29,11 +35,12 @@ class BookingNotification extends Equatable {
         kind = data['event_type'];
     final settlement = data['settlement_id'];
     final cash = kind == 'staff_cash_collected';
+    final wallet = walletKinds.contains(kind);
     if (event is! String ||
         !_uuid.hasMatch(event) ||
         (cash
             ? settlement is! String || !_uuid.hasMatch(settlement)
-            : booking is! String || !_uuid.hasMatch(booking)) ||
+            : !wallet && (booking is! String || !_uuid.hasMatch(booking))) ||
         user is! String ||
         user.isEmpty ||
         !const [
@@ -41,12 +48,13 @@ class BookingNotification extends Equatable {
           'cancelled',
           'rescheduled',
           'staff_cash_collected',
+          ...walletKinds,
         ].contains(kind)) {
       return null;
     }
     return BookingNotification(
       eventId: event,
-      bookingId: cash ? '' : booking as String,
+      bookingId: cash || wallet ? '' : booking as String,
       settlementId: cash ? settlement as String : null,
       userId: user,
       kind: kind as String,
@@ -58,7 +66,7 @@ class BookingNotification extends Equatable {
   Map<String, String> toData() => {
     'event_id': eventId,
     if (cashCollection) 'settlement_id': settlementId!,
-    if (!cashCollection) 'booking_id': bookingId,
+    if (!cashCollection && !callWallet) 'booking_id': bookingId,
     'recipient_user_id': userId,
     'event_type': kind,
   };

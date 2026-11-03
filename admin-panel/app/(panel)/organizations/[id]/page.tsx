@@ -4,13 +4,17 @@ import { date, money, label } from "../../../../lib/format";
 import { Badge } from "../../../../components/ui";
 import { setUserActive } from "../../../actions";
 import { SubmitButton } from "../../../../components/submit-button";
+import { WalletSection } from "../../../../features/call-wallet/wallet-section";
 
 export default async function Organization({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ wallet?: string }>;
 }) {
   const { id } = await params;
+  const walletOffset = Math.max(0, Number((await searchParams).wallet) || 0);
   const d = await admin<any>(`/organizations/${id}`);
   const o = d.organization,
     s = d.stats;
@@ -86,6 +90,7 @@ export default async function Organization({
           )}
         </div>
       </div>
+      <WalletSection org={o.id} offset={walletOffset} />
       <div className="card scroll">
         <h2>Team ({d.members.length})</h2>
         <table>

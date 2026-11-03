@@ -175,7 +175,9 @@ class _BookingAppState extends State<BookingApp> with WidgetsBindingObserver {
     notifications.consume();
     if (auth.state.user?.id != pending.userId ||
         auth.state.user?.passwordRecovery == true ||
-        !(pending.cashCollection
+        !(pending.callWallet
+            ? workspace.state.data.isOwner
+            : pending.cashCollection
             ? workspace.state.data.hasPermission('collect_payments') ||
                   workspace.state.data.hasPermission('view_finance')
             : workspace.state.data.hasPermission('manage_bookings'))) {

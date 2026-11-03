@@ -66,6 +66,7 @@ class AgentCall extends Equatable {
     this.disposition = '',
     this.requestedFacility = '',
     this.preferredDatetime = '',
+    this.chargePaise,
   });
   factory AgentCall.fromJson(Map<String, dynamic> j) {
     String s(String k) => j[k] as String? ?? '';
@@ -90,6 +91,7 @@ class AgentCall extends Equatable {
       disposition: s('disposition'),
       requestedFacility: s('requested_facility'),
       preferredDatetime: s('preferred_datetime'),
+      chargePaise: (j['charge_paise'] as num?)?.toInt(),
     );
   }
   final String id;
@@ -97,6 +99,9 @@ class AgentCall extends Equatable {
   final double durationSeconds;
   final String language, direction, contact, callerName, summary;
   final String enquiryType, disposition, requestedFacility, preferredDatetime;
+
+  /// What the call wallet was charged; null until the call has been billed.
+  final int? chargePaise;
   String get title => callerName.isNotEmpty
       ? callerName
       : contact.isNotEmpty
@@ -108,7 +113,13 @@ class AgentCall extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, startedAt, durationSeconds, summary];
+  List<Object?> get props => [
+    id,
+    startedAt,
+    durationSeconds,
+    summary,
+    chargePaise,
+  ];
 }
 
 class AgentCallPage extends Equatable {

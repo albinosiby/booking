@@ -15,6 +15,7 @@ class Routes {
       support = '/profile/support',
       callLogs = '/profile/agent-calls/calls',
       callWallet = '/profile/agent-calls/wallet',
+      callWalletRecharge = '/profile/agent-calls/wallet/recharge',
       profile = '/profile',
       customers = '/customers',
       admissions = '/admissions',

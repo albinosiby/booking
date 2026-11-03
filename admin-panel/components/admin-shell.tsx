@@ -28,6 +28,12 @@ const links: { href: string; label: string; icon: IconName; group: string }[] =
       icon: "phone",
       group: "Operations",
     },
+    {
+      href: "/call-billing",
+      label: "Call billing",
+      icon: "wallet",
+      group: "Operations",
+    },
     { href: "/audit", label: "Audit log", icon: "audit", group: "Operations" },
   ];
 

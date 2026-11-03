@@ -255,6 +255,18 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('owners get a Recharge button in the top bar', (tester) async {
+    await pump(
+      tester,
+      const AgentServiceScreen(),
+      TestAgentCalls(),
+      TestSaver(),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('agent-recharge')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('request screen shows the request form without provider names', (
     tester,
   ) async {

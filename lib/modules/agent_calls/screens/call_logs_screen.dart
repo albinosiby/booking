@@ -5,6 +5,7 @@ import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
 import '../cubit/agent_call_cubits.dart';
 import '../models/agent_call_models.dart';
+import '../../call_wallet/models/call_wallet_models.dart' show rupees;
 
 String clock(BuildContext context, DateTime time) => MaterialLocalizations.of(
   context,
@@ -201,6 +202,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
   String meta(BuildContext context, AgentCall call) => [
     if (call.startedAt != null) clock(context, call.startedAt!),
     call.duration,
+    if (call.chargePaise != null) '−${rupees(call.chargePaise!)}',
     call.language,
   ].where((v) => v.isNotEmpty).join(' · ');
 
@@ -560,7 +562,8 @@ class _CallDetailSheetState extends State<CallDetailSheet> {
           if (call.startedAt != null)
             Text(
               '${MaterialLocalizations.of(context).formatMediumDate(call.startedAt!)}, '
-              '${clock(context, call.startedAt!)} · ${call.duration}',
+              '${clock(context, call.startedAt!)} · ${call.duration}'
+              '${call.chargePaise != null ? ' · −${rupees(call.chargePaise!)}' : ''}',
               style: t.textTheme.bodySmall,
             ),
           if (call.summary.isNotEmpty) ...[

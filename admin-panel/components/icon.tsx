@@ -7,6 +7,7 @@ export type IconName =
   | "users"
   | "support"
   | "phone"
+  | "wallet"
   | "audit"
   | "arrow"
   | "external"
@@ -50,6 +51,13 @@ const paths: Record<IconName, React.ReactNode> = {
   ),
   phone: (
     <path d="m8 3 3 5-2 2a15 15 0 0 0 5 5l2-2 5 3c0 4-3 5-5 4A23 23 0 0 1 4 8C3 6 4 3 8 3Z" />
+  ),
+  wallet: (
+    <>
+      <path d="M4 7a2 2 0 0 1 2-2h12v4" />
+      <path d="M4 7v11a2 2 0 0 0 2 2h14V9H6a2 2 0 0 1-2-2Z" />
+      <circle cx="16" cy="14.5" r="1" />
+    </>
   ),
   audit: (
     <>

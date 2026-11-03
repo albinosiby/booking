@@ -153,7 +153,8 @@ export class AdminService {
         (SELECT count(*)::int FROM businesses b WHERE b.organization_id=o.id) AS businesses,
         (SELECT count(*)::int FROM bookings k WHERE k.organization_id=o.id) AS bookings,
         (SELECT email FROM memberships m WHERE m.organization_id=o.id AND m.role='owner' LIMIT 1) AS owner_email,
-        (SELECT status FROM agent_call_requests r WHERE r.organization_id=o.id) AS agent_status
+        (SELECT status FROM agent_call_requests r WHERE r.organization_id=o.id) AS agent_status,
+        (SELECT balance_paise FROM call_wallets w WHERE w.organization_id=o.id) AS wallet_balance_paise
        FROM organizations o
        WHERE o.name ILIKE $1 ESCAPE '\\'
           OR EXISTS(SELECT 1 FROM memberships m WHERE m.organization_id=o.id AND m.email ILIKE $1 ESCAPE '\\')
@@ -338,7 +339,8 @@ export class AdminService {
     const status = requestStatus.safeParse(query.status);
     const { rows } = await this.db.query(
       `SELECT r.id,r.status,r.note,r.admin_note,r.user_message,r.created_at,r.updated_at,r.version,r.requested_services,r.approved_services,
-        r.organization_id,o.name AS organization_name,coalesce(m.email,'') AS user_email,coalesce(m.display_name,'Removed team member') AS user_name
+        r.organization_id,o.name AS organization_name,coalesce(m.email,'') AS user_email,coalesce(m.display_name,'Removed team member') AS user_name,
+        (SELECT balance_paise FROM call_wallets w WHERE w.organization_id=r.organization_id) AS wallet_balance_paise
        FROM agent_call_requests r
        JOIN organizations o ON o.id=r.organization_id
        LEFT JOIN memberships m ON m.id=r.membership_id AND m.organization_id=r.organization_id

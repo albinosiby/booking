@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { admin } from "../../../lib/api";
-import { date } from "../../../lib/format";
+import { date, rupees } from "../../../lib/format";
 import {
   Badge,
   SearchBox,
@@ -40,6 +40,7 @@ export default async function Organizations({
               <th>Businesses</th>
               <th>Bookings</th>
               <th>Agent calls</th>
+              <th>Call balance</th>
               <th>Created</th>
             </tr>
           </thead>
@@ -55,6 +56,11 @@ export default async function Organizations({
                 <td>{o.bookings}</td>
                 <td>
                   {o.agent_status ? <Badge value={o.agent_status} /> : "—"}
+                </td>
+                <td>
+                  {o.wallet_balance_paise == null
+                    ? "—"
+                    : rupees(o.wallet_balance_paise)}
                 </td>
                 <td>{date(o.created_at)}</td>
               </tr>

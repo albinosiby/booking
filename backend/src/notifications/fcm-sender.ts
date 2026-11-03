@@ -1,6 +1,8 @@
 import { createSign } from "node:crypto";
 import {
   bookingNotificationBody,
+  callWalletNotificationBody,
+  type CallWalletNotificationDetails,
   type BookingNotificationDetails,
   staffCashNotificationBody,
   type StaffCashNotificationDetails,
@@ -12,6 +14,7 @@ export type PushMessage = {
   bookingId: string | null;
   settlementId?: string | null;
   cashDetails?: StaffCashNotificationDetails | null;
+  walletDetails?: CallWalletNotificationDetails | null;
   forStaff?: boolean;
   userId: string;
   kind: string;
@@ -113,6 +116,8 @@ export class FcmSender implements PushSender {
         cancelled: "Order cancelled",
         rescheduled: "Order rescheduled",
         staff_cash_collected: "Cash collection confirmed",
+        call_wallet_low: "Call balance is low",
+        call_wallet_empty: "Call balance is empty",
       } as Record<string, string>
     )[m.kind];
     if (!title) throw new PushFailure("INVALID_EVENT", false);
@@ -120,10 +125,17 @@ export class FcmSender implements PushSender {
     try {
       if (m.kind === "staff_cash_collected" && !m.settlementId)
         throw new Error();
+      const wallet = m.kind.startsWith("call_wallet_");
+      if (wallet && !m.walletDetails) throw new Error();
       body =
         m.kind === "staff_cash_collected"
           ? staffCashNotificationBody(m.cashDetails!, m.forStaff === true)
-          : bookingNotificationBody(m.reference, m.details);
+          : wallet
+            ? callWalletNotificationBody(
+                m.walletDetails!,
+                m.kind === "call_wallet_empty",
+              )
+            : bookingNotificationBody(m.reference, m.details);
     } catch {
       throw new PushFailure("INVALID_EVENT", false);
     }
@@ -151,7 +163,9 @@ export class FcmSender implements PushSender {
                 event_id: m.eventId,
                 ...(m.kind === "staff_cash_collected"
                   ? { settlement_id: m.settlementId! }
-                  : { booking_id: m.bookingId! }),
+                  : m.kind.startsWith("call_wallet_")
+                    ? {}
+                    : { booking_id: m.bookingId! }),
                 event_type: m.kind,
                 recipient_user_id: m.userId,
               },

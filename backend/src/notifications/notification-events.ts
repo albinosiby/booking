@@ -42,3 +42,19 @@ export async function enqueueStaffCashNotification(
     [settlementId],
   );
 }
+
+/** Enqueued with the ledger entry that crossed the threshold; its UUID is the event key. */
+export async function enqueueCallWalletNotification(
+  db: Queryable,
+  ledgerId: string,
+  organizationId: string,
+  kind: "call_wallet_low" | "call_wallet_empty",
+  details: { balance_paise: number; minutes_left: number; currency: string },
+) {
+  if (process.env.BOOKING_PUSH_ENQUEUE_ENABLED === "false") return;
+  await db.query(
+    `INSERT INTO booking_notification_events(id,organization_id,kind,reference,wallet_details)
+     VALUES($1,$2,$3,'Call wallet',$4) ON CONFLICT(id) DO NOTHING`,
+    [ledgerId, organizationId, kind, JSON.stringify(details)],
+  );
+}

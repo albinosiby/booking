@@ -34,6 +34,32 @@ export function staffCashNotificationBody(
   return `${forStaff ? `${label(details.collector_name, "The owner")} collected` : "You collected"} ${money(details.amount_minor)} from ${forStaff ? "you" : label(details.staff_name, "staff")}.\nRemaining to hand over: ${money(details.balance_after_minor)}.`;
 }
 
+export type CallWalletNotificationDetails = {
+  balance_paise: number;
+  minutes_left: number;
+  currency: string;
+};
+
+export function callWalletNotificationBody(
+  details: CallWalletNotificationDetails,
+  empty: boolean,
+) {
+  if (
+    !Number.isSafeInteger(details?.balance_paise) ||
+    !Number.isSafeInteger(details.minutes_left) ||
+    details.minutes_left < 0 ||
+    details.currency !== "INR"
+  )
+    throw new Error("Invalid wallet notification snapshot");
+  const balance = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+  }).format(details.balance_paise / 100);
+  return empty
+    ? `Your call balance is ${balance}. Recharge now so callers can keep booking by phone.`
+    : `Only ${balance} left (about ${details.minutes_left} min of calls). Recharge to avoid interruptions.`;
+}
+
 // Keep user-provided names on a single line and bound the push payload size.
 function label(value: unknown, fallback: string) {
   if (typeof value !== "string") return fallback;

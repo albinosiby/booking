@@ -391,6 +391,26 @@ class _AgentServiceScreenState extends State<AgentServiceScreen> {
             maxWidth: 1200,
             scrollId: 'agent-service',
             actions: [
+              if (cubit.owner)
+                BlocBuilder<CallWalletCubit, CallWalletState>(
+                  bloc: wallet,
+                  builder: (context, ws) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: FilledButton.tonalIcon(
+                      key: const ValueKey('agent-recharge'),
+                      onPressed: ws.recharging
+                          ? null
+                          : () => openRecharge(context, wallet),
+                      icon: Icon(
+                        !ws.loading && ws.wallet.low
+                            ? Icons.warning_amber_rounded
+                            : Icons.account_balance_wallet_outlined,
+                        size: 18,
+                      ),
+                      label: const Text('Recharge'),
+                    ),
+                  ),
+                ),
               IconButton(
                 tooltip: 'Refresh service status',
                 onPressed: s.loading || s.busy ? null : refresh,

@@ -44,7 +44,9 @@ class WalletEntry extends Equatable {
     required this.balanceAfterPaise,
     required this.createdAt,
     this.callSeconds,
+    this.ratePaisePerMinute,
     this.paymentMethod = '',
+    this.externalReference = '',
     this.note = '',
   });
   factory WalletEntry.fromJson(Map<String, dynamic> j) => WalletEntry(
@@ -53,22 +55,42 @@ class WalletEntry extends Equatable {
     amountPaise: (j['amount_paise'] as num).toInt(),
     balanceAfterPaise: (j['balance_after_paise'] as num).toInt(),
     callSeconds: (j['call_seconds'] as num?)?.toInt(),
+    ratePaisePerMinute: (j['rate_paise_per_minute'] as num?)?.toInt(),
     paymentMethod: '${j['payment_method'] ?? ''}',
+    externalReference: '${j['external_reference'] ?? ''}',
     note: '${j['note'] ?? ''}',
     createdAt: DateTime.parse('${j['created_at']}').toLocal(),
   );
-  final String id, paymentMethod, note;
+  final String id, paymentMethod, externalReference, note;
   final WalletEntryKind kind;
   final int amountPaise, balanceAfterPaise;
-  final int? callSeconds;
+  final int? callSeconds, ratePaisePerMinute;
   final DateTime createdAt;
 
   String get title => switch (kind) {
     WalletEntryKind.callCharge when callSeconds != null =>
       'Call · ${callDuration(callSeconds!)}',
     WalletEntryKind.recharge when paymentMethod.isNotEmpty =>
-      'Recharge · ${paymentMethod.replaceAll('_', ' ').toUpperCase()}',
+      'Recharge · ${_method(paymentMethod)}',
+    WalletEntryKind.adjustment when amountPaise >= 0 =>
+      paymentMethod.isEmpty
+          ? 'Balance added'
+          : 'Balance added · ${_method(paymentMethod)}',
+    WalletEntryKind.adjustment => 'Balance correction',
     _ => kind.label,
+  };
+
+  /// Receipt number and the support note, when the balance was changed by hand.
+  String get details =>
+      [externalReference, note].where((s) => s.isNotEmpty).join(' · ');
+
+  static String _method(String m) => switch (m) {
+    'upi' => 'UPI',
+    'bank_transfer' => 'Bank transfer',
+    'cash' => 'Cash',
+    'cheque' => 'Cheque',
+    'other' => 'Other',
+    _ => m.replaceAll('_', ' ').toUpperCase(),
   };
 
   @override
@@ -83,28 +105,38 @@ String callDuration(int seconds) {
 class CallWallet extends Equatable {
   const CallWallet({
     this.balancePaise = 0,
-    this.ratePaisePerMinute = 500,
+    this.ratePaisePerMinute = 0,
+    this.rateSet = false,
     this.minutesLeft = 0,
+    this.lowBalancePaise = 0,
     this.rechargeEnabled = false,
-    this.minRechargePaise = 10000,
-    this.maxRechargePaise = 5000000,
-    this.presetsPaise = const [50000, 100000, 200000, 500000],
+    this.plansPaise = const [],
+    this.customEnabled = false,
+    this.customMinPaise = 10000,
+    this.customMaxPaise = 5000000,
     this.entries = const [],
     this.nextOffset,
   });
   factory CallWallet.fromJson(Map<String, dynamic> j) {
     final recharge = Map<String, dynamic>.from(j['recharge'] as Map? ?? {});
+    int n(Object? v, int fallback) => (v as num? ?? fallback).toInt();
     return CallWallet(
-      balancePaise: (j['balance_paise'] as num? ?? 0).toInt(),
-      ratePaisePerMinute: (j['rate_paise_per_minute'] as num? ?? 500).toInt(),
-      minutesLeft: (j['minutes_left'] as num? ?? 0).toInt(),
+      balancePaise: n(j['balance_paise'], 0),
+      ratePaisePerMinute: n(j['rate_paise_per_minute'], 0),
+      rateSet: j['rate_set'] != false,
+      minutesLeft: n(j['minutes_left'], 0),
+      lowBalancePaise: n(j['low_balance_paise'], 0),
       rechargeEnabled: recharge['enabled'] == true,
-      minRechargePaise: (recharge['min_paise'] as num? ?? 10000).toInt(),
-      maxRechargePaise: (recharge['max_paise'] as num? ?? 5000000).toInt(),
-      presetsPaise: [
-        for (final p in recharge['presets_paise'] as List? ?? const [])
+      plansPaise: [
+        for (final p
+            in recharge['plans_paise'] as List? ??
+                recharge['presets_paise'] as List? ??
+                const [])
           (p as num).toInt(),
       ],
+      customEnabled: recharge['custom_enabled'] == true,
+      customMinPaise: n(recharge['custom_min_paise'], 10000),
+      customMaxPaise: n(recharge['custom_max_paise'], 5000000),
       entries: [
         for (final e in j['transactions'] as List? ?? const [])
           WalletEntry.fromJson(Map<String, dynamic>.from(e as Map)),
@@ -112,14 +144,35 @@ class CallWallet extends Equatable {
       nextOffset: (j['next_offset'] as num?)?.toInt(),
     );
   }
-  final int balancePaise, ratePaisePerMinute, minutesLeft;
-  final bool rechargeEnabled;
-  final int minRechargePaise, maxRechargePaise;
-  final List<int> presetsPaise;
+  final int balancePaise, ratePaisePerMinute, minutesLeft, lowBalancePaise;
+  final bool rateSet, rechargeEnabled, customEnabled;
+
+  /// Plans the admin set for this client, smallest first.
+  final List<int> plansPaise;
+
+  /// Custom amounts are whole rupees from [customMinPaise] to [customMaxPaise].
+  final int customMinPaise, customMaxPaise;
   final List<WalletEntry> entries;
   final int? nextOffset;
 
-  bool get low => balancePaise <= ratePaisePerMinute * 20;
+  bool get empty => balancePaise <= 0;
+  bool get low => empty || balancePaise < lowBalancePaise;
+
+  /// Roughly how many minutes [paise] buys at this client's rate.
+  int minutesFor(int paise) =>
+      ratePaisePerMinute > 0 ? paise ~/ ratePaisePerMinute : 0;
+
+  /// Why a custom amount is refused, or null when the server will accept it.
+  String? customError(int? paise) {
+    if (paise == null) return 'Enter an amount in rupees.';
+    if (paise < customMinPaise) {
+      return 'Enter at least ${rupees(customMinPaise)}, or choose a plan.';
+    }
+    if (paise > customMaxPaise) {
+      return 'Recharge at most ${rupees(customMaxPaise)}.';
+    }
+    return null;
+  }
 
   CallWallet copyWith({
     List<WalletEntry>? entries,
@@ -127,11 +180,14 @@ class CallWallet extends Equatable {
   }) => CallWallet(
     balancePaise: balancePaise,
     ratePaisePerMinute: ratePaisePerMinute,
+    rateSet: rateSet,
     minutesLeft: minutesLeft,
+    lowBalancePaise: lowBalancePaise,
     rechargeEnabled: rechargeEnabled,
-    minRechargePaise: minRechargePaise,
-    maxRechargePaise: maxRechargePaise,
-    presetsPaise: presetsPaise,
+    plansPaise: plansPaise,
+    customEnabled: customEnabled,
+    customMinPaise: customMinPaise,
+    customMaxPaise: customMaxPaise,
     entries: entries ?? this.entries,
     nextOffset: nextOffset != null ? nextOffset() : this.nextOffset,
   );
@@ -140,8 +196,14 @@ class CallWallet extends Equatable {
   List<Object?> get props => [
     balancePaise,
     ratePaisePerMinute,
+    rateSet,
     minutesLeft,
+    lowBalancePaise,
     rechargeEnabled,
+    plansPaise,
+    customEnabled,
+    customMinPaise,
+    customMaxPaise,
     entries,
     nextOffset,
   ];

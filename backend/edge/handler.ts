@@ -3,6 +3,7 @@ import type { SupportService } from "../src/support/support.service";
 import type { AgentCallService } from "../src/agent-calls/agent-calls.service";
 import type { CallWalletService } from "../src/call-wallet/call-wallet.service";
 import type { AdminService } from "../src/admin/admin.service";
+import type { AdminCallBillingService } from "../src/admin/admin-call-billing.service";
 import type { AdminSarvamService } from "../src/admin/admin-sarvam.service";
 import {
   AdminMcpError,
@@ -47,6 +48,7 @@ import { renderIncomeReport } from "../src/income/income.report";
 type Services = {
   notifications: NotificationService;
   admin: AdminService;
+  adminBilling?: AdminCallBillingService;
   adminSarvam: AdminSarvamService;
   adminMcp?: AdminMcpService;
   adminMcpAuth?: AdminMcpAuthService;
@@ -206,6 +208,22 @@ export function createHandler(
     ad.updateAgentRequest(i.actor, i.params.id, i.body),
   );
   add("GET", "/v1/admin/audit", (i) => ad.auditLog(i.actor, i.query));
+  const billing = services.adminBilling;
+  if (billing) {
+    add("GET", "/v1/admin/call-billing", (i) => billing.defaults(i.actor));
+    add("PUT", "/v1/admin/call-billing", (i) =>
+      billing.saveDefaults(i.actor, i.body),
+    );
+    add("GET", "/v1/admin/organizations/:id/call-wallet", (i) =>
+      billing.wallet(i.actor, i.params.id, i.query),
+    );
+    add("PUT", "/v1/admin/organizations/:id/call-wallet/pricing", (i) =>
+      billing.saveOverrides(i.actor, i.params.id, i.body),
+    );
+    add("POST", "/v1/admin/organizations/:id/call-wallet/adjustments", (i) =>
+      billing.adjust(i.actor, i.params.id, i.body),
+    );
+  }
   add("GET", "/v1/booking-website", (i) => services.website.settings(i.actor));
   add("GET", "/v1/booking-website/link", (i) => services.website.link(i.actor));
   add("GET", "/v1/booking-website/home-hero", async (i) => {

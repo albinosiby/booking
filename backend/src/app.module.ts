@@ -15,6 +15,8 @@ import {
 import { AdminService } from "./admin/admin.service";
 import { AdminController } from "./admin/admin.controller";
 import { AdminGuard } from "./admin/admin.guard";
+import { AdminCallBillingService } from "./admin/admin-call-billing.service";
+import { AdminCallBillingController } from "./admin/admin-call-billing.controller";
 import { AdminMcpAuthService } from "./admin/admin-mcp-auth";
 import { AdminMcpGuard } from "./admin/admin-mcp.guard";
 import { AdminMcpController } from "./admin/admin-mcp.controller";
@@ -76,6 +78,7 @@ import {
     NotificationController,
     NotificationInstallationController,
     AdminController,
+    AdminCallBillingController,
     AdminSarvamController,
     AdminMcpController,
     WebsiteSettingsController,
@@ -107,6 +110,7 @@ import {
     NotificationService,
     AdminGuard,
     AdminService,
+    AdminCallBillingService,
     AdminSarvamService,
     AdminMcpService,
     AdminMcpAuthService,

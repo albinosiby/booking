@@ -277,6 +277,8 @@ class FirebaseNotificationRepository implements NotificationRepository {
           notification.title ??
           (notification.cashCollection
               ? 'Cash collection confirmed'
+              : notification.callWallet
+              ? 'Call balance is low'
               : 'Booking updated'),
       body: notification.body ?? 'Open Booking OS for details.',
       notificationDetails: const NotificationDetails(
