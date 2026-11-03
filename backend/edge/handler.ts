@@ -549,6 +549,9 @@ export function createHandler(
   add("POST", "/v1/bookings/:id/status", (i) =>
     b.status(i.actor, i.params.id, i.body),
   );
+  add("POST", "/v1/bookings/:id/delete", (i) =>
+    b.deleteBooking(i.actor, i.params.id, i.body),
+  );
   add("POST", "/v1/bookings/:id/customer", (i) =>
     b.editCustomer(i.actor, i.params.id, i.body),
   );

@@ -95,6 +95,13 @@ export const statusSchema = z
     reason: z.string().trim().min(2).max(500),
   })
   .strict();
+export const deleteBookingSchema = z
+  .object({
+    command_key: z.uuid(),
+    version: z.number().int().positive(),
+    confirm_reference: z.string().min(1).max(40),
+  })
+  .strict();
 export const customerEditSchema = z
   .object({
     command_key: z.uuid(),

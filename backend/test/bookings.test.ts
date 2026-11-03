@@ -1719,3 +1719,121 @@ test("turning a business off rejects stale quotes, keeps collections and restore
   assert.equal((await service.catalog(f.owner)).businesses.length, 1);
   assert.equal((await service.detail(f.owner, existing.id)).id, existing.id);
 });
+
+test("owner permanently deletes a paid invoiced booking and its ledger without touching other bookings", async () => {
+  const f = await fixture();
+  const created = await create(f, f.selection, [payment("cash", 50000)]);
+  const other = await create(f, {
+    ...f.selection,
+    resource_id: f.config.courts[1].id,
+  });
+  const detail = await service.detail(f.owner, created.id);
+  const org = (
+    await db.query<any>("SELECT organization_id FROM bookings WHERE id=$1", [
+      created.id,
+    ])
+  ).rows[0].organization_id;
+  const invoiceId = randomUUID();
+  await db.query(
+    `INSERT INTO booking_invoices(id,organization_id,booking_id,invoice_number,total_minor,paid_minor,balance_minor,currency,content_hash,snapshot,generated_by,generated_by_name,command_key)
+     VALUES($1,$2,$3,$4,$5,$6,0,'INR','test','{}',$7,'Owner',$8)`,
+    [
+      invoiceId,
+      org,
+      created.id,
+      `INV-${invoiceId}`,
+      detail.total_minor,
+      detail.net_paid_minor,
+      f.owner.uid,
+      randomUUID(),
+    ],
+  );
+  await assert.rejects(
+    db.query("DELETE FROM booking_invoices WHERE id=$1", [invoiceId]),
+    /cannot be changed or deleted/i,
+  );
+  const staff = actor();
+  const invite = await workspace.invite(f.owner, {
+    email: staff.email,
+    display_name: "Booking staff",
+    role: "staff",
+    permissions: ["view_bookings", "manage_bookings"],
+    assignments: [
+      { business_id: f.id, resource_ids: [f.selection.resource_id] },
+    ],
+  });
+  await workspace.accept(
+    staff,
+    new URL(invite.invitation_url).searchParams.get("token")!,
+  );
+  assert.equal((await service.catalog(f.owner)).can_delete, true);
+  assert.equal((await service.catalog(staff)).can_delete, false);
+  const command = {
+    command_key: randomUUID(),
+    version: detail.version,
+    confirm_reference: detail.reference,
+  };
+  await assert.rejects(
+    service.deleteBooking(staff, created.id, command),
+    /Only owners/,
+  );
+  await assert.rejects(
+    service.deleteBooking(f.owner, created.id, {
+      ...command,
+      confirm_reference: "wrong",
+    }),
+    /exact booking reference/i,
+  );
+  assert.equal((await service.detail(f.owner, created.id)).id, created.id);
+  const result = await service.deleteBooking(f.owner, created.id, command);
+  assert.deepEqual(result, { id: created.id, deleted: true });
+  assert.deepEqual(
+    await service.deleteBooking(f.owner, created.id, command),
+    result,
+  );
+  assert.deepEqual(
+    await service.commandResult(f.owner, command.command_key),
+    result,
+  );
+  await assert.rejects(
+    service.detail(f.owner, created.id),
+    /Booking not found/,
+  );
+  assert.equal((await service.detail(f.owner, other.id)).id, other.id);
+  for (const [table, where] of [
+    ["bookings", "id=$1"],
+    ["booking_allocations", "booking_id=$1"],
+    ["booking_payments", "booking_id=$1"],
+    ["booking_history", "booking_id=$1"],
+    ["booking_notification_events", "booking_id=$1"],
+    ["booking_invoices", "booking_id=$1"],
+    [
+      "finance_events",
+      "booking_payment_id IN (SELECT id FROM booking_payments WHERE booking_id=$1)",
+    ],
+  ]) {
+    const rows = await db.query<any>(
+      `SELECT count(*)::int AS count FROM ${table} WHERE ${where}`,
+      [created.id],
+    );
+    assert.equal(rows.rows[0].count, 0, table);
+  }
+  assert.equal(
+    (
+      await db.query<any>(
+        "SELECT count(*)::int AS count FROM finance_events WHERE organization_id=$1 AND kind='booking_collection'",
+        [org],
+      )
+    ).rows[0].count,
+    0,
+  );
+  assert.equal(
+    (
+      await db.query<any>(
+        "SELECT count(*)::int AS count FROM booking_commands WHERE organization_id=$1 AND response->>'id'=$2",
+        [org, created.id],
+      )
+    ).rows[0].count,
+    1,
+  );
+});

@@ -12,6 +12,7 @@ import '../../workspace/cubit/workspace_cubit.dart';
 import '../models/booking_detail_model.dart';
 import '../models/booking_models.dart' show bookingMoney;
 import '../cubit/booking_detail_cubit.dart';
+import '../cubit/booking_form_cubit.dart' show bookingError;
 import '../widgets/booking_widgets.dart';
 import '../../invoices/repositories/invoice_repository.dart';
 import '../../invoices/cubit/invoice_cubits.dart';
@@ -264,11 +265,119 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       : BookingDetailAction.cancelled,
                 ),
               ),
+            if (state.catalog.canDelete && b.admissionId == null)
+              ListTile(
+                key: const ValueKey('booking-delete-action'),
+                leading: Icon(
+                  Icons.delete_forever_outlined,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: const Text('Delete booking permanently'),
+                subtitle: const Text('Erase booking, payments, and invoices'),
+                onTap: () => Navigator.pop(context, BookingDetailAction.delete),
+              ),
           ],
         ),
       ),
     );
-    if (mounted && action != null) cubit.begin(action);
+    if (!mounted || action == null) return;
+    if (action == BookingDetailAction.delete) {
+      await confirmDelete(state);
+    } else {
+      cubit.begin(action);
+    }
+  }
+
+  Future<void> confirmDelete(BookingDetailModel state) async {
+    final booking = state.record;
+    if (booking == null) return;
+    final deleted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        var typed = '';
+        var busy = false;
+        String? error;
+        return StatefulBuilder(
+          builder: (dialogContext, update) => AlertDialog(
+            title: const Text('Delete booking permanently?'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'This erases the booking, payments, refunds, invoices, '
+                    'ledger entries, and history. Finance reports and '
+                    'account balances will change. This cannot be undone.',
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Type ${booking.reference} to confirm.'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    key: const ValueKey('booking-delete-reference'),
+                    enabled: !busy,
+                    decoration: InputDecoration(
+                      labelText: 'Booking reference',
+                      errorText: error,
+                    ),
+                    onChanged: (value) => update(() {
+                      typed = value;
+                      error = null;
+                    }),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: busy ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Keep booking'),
+              ),
+              FilledButton(
+                key: const ValueKey('booking-confirm-delete'),
+                onPressed: busy || typed != booking.reference
+                    ? null
+                    : () async {
+                        update(() {
+                          busy = true;
+                          error = null;
+                        });
+                        try {
+                          final success = await cubit.deleteBooking(typed);
+                          if (!dialogContext.mounted) return;
+                          if (success) {
+                            Navigator.pop(dialogContext, true);
+                          } else {
+                            update(() {
+                              busy = false;
+                              error =
+                                  'Deletion was not completed. Reload and try again.';
+                            });
+                          }
+                        } catch (e) {
+                          if (!dialogContext.mounted) return;
+                          update(() {
+                            busy = false;
+                            error = bookingError(e);
+                          });
+                        }
+                      },
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                  foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+                ),
+                child: Text(busy ? 'Deleting…' : 'Delete permanently'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (mounted && deleted == true) {
+      showMessage(context, 'Booking deleted permanently.');
+      bookingBack(context);
+    }
   }
 
   @override

@@ -38,6 +38,7 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
   late String scope;
   late StreamSubscription subscription, changes;
   int generation = 0;
+  BookingCommand? deletionCommand;
   bool valid(int g) => !isClosed && g == generation;
   Future<void> load() async {
     final g = ++generation;
@@ -67,6 +68,7 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
 
   void begin(BookingDetailAction a) {
     if (state.locked || state.record == null) return;
+    if (a == BookingDetailAction.delete) return;
     final b = state.record!;
     if (a == BookingDetailAction.checkedIn && !state.canCheckIn) return;
     if (a == BookingDetailAction.collection && !state.canCollectPending) return;
@@ -197,6 +199,7 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
     }
     final b = state.record!, a = state.action;
     if (a == BookingDetailAction.none) return;
+    if (a == BookingDetailAction.delete) return;
     if (a == BookingDetailAction.cancelAndRefund && !state.canCancelAndRefund) {
       return;
     }
@@ -267,6 +270,46 @@ class BookingDetailCubit extends Cubit<BookingDetailModel> {
       });
     }
     await _send(command);
+  }
+
+  Future<bool> deleteBooking(String reference) async {
+    final b = state.record;
+    if (b == null ||
+        state.locked ||
+        !state.catalog.canDelete ||
+        b.admissionId != null ||
+        reference != b.reference) {
+      return false;
+    }
+    final command = deletionCommand ??= BookingCommand(
+      const Uuid().v4(),
+      '/bookings/$id/delete',
+      {'version': b.version, 'confirm_reference': reference},
+    );
+    final g = generation;
+    emit(state.copyWith(saving: true));
+    try {
+      await repository.submit(command);
+      if (!valid(g)) return false;
+      deletionCommand = null;
+      emit(state.copyWith(saving: false));
+      return true;
+    } catch (e) {
+      if (!valid(g)) return false;
+      if (e is AppException && e.code == 'NETWORK') {
+        try {
+          if (await repository.commandResult(command.key) == id && valid(g)) {
+            deletionCommand = null;
+            emit(state.copyWith(saving: false));
+            return true;
+          }
+        } catch (_) {}
+      } else {
+        deletionCommand = null;
+      }
+      emit(state.copyWith(saving: false));
+      rethrow;
+    }
   }
 
   Future<void> _send(BookingCommand c) async {

@@ -177,6 +177,7 @@ class BookingCatalog extends Equatable {
     this.canManage = false,
     this.canCollect = false,
     this.canRefund = false,
+    this.canDelete = false,
     this.canFinance = false,
     this.businesses = const [],
     this.historyBusinesses = const [],
@@ -206,7 +207,7 @@ class BookingCatalog extends Equatable {
                 .firstOrNull
                 ?.account ??
             paymentAccounts.where((a) => a.primary).firstOrNull?.id;
-  final bool canView, canManage, canCollect, canRefund, canFinance;
+  final bool canView, canManage, canCollect, canRefund, canDelete, canFinance;
   final List<BookingBusiness> businesses;
   final List<BookingBusiness> historyBusinesses;
   List<BookingBusiness> get filters =>
@@ -227,6 +228,7 @@ class BookingCatalog extends Equatable {
     canManage: j['can_manage'],
     canCollect: j['can_collect'],
     canRefund: j['can_refund'],
+    canDelete: j['can_delete'] ?? false,
     canFinance: j['can_finance'],
     historyBusinesses: List.unmodifiable(
       (j['filter_businesses'] as List? ?? []).map(
@@ -248,6 +250,7 @@ class BookingCatalog extends Equatable {
     canManage,
     canCollect,
     canRefund,
+    canDelete,
     canFinance,
     businesses,
   ];

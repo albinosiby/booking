@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import 'package:eden_booking/di/injection.dart';
 import 'package:eden_booking/modules/bookings/cubit/booking_detail_cubit.dart';
@@ -99,6 +100,62 @@ Future<void> cancel(BookingDetailCubit cubit) async {
 
 void main() {
   tearDown(() => getIt.reset());
+  testWidgets('owner confirms permanent deletion from Booking Details', (
+    tester,
+  ) async {
+    final (workspace, repository, cubit) = await fixture();
+    repository.catalogOverride = const BookingCatalog(
+      canView: true,
+      canManage: true,
+      canDelete: true,
+    );
+    getIt.registerFactoryParam<BookingDetailCubit, WorkspaceCubit, String>(
+      (_, _) => cubit,
+    );
+    final router = GoRouter(
+      initialLocation: '/booking/booking',
+      routes: [
+        GoRoute(
+          path: '/bookings',
+          builder: (_, _) => const Scaffold(body: Text('Bookings list')),
+        ),
+        GoRoute(
+          path: '/booking/:id',
+          builder: (_, _) => const BookingDetailScreen(id: 'booking'),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      BlocProvider.value(
+        value: workspace,
+        child: ScreenUtilInit(
+          designSize: const Size(390, 844),
+          builder: (_, _) => MaterialApp.router(routerConfig: router),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('More actions'));
+    await tester.tap(find.text('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('booking-delete-action')));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete booking permanently?'), findsOneWidget);
+    final confirm = find.byKey(const ValueKey('booking-confirm-delete'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.enterText(
+      find.byKey(const ValueKey('booking-delete-reference')),
+      'BK-TEST',
+    );
+    await tester.pump();
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(find.text('Bookings list'), findsOneWidget);
+    expect(repository.records.containsKey('booking'), isFalse);
+  });
+
   test(
     'paid booking cancellation opens refund form without recording a refund',
     () async {

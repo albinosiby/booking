@@ -266,7 +266,18 @@ class FakeBookingRepository implements BookingRepository {
       if (data['version'] != r['version']) {
         throw const AppException('Version conflict.', code: 'CONFLICT');
       }
-      if (c.endpoint.endsWith('/reschedule')) {
+      if (c.endpoint.endsWith('/delete')) {
+        if (data['confirm_reference'] != r['reference']) {
+          throw const AppException('Wrong reference.', code: 'BAD_REQUEST');
+        }
+        records.remove(id);
+        commands[c.key] = id;
+        if (loseResponse) {
+          loseResponse = false;
+          throw const AppException('Connection lost.', code: 'NETWORK');
+        }
+        return id;
+      } else if (c.endpoint.endsWith('/reschedule')) {
         final s = BookingSelection.fromJson(
           Map<String, dynamic>.from(data['selection']),
         );
@@ -432,6 +443,34 @@ class GatedBookingDetailRepository extends FakeBookingRepository {
 }
 
 void main() {
+  test(
+    'owner delete requires the reference and recovers a lost response',
+    () async {
+      final (workspace, repository, formCubit) = await form();
+      customer(formCubit);
+      await formCubit.review();
+      await formCubit.confirm();
+      final id = formCubit.state.resultId!;
+      await formCubit.close();
+      repository.catalogOverride = const BookingCatalog(
+        canView: true,
+        canManage: true,
+        canDelete: true,
+      );
+      final detail = BookingDetailCubit(workspace, repository, id);
+      await detail.load();
+      expect(await detail.deleteBooking('wrong'), isFalse);
+      expect(repository.submitted, hasLength(1)); // The original create.
+      repository.loseResponse = true;
+      expect(await detail.deleteBooking('BK-TEST'), isTrue);
+      expect(repository.records.containsKey(id), isFalse);
+      expect(repository.submitted.last.endpoint, '/bookings/$id/delete');
+      expect(repository.submitted.last.body['confirm_reference'], 'BK-TEST');
+      await detail.close();
+      await workspace.close();
+    },
+  );
+
   test(
     'history Collect is hidden and blocked for paid, cancelled or unauthorized bookings',
     () async {

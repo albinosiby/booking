@@ -22,6 +22,7 @@ import {
   rescheduleSchema,
   paymentsSchema,
   statusSchema,
+  deleteBookingSchema,
   customerEditSchema,
   moneyStatus,
   calendarDate,
@@ -143,6 +144,7 @@ export class BookingService {
       can_manage: this.allowed(m, "manage_bookings"),
       can_collect: this.allowed(m, "collect_payments"),
       can_refund: m.role === "owner",
+      can_delete: m.role === "owner",
       can_finance: this.allowed(m, "view_finance"),
       filter_businesses: w.businesses.map((b: Row) => ({
         id: b.id,
@@ -373,8 +375,102 @@ export class BookingService {
       )
     ).rows[0];
     if (!c?.response) return { id: null };
+    if (c.response.deleted === true) {
+      if (m.role !== "owner")
+        throw new ForbiddenException("Only owners can delete bookings.");
+      return c.response;
+    }
     await this.find(m, c.response.id);
     return c.response;
+  }
+  async deleteBooking(actor: Actor, id: string, input: unknown) {
+    z.uuid().parse(id);
+    const v = deleteBookingSchema.parse(input);
+    if (actor.uid.startsWith("sarvam:"))
+      throw new ForbiddenException("Only owners can delete bookings.");
+    return this.db.transaction(async (db) => {
+      const m = await this.member(actor, db);
+      if (m.role !== "owner")
+        throw new ForbiddenException("Only owners can delete bookings.");
+      const hash = createHash("sha256")
+        .update(JSON.stringify({ id, ...v }))
+        .digest("hex");
+      await db.query(
+        "INSERT INTO booking_commands(organization_id,command_key,actor_id,kind,request_hash) VALUES($1,$2,$3,'delete',$4) ON CONFLICT DO NOTHING",
+        [m.organization_id, v.command_key, actor.uid, hash],
+      );
+      const command = (
+        await db.query<Row>(
+          "SELECT * FROM booking_commands WHERE organization_id=$1 AND command_key=$2 FOR UPDATE",
+          [m.organization_id, v.command_key],
+        )
+      ).rows[0];
+      if (
+        command.actor_id !== actor.uid ||
+        command.kind !== "delete" ||
+        command.request_hash !== hash
+      )
+        throw new ConflictException(
+          "This request key belongs to different booking data.",
+        );
+      if (command.response) return command.response;
+      const b = await this.find(m, id, db, true);
+      if (b.admission_id || b.admission_replacement_for)
+        throw new BadRequestException(
+          "Manage admission visits from Admissions & Coaching.",
+        );
+      if (
+        (
+          await db.query(
+            "SELECT 1 FROM bookings WHERE admission_replacement_for=$1 LIMIT 1",
+            [id],
+          )
+        ).rows.length
+      )
+        throw new BadRequestException(
+          "An admission visit depends on this booking.",
+        );
+      if (b.version !== v.version)
+        throw new ConflictException("Booking changed. Reload before deleting.");
+      if (b.reference !== v.confirm_reference)
+        throw new BadRequestException("Type the exact booking reference.");
+
+      // Keep the delete command so a network retry can safely return success.
+      // All older booking commands and all booking/finance evidence are removed.
+      await db.query(
+        "DELETE FROM booking_commands WHERE organization_id=$1 AND command_key<>$2 AND response->>'id'=$3",
+        [m.organization_id, v.command_key, id],
+      );
+      await db.query(
+        "DELETE FROM booking_notification_events WHERE booking_id=$1",
+        [id],
+      );
+      await db.query("DELETE FROM booking_history WHERE booking_id=$1", [id]);
+      await db.query("DELETE FROM booking_allocations WHERE booking_id=$1", [
+        id,
+      ]);
+      await db.query(
+        "DELETE FROM finance_lines WHERE event_id IN (SELECT e.id FROM finance_events e JOIN booking_payments p ON p.id=e.booking_payment_id WHERE p.booking_id=$1)",
+        [id],
+      );
+      await db.query(
+        "DELETE FROM finance_events WHERE booking_payment_id IN (SELECT id FROM booking_payments WHERE booking_id=$1)",
+        [id],
+      );
+      await db.query("DELETE FROM booking_payments WHERE booking_id=$1", [id]);
+      await db.query(
+        "SELECT set_config('booking_app.delete_booking_id',$1,true),set_config('booking_app.delete_booking_actor',$2,true)",
+        [id, actor.uid],
+      );
+      await db.query("DELETE FROM booking_invoices WHERE booking_id=$1", [id]);
+      await db.query("DELETE FROM bookings WHERE id=$1", [id]);
+      const result = { id, deleted: true };
+      await db.query(
+        "UPDATE booking_commands SET response=$1 WHERE organization_id=$2 AND command_key=$3",
+        [JSON.stringify(result), m.organization_id, v.command_key],
+      );
+      return result;
+    });
   }
   private async find(
     m: Row,

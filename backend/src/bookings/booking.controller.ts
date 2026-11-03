@@ -105,6 +105,13 @@ export class BookingController {
   ) {
     return this.service.status(r.actor, id, body);
   }
+  @Post(":id/delete") deleteBooking(
+    @Req() r: AuthRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.deleteBooking(r.actor, id, body);
+  }
   @Post(":id/customer") customer(
     @Req() r: AuthRequest,
     @Param("id", ParseUUIDPipe) id: string,

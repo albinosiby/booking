@@ -12,6 +12,7 @@ enum BookingDetailAction {
   completed,
   checkedIn,
   noShow,
+  delete,
 }
 
 class BookingDetailModel extends Equatable {
