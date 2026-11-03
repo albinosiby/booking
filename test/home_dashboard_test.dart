@@ -453,9 +453,15 @@ void main() {
         expect(find.text('All businesses'), findsNothing);
         expect(find.text('Upcoming today'), findsNothing);
         expect(find.text('Outstanding'), findsOneWidget);
-        expect(find.text('Across all bookings'), findsOneWidget);
+        expect(find.text('Sports & Turf Booking'), findsOneWidget);
+        expect(find.text('Across all bookings'), findsNothing);
         expect(find.text('Bookings today'), findsOneWidget);
         expect(find.text('Received today'), findsOneWidget);
+        if (size.width == 390) {
+          final bookingTop = tester.getTopLeft(find.text('Bookings today')).dy;
+          expect(tester.getTopLeft(find.text('Received today')).dy, bookingTop);
+          expect(tester.getTopLeft(find.text('Outstanding')).dy, bookingTop);
+        }
         if (size.width < 900) {
           final before = tester.getTopLeft(find.text('Collect payments')).dy;
           await tester.ensureVisible(find.text('Outstanding'));

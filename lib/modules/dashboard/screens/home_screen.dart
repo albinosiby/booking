@@ -79,6 +79,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   widget.websiteLinks!(),
                 )
               : null,
+          onAlerts: workspace.hasPermission('view_finance')
+              ? showCollections
+              : null,
+          hasAlerts: (s.dueTotal ?? s.dashboard?.outstanding ?? 0) > 0,
+          onProfile: () => context.go('/profile'),
         ),
         maxWidth: 1200,
         scrollId: 'home-dashboard',
@@ -140,52 +145,59 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           if (showStatus) ...[
             LayoutBuilder(
-              builder: (c, constraints) => Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  if (WorkspaceNavigation(workspace).bookings)
-                    _metric(
-                      'Bookings today',
-                      metricsUnavailable ? '—' : '${s.dashboard?.today ?? 0}',
-                      constraints.maxWidth,
-                      icon: Icons.event_available_outlined,
-                    ),
-                  if (workspace.hasPermission('view_finance'))
-                    _metric(
-                      'Received today',
-                      metricsUnavailable
-                          ? '—'
-                          : homeMoney(
-                              s.dashboard?.collected ?? 0,
-                              workspace.organization?.currency ?? 'INR',
-                            ),
-                      constraints.maxWidth,
-                      icon: Icons.account_balance_wallet_outlined,
-                      positive: (s.dashboard?.collected ?? 0) > 0,
-                    ),
-                  if (workspace.hasPermission('view_finance'))
-                    _metric(
-                      'Outstanding',
-                      s.dueTotal == null &&
-                              (s.dueError != null ||
-                                  s.dashboard?.outstanding == null)
-                          ? '—'
-                          : homeMoney(
-                              s.dueTotal ?? s.dashboard?.outstanding ?? 0,
-                              workspace.organization?.currency ?? 'INR',
-                            ),
-                      constraints.maxWidth,
-                      icon: Icons.payments_outlined,
-                      detail: 'Across all bookings',
-                      onTap: showCollections,
-                      fullRow:
-                          constraints.maxWidth <
-                          780 *
-                              (MediaQuery.textScalerOf(context).scale(12) / 12),
-                    ),
-                ],
-              ),
+              builder: (c, constraints) {
+                final scale = MediaQuery.textScalerOf(context).scale(1);
+                final count =
+                    1 + (workspace.hasPermission('view_finance') ? 2 : 0);
+                final columns = constraints.maxWidth >= 340 && scale <= 1.25
+                    ? count
+                    : constraints.maxWidth >= 300 && scale <= 1.4
+                    ? count.clamp(1, 2)
+                    : 1;
+                final cardWidth =
+                    (constraints.maxWidth - 12 * (columns - 1)) / columns;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    if (WorkspaceNavigation(workspace).bookings)
+                      _metric(
+                        'Bookings today',
+                        metricsUnavailable ? '—' : '${s.dashboard?.today ?? 0}',
+                        cardWidth,
+                        icon: Icons.event_available_outlined,
+                      ),
+                    if (workspace.hasPermission('view_finance'))
+                      _metric(
+                        'Received today',
+                        metricsUnavailable
+                            ? '—'
+                            : homeMoney(
+                                s.dashboard?.collected ?? 0,
+                                workspace.organization?.currency ?? 'INR',
+                              ),
+                        cardWidth,
+                        icon: Icons.account_balance_wallet_outlined,
+                        positive: (s.dashboard?.collected ?? 0) > 0,
+                      ),
+                    if (workspace.hasPermission('view_finance'))
+                      _metric(
+                        'Outstanding',
+                        s.dueTotal == null &&
+                                (s.dueError != null ||
+                                    s.dashboard?.outstanding == null)
+                            ? '—'
+                            : homeMoney(
+                                s.dueTotal ?? s.dashboard?.outstanding ?? 0,
+                                workspace.organization?.currency ?? 'INR',
+                              ),
+                        cardWidth,
+                        icon: Icons.payments_outlined,
+                        onTap: showCollections,
+                      ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 28),
           ],
@@ -227,65 +239,91 @@ class _HomeScreenState extends State<HomeScreen> {
     String value,
     double width, {
     required IconData icon,
-    bool fullRow = false,
     bool positive = false,
-    String? detail,
     VoidCallback? onTap,
   }) => SizedBox(
-    width: fullRow
-        ? width
-        : width >= 780 * (MediaQuery.textScalerOf(context).scale(12) / 12)
-        ? (width - 24) / 3
-        : width >= 300 * (MediaQuery.textScalerOf(context).scale(12) / 12) + 12
-        ? (width - 12) / 2
-        : width,
-    child: AppCard(
-      onTap: onTap,
-      padding: EdgeInsets.zero,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        color: onTap != null
-            ? AppColors.owed(context).withValues(alpha: .08)
-            : positive
-            ? Theme.of(context).colorScheme.primary.withValues(alpha: .07)
-            : null,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 18,
-                  color: onTap != null
-                      ? AppColors.owed(context)
-                      : Theme.of(context).colorScheme.primary,
-                ),
-                if (onTap != null) ...[
-                  const Spacer(),
-                  Icon(
-                    Icons.arrow_forward_rounded,
-                    size: 18,
-                    color: AppColors.owed(context),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 7),
-            Text(label, style: Theme.of(context).textTheme.labelMedium),
-            const SizedBox(height: 3),
-            Text(
-              value,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            if (detail != null) ...[
-              const SizedBox(height: 3),
-              Text(detail, style: Theme.of(context).textTheme.bodySmall),
-            ],
-          ],
+    width: width,
+    child: Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: onTap != null
+              ? const [Color(0xFF122D19), Color(0xFF1B581A)]
+              : positive
+              ? const [Color(0xFF10291C), Color(0xFF103F22)]
+              : const [Color(0xFF0C2C19), Color(0xFF074414)],
         ),
+        border: Border.all(
+          color: const Color(0xFF7DC45E).withValues(alpha: .44),
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: CustomPaint(painter: _StatusWavePainter()),
+          ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 142),
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          icon,
+                          size: 25,
+                          color: onTap != null
+                              ? const Color(0xFFFFC45F)
+                              : AppColors.lime,
+                        ),
+                        if (onTap != null) ...[
+                          const Spacer(),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 20,
+                            color: const Color(0xFFFFDC82),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FittedBox(
+                      alignment: Alignment.centerLeft,
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        value,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     ),
   );
@@ -341,4 +379,49 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ),
   );
+}
+
+class _StatusWavePainter extends CustomPainter {
+  const _StatusWavePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final wave = Path()
+      ..moveTo(0, size.height * .89)
+      ..cubicTo(
+        size.width * .27,
+        size.height * .81,
+        size.width * .52,
+        size.height * .99,
+        size.width,
+        size.height * .73,
+      )
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(
+      wave,
+      Paint()..color = const Color(0xFF55F21F).withValues(alpha: .15),
+    );
+    final edge = Path()
+      ..moveTo(0, size.height * .89)
+      ..cubicTo(
+        size.width * .27,
+        size.height * .81,
+        size.width * .52,
+        size.height * .99,
+        size.width,
+        size.height * .73,
+      );
+    canvas.drawPath(
+      edge,
+      Paint()
+        ..color = const Color(0xFF8BFF3A).withValues(alpha: .55)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

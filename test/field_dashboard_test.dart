@@ -89,7 +89,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('corrupt logo bytes fall back to the placeholder icon', (
+  testWidgets('corrupt logo bytes fall back to organization initials', (
     tester,
   ) async {
     await mount(
@@ -100,8 +100,8 @@ void main() {
         logo: Uint8List.fromList([1, 2, 3]),
       ),
     );
-    await tester.pump();
-    expect(find.byIcon(Icons.business_outlined), findsWidgets);
+    await tester.pumpAndSettle();
+    expect(find.text('ED'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
