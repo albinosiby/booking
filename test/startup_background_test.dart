@@ -87,8 +87,10 @@ class StartupApi extends Fake implements RestApiService {
     'locations': [],
   };
   @override
-  Future<void> authorizeReads(Map<String, dynamic> workspace) =>
-      authorization.future;
+  Future<void> authorizeReads(
+    Map<String, dynamic> workspace, {
+    bool remember = true,
+  }) => authorization.future;
   @override
   Future<List<int>> retainedBytes(String path) async {
     logoRequests++;

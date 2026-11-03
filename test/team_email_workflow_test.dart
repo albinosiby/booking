@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -13,7 +14,7 @@ import 'package:eden_booking/modules/team/repositories/team_repository.dart';
 import 'package:eden_booking/modules/team/screens/team_screen.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/models/workspace.dart';
-import 'staff_assignment_test.dart' show StaffRepository;
+import 'staff_assignment_test.dart' show SignedInAs, StaffRepository;
 
 class EmailTeam extends Fake implements TeamRepository {
   final members = <Map<String, dynamic>>[];
@@ -166,37 +167,51 @@ void main() {
         });
       }
       getIt.registerFactory<TeamCubit>(() => TeamCubit(repo));
+      final workspace = WorkspaceCubit(SignedInAs('owner'));
+      addTearDown(workspace.close);
+      await workspace.load();
       await tester.pumpWidget(
         ScreenUtilInit(
           designSize: const Size(390, 844),
-          builder: (_, _) =>
-              MaterialApp(theme: darkTheme(), home: const TeamScreen()),
+          builder: (_, _) => BlocProvider.value(
+            value: workspace,
+            child: MaterialApp(theme: darkTheme(), home: const TeamScreen()),
+          ),
         ),
       );
       await tester.pumpAndSettle();
-      // Only active non-owners receive a removal control.
-      expect(find.text('Remove access'), findsOneWidget);
-      await tester.ensureVisible(find.text('Remove access'));
-      await tester.tap(find.text('Remove access'));
+      // Active members other than the signed-in owner get a removal control.
+      expect(find.text('Remove staff'), findsOneWidget);
+      await tester.ensureVisible(find.text('Remove staff'));
+      await tester.tap(find.text('Remove staff'));
       await tester.pumpAndSettle();
       expect(repo.removed, isEmpty);
-      await tester.tap(find.text('Cancel'));
+      await tester.tap(find.text('Keep member'));
       await tester.pumpAndSettle();
       expect(repo.removed, isEmpty);
-      await tester.tap(find.text('Remove access'));
+      await tester.tap(find.text('Remove staff'));
       await tester.pumpAndSettle();
       repo.loadWait = Completer<void>();
-      await tester.tap(find.text('Confirm'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Remove staff'));
       await tester.pump();
       expect(repo.removed, [('staff', false)]);
-      final button = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Remove access'),
+      // The confirmed removal shows at once; team actions stay disabled
+      // until the refreshed list arrives. TextButton.icon builds a subclass,
+      // and the closing dialog's FilledButton is not a list action.
+      Finder listAction(String label) => find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate((w) => w is TextButton),
       );
-      expect(button.onPressed, isNull);
+      expect(listAction('Remove staff'), findsNothing);
+      final pending = tester.widgetList<TextButton>(
+        listAction('Delete permanently'),
+      );
+      expect(pending, hasLength(2));
+      expect(pending.every((b) => b.onPressed == null), isTrue);
       repo.loadWait!.complete();
       await tester.pumpAndSettle();
-      expect(find.text('Remove access'), findsNothing);
-      expect(find.text('Staff access removed.'), findsOneWidget);
+      expect(find.text('Remove staff'), findsNothing);
+      expect(find.text('Member removed. History preserved.'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

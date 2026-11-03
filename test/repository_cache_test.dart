@@ -274,7 +274,7 @@ void main() {
     final updated = cache.updates.first;
     expect(
       await shortRead(
-        () async => throw const AppException('Offline', code: 'NETWORK'),
+        () async => throw const AppException('Rejected', code: 'BAD'),
       ),
       500,
     );
@@ -285,6 +285,71 @@ void main() {
       throwsA(isA<AppException>()),
     );
   });
+
+  test(
+    'expired snapshots are shown only while the server is unreachable',
+    () async {
+      await read('/bookings?date=16', () async => 'saved');
+      now = now.add(const Duration(days: 2));
+      expect(
+        await read(
+          '/bookings?date=16',
+          () async => throw const AppException('Offline', code: 'NETWORK'),
+        ),
+        'saved',
+      );
+      now = now.add(const Duration(seconds: 11));
+      await expectLater(
+        read(
+          '/bookings?date=16',
+          () async => throw const AppException('Rejected', code: 'BAD'),
+        ),
+        throwsA(isA<AppException>()),
+      );
+      now = now.add(const Duration(seconds: 11));
+      expect(await read('/bookings?date=16', () async => 'fresh'), 'fresh');
+      now = now.add(const Duration(days: 8));
+      await expectLater(
+        read(
+          '/bookings?date=16',
+          () async => throw const AppException('Offline', code: 'NETWORK'),
+        ),
+        throwsA(isA<AppException>()),
+      );
+    },
+  );
+
+  test(
+    'offline workspace session is kept per user and cleared on lock',
+    () async {
+      await cache.authorize('backend/owner/org/access-v1', session: '{"o":1}');
+      await read('/bookings', () async => 'saved');
+      await store.written.future;
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      final restarted = RetainedReadCache(
+        store: store,
+        identity: () => user,
+        now: () => now,
+      );
+      expect(await restarted.offlineSession(), '{"o":1}');
+      await restarted.authorize('backend/owner/org/access-v1');
+      expect(
+        await restarted.read(
+          '/bookings',
+          () async => throw const AppException('Offline', code: 'NETWORK'),
+          freshFor: const Duration(seconds: 20),
+          retainFor: const Duration(minutes: 15),
+        ),
+        'saved',
+      );
+      user = 'other';
+      expect(await restarted.offlineSession(), isNull);
+      user = 'owner';
+      restarted.lock();
+      expect(await restarted.offlineSession(), isNull);
+      await restarted.dispose();
+    },
+  );
 
   test(
     'authorization failure purges snapshots rather than using stale fallback',

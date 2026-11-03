@@ -38,6 +38,9 @@ class SupabaseAuthRepository
         return _map(event.session?.user);
       })
       .handleError((Object error) {
+        // Background refresh failed offline. The client retries on its own and
+        // the stored session stays valid, so this is not a sign-in error.
+        if (error is sb.AuthRetryableFetchException) return;
         if (error is sb.AuthException) {
           throw AppException(
             error.code == 'access_denied'
@@ -151,7 +154,14 @@ class SupabaseAuthRepository
     final session = _auth.currentSession;
     if (session == null) return null;
     if (refresh || session.isExpired) {
-      return (await _auth.refreshSession()).session?.accessToken;
+      try {
+        return (await _auth.refreshSession()).session?.accessToken;
+      } on sb.AuthRetryableFetchException {
+        throw const AppException(
+          'Cannot reach the server. Check your connection and try again.',
+          code: 'NETWORK',
+        );
+      }
     }
     return session.accessToken;
   }

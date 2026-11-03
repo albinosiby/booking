@@ -86,7 +86,7 @@ class RestCoachApi implements CoachApi, RetainedReadEvents {
 
   @override
   Future<CoachRoster> classes(String date) async {
-    final j = await api.request(
+    final j = await api.retainedRead(
       Uri(
         path: '/admissions/classes',
         queryParameters: {'date': date},

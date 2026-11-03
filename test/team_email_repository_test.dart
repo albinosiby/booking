@@ -34,7 +34,10 @@ class TeamApi extends Fake implements RestApiService {
   }
 
   @override
-  Future<void> authorizeReads(Map<String, dynamic> data) async {}
+  Future<void> authorizeReads(
+    Map<String, dynamic> data, {
+    bool remember = true,
+  }) async {}
 }
 
 void main() {
