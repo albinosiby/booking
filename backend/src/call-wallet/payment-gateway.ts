@@ -47,7 +47,11 @@ export class PaymentGateway {
         "The payment service is unavailable. Please try again.",
       );
     }
-    const body = (await res.json().catch(() => null)) as any;
+    const text = await res.text().catch(() => "");
+    let body: any = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {}
     if (!res.ok) {
       // The payment backend's reason is safe to log and names the failing field
       // or Cashfree's message; secrets are never part of it.
@@ -56,6 +60,8 @@ export class PaymentGateway {
         status: res.status,
         error: String(body?.error ?? "").slice(0, 200),
         detail: String(body?.detail ?? "").slice(0, 300),
+        // A proxy error page (not the payment service itself) has no JSON body.
+        ...(body ? {} : { content_type: res.headers.get("content-type") ?? "", body: text.slice(0, 160) }),
       });
       throw new ServiceUnavailableException(
         res.status === 401
