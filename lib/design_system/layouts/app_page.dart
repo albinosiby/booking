@@ -23,6 +23,7 @@ class AppPage extends StatelessWidget {
     this.header,
     this.slivers,
     this.fixedBody,
+    this.onRefresh,
   }) : assert(slivers == null || fillRemaining == null),
        assert(fixedBody == null || (slivers == null && fillRemaining == null));
   final String title;
@@ -44,6 +45,7 @@ class AppPage extends StatelessWidget {
   /// Bounded content below a fixed heading, with its own scrolling panes.
   /// Normal pages retain the existing full-page scrolling behavior.
   final Widget? fixedBody;
+  final Future<void> Function()? onRefresh;
 
   /// Native slivers share the page scroll position (including drag auto-scroll).
   /// They follow the normal heading and children and respect the content width.
@@ -90,94 +92,115 @@ class AppPage extends StatelessWidget {
       child: fixedBody != null
           ? fixedContent(context, wide)
           : slivers != null
-          ? LayoutBuilder(
-              builder: (context, constraints) {
-                final inset = math.max(
-                  AppSpacing.page,
-                  (constraints.maxWidth - maxWidth) / 2,
-                );
-                return CustomScrollView(
-                  key: PageStorageKey(scrollId ?? title),
-                  slivers: [
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        inset,
-                        wide
-                            ? 32
-                            : back || showAppBar
-                            ? 0
-                            : 24,
-                        inset,
-                        0,
-                      ),
-                      sliver: SliverToBoxAdapter(child: content(context, wide)),
-                    ),
-                    for (final sliver in slivers!)
+          ? refreshable(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final inset = math.max(
+                    AppSpacing.page,
+                    (constraints.maxWidth - maxWidth) / 2,
+                  );
+                  return CustomScrollView(
+                    key: PageStorageKey(scrollId ?? title),
+                    physics: onRefresh == null
+                        ? null
+                        : const AlwaysScrollableScrollPhysics(),
+                    slivers: [
                       SliverPadding(
-                        padding: EdgeInsets.symmetric(horizontal: inset),
-                        sliver: sliver,
+                        padding: EdgeInsets.fromLTRB(
+                          inset,
+                          wide
+                              ? 32
+                              : back || showAppBar
+                              ? 0
+                              : 24,
+                          inset,
+                          0,
+                        ),
+                        sliver: SliverToBoxAdapter(
+                          child: content(context, wide),
+                        ),
                       ),
-                    SliverToBoxAdapter(
-                      child: SizedBox(
-                        height: floatingActionButton == null ? 32 : 112,
+                      for (final sliver in slivers!)
+                        SliverPadding(
+                          padding: EdgeInsets.symmetric(horizontal: inset),
+                          sliver: sliver,
+                        ),
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: floatingActionButton == null ? 32 : 112,
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             )
           : fillRemaining == null
-          ? SingleChildScrollView(
-              key: PageStorageKey(scrollId ?? title),
-              padding: EdgeInsets.fromLTRB(
-                AppSpacing.page,
-                wide
-                    ? 32
-                    : back || showAppBar
-                    ? 0
-                    : 24,
-                AppSpacing.page,
-                floatingActionButton == null ? 32 : 112,
-              ),
-              child: content(context, wide),
-            )
-          : CustomScrollView(
-              key: PageStorageKey(scrollId ?? title),
-              slivers: [
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(
-                    AppSpacing.page,
-                    wide
-                        ? 32
-                        : back || showAppBar
-                        ? 0
-                        : 24,
-                    AppSpacing.page,
-                    0,
-                  ),
-                  sliver: SliverToBoxAdapter(child: content(context, wide)),
+          ? refreshable(
+              SingleChildScrollView(
+                key: PageStorageKey(scrollId ?? title),
+                physics: onRefresh == null
+                    ? null
+                    : const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.page,
+                  wide
+                      ? 32
+                      : back || showAppBar
+                      ? 0
+                      : 24,
+                  AppSpacing.page,
+                  floatingActionButton == null ? 32 : 112,
                 ),
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Padding(
+                child: content(context, wide),
+              ),
+            )
+          : refreshable(
+              CustomScrollView(
+                key: PageStorageKey(scrollId ?? title),
+                physics: onRefresh == null
+                    ? null
+                    : const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverPadding(
                     padding: EdgeInsets.fromLTRB(
                       AppSpacing.page,
-                      16,
+                      wide
+                          ? 32
+                          : back || showAppBar
+                          ? 0
+                          : 24,
                       AppSpacing.page,
-                      floatingActionButton == null ? 32 : 96,
+                      0,
                     ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: maxWidth),
-                        child: fillRemaining,
+                    sliver: SliverToBoxAdapter(child: content(context, wide)),
+                  ),
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        AppSpacing.page,
+                        16,
+                        AppSpacing.page,
+                        floatingActionButton == null ? 32 : 96,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxWidth),
+                          child: fillRemaining,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
     ),
   );
+
+  Widget refreshable(Widget scrollable) => onRefresh == null
+      ? scrollable
+      : RefreshIndicator(onRefresh: onRefresh!, child: scrollable);
 
   Widget fixedContent(BuildContext context, bool wide) => Padding(
     padding: EdgeInsets.fromLTRB(

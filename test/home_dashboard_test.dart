@@ -57,6 +57,21 @@ class HomeBookings extends FakeBookingRepository {
   }
 }
 
+class RefreshBookingSource extends BookingSource {
+  int loads = 0;
+  bool failNext = false;
+
+  @override
+  Future<Workspace> load() async {
+    loads++;
+    if (failNext) {
+      failNext = false;
+      throw const AppException('Offline during refresh', code: 'NETWORK');
+    }
+    return super.load();
+  }
+}
+
 class HomeHeroSource implements HomeHeroRepository {
   final responses = <Future<Uint8List?>>[];
   int calls = 0;
@@ -280,8 +295,8 @@ void main() {
       );
       repo.dueFailure = null;
       expect(find.text('Try again'), findsOneWidget);
-    await tester.ensureVisible(find.text('Try again'));
-    await tester.tap(find.text('Try again'));
+      await tester.ensureVisible(find.text('Try again'));
+      await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
       expect(
         find.text('Couldn’t load payments to collect right now.'),
@@ -291,6 +306,63 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('pulling down refreshes a short Home page and can retry', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final source = RefreshBookingSource();
+    source.value = Workspace(
+      organization: source.value.organization,
+      membership: const {'role': 'owner'},
+      businesses: const [],
+    );
+    final repo = HomeBookings();
+    getIt.registerSingleton<WorkspaceRepository>(source);
+    registerFeatureDependencies(getIt);
+    await getIt.unregister<BookingRepository>();
+    getIt.registerSingleton<BookingRepository>(repo);
+    await getIt.unregister<HomeCubit>();
+    getIt.registerFactoryParam<HomeCubit, WorkspaceCubit, void>(
+      (workspace, _) => HomeCubit(SessionDashboardRepository(workspace), repo),
+    );
+    final workspace = WorkspaceCubit(source);
+    await workspace.load();
+    addTearDown(workspace.close);
+    addTearDown(repo.events.close);
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      BlocProvider.value(
+        value: workspace,
+        child: ScreenUtilInit(
+          designSize: const Size(390, 844),
+          builder: (_, _) => MaterialApp(home: const HomeScreen()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final scroll = find.byType(SingleChildScrollView).first;
+    expect(
+      tester.widget<SingleChildScrollView>(scroll).physics,
+      isA<AlwaysScrollableScrollPhysics>(),
+    );
+    final initialLoads = source.loads;
+    final initialDueCalls = repo.cursors.length;
+    source.failNext = true;
+    await tester.drag(scroll, const Offset(0, 360));
+    await tester.pumpAndSettle();
+    expect(source.loads, initialLoads + 1);
+    expect(repo.cursors.length, greaterThan(initialDueCalls));
+    expect(find.text('Offline during refresh'), findsOneWidget);
+    await tester.drag(scroll, const Offset(0, 360));
+    await tester.pumpAndSettle();
+    expect(source.loads, initialLoads + 2);
+    expect(find.text('Offline during refresh'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   for (final size in [
     const Size(1280, 1000),
@@ -398,16 +470,17 @@ void main() {
         await tester.ensureVisible(find.text('Collect'));
         await tester.tap(find.text('Collect'));
         await tester.pumpAndSettle();
-        expect(find.text('Record split payment'), findsOneWidget);
+        expect(find.text('Collect payment'), findsOneWidget);
         expect(find.text('Payment history'), findsNothing);
         expect(find.text('Booking history'), findsNothing);
+        await tester.tap(find.byTooltip('Close payment form'));
+        await tester.pumpAndSettle();
         await tester.ensureVisible(
           find.byKey(const ValueKey('booking-summary-collect')),
         );
-        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('booking-summary-collect')));
         await tester.pumpAndSettle();
-        expect(find.text('Record split payment').hitTestable(), findsOneWidget);
+        expect(find.text('Collect payment').hitTestable(), findsOneWidget);
         expect(repo.submitted, isEmpty);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());

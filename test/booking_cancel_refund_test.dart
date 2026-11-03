@@ -314,6 +314,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Record refund'), findsNothing);
+      await tester.ensureVisible(find.text('More actions'));
+      await tester.tap(find.text('More actions'));
+      await tester.pumpAndSettle();
       final cancelButton = find.byKey(const ValueKey('booking-cancel-action'));
       await tester.ensureVisible(cancelButton);
       await tester.tap(cancelButton);
@@ -358,8 +361,9 @@ void main() {
       }
       await enter('Amount · INR', '3000');
       await enter('Refund reason', 'Customer refund');
-      await tester.ensureVisible(find.text('Save changes'));
-      await tester.tap(find.text('Save changes'));
+      final refundSave = find.byKey(const ValueKey('booking-payment-submit'));
+      await tester.ensureVisible(refundSave);
+      await tester.tap(refundSave);
       await tester.pumpAndSettle();
       expect(cubit.state.record!.refundDue, 0);
       expect(cubit.state.record!.status, 'cancelled');

@@ -647,9 +647,32 @@ class _NewSlotBlockScreenState extends State<NewSlotBlockScreen> {
             ],
           ),
           Text(
-            'Tap the first and last half hour. Tap the start again to clear.',
+            'Each tile covers the next 30 minutes. To finish at 18:00, make 17:30 the last tile. Tap the start again to clear.',
             style: theme.textTheme.bodySmall,
           ),
+          if (s.slots.any((slot) => slot.status == 'blocked'))
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: s.locked
+                    ? null
+                    : () async {
+                        await context.push(
+                          '/bookings/blocks',
+                          extra: BlockLaunch(
+                            businessId: s.businessId,
+                            spaceId: s.spaces.length == 1
+                                ? s.spaces.first
+                                : null,
+                            date: s.date,
+                          ),
+                        );
+                        if (!cubit.isClosed) await cubit.loadSlots();
+                      },
+                icon: const Icon(Icons.lock_clock_outlined, size: 18),
+                label: const Text('View existing blocks'),
+              ),
+            ),
           const SizedBox(height: 10),
           const _Legend(),
           const SizedBox(height: 12),
@@ -849,6 +872,7 @@ class _BlockTimeGrid extends StatelessWidget {
                         'blocked' => 'Blocked',
                         _ => 'Available',
                       };
+                final finish = blockSlotEnd(t, s.slotStep);
                 final text = active
                     ? c.onPrimary
                     : blocked
@@ -862,7 +886,7 @@ class _BlockTimeGrid extends StatelessWidget {
                     button: true,
                     selected: active || inRange,
                     enabled: selectable,
-                    label: '$t, $status',
+                    label: '$t to $finish, $status',
                     child: Material(
                       color: active
                           ? c.primary
@@ -888,7 +912,7 @@ class _BlockTimeGrid extends StatelessWidget {
                         key: ValueKey('block-time-$t'),
                         onTap: selectable ? () => onSelected(slot) : null,
                         child: Container(
-                          constraints: const BoxConstraints(minHeight: 72),
+                          constraints: const BoxConstraints(minHeight: 86),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
                             vertical: 12,
@@ -908,7 +932,13 @@ class _BlockTimeGrid extends StatelessWidget {
                                       : null,
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 2),
+                              Text(
+                                'to $finish',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 11, color: text),
+                              ),
+                              const SizedBox(height: 4),
                               Text(
                                 status,
                                 textAlign: TextAlign.center,

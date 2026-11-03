@@ -104,6 +104,70 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+  testWidgets(
+    'collection sheet starts simple and reveals split only on request',
+    (tester) async {
+      final fixture = (await tester.runAsync(() async {
+        final (workspace, repository, controller) = await form();
+        customer(controller);
+        await controller.review();
+        await controller.confirm();
+        final id = controller.state.resultId!;
+        final before = await repository.detail(id);
+        await controller.close();
+        return (workspace, repository, id, before.balance);
+      }))!;
+      final (workspace, repository, id, balance) = fixture;
+      await getIt.reset();
+      getIt.registerFactoryParam<BookingDetailCubit, WorkspaceCubit, String>(
+        (session, bookingId) =>
+            BookingDetailCubit(session, repository, bookingId),
+      );
+      addTearDown(getIt.reset);
+      addTearDown(workspace.close);
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(() => tester.pumpWidget(const SizedBox()));
+      await tester.pumpWidget(
+        ScreenUtilInit(
+          designSize: const Size(390, 844),
+          builder: (context, _) => BlocProvider.value(
+            value: workspace,
+            child: MaterialApp(
+              theme: AppTheme.build(Brightness.dark),
+              home: BookingDetailScreen(id: id),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('booking-summary-collect')));
+      await tester.pumpAndSettle();
+      expect(find.text('Collect payment'), findsOneWidget);
+      expect(find.text('Split payment'), findsNothing);
+      final amount = tester.widget<ConfigurationField>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is ConfigurationField && widget.label == 'Amount · INR',
+        ),
+      );
+      expect(amount.value, (balance / 100).toStringAsFixed(2));
+      await tester.ensureVisible(find.text('Add another payment method'));
+      await tester.tap(find.text('Add another payment method'));
+      await tester.pumpAndSettle();
+      expect(find.text('Split payment'), findsOneWidget);
+      await tester.tap(find.byTooltip('Close payment form'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('booking-summary-collect')),
+        findsOneWidget,
+      );
+      expect((await repository.detail(id)).balance, balance);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final dark in [false, true]) {
     testWidgets('payment summary is readable and collects at 320px ($dark)', (
       tester,
@@ -146,10 +210,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Payment summary'), findsOneWidget);
+      expect(find.text('Payment'), findsOneWidget);
       expect(find.text('Balance due'), findsOneWidget);
       expect(find.text('Booking total'), findsOneWidget);
-      expect(find.text('Amount received'), findsOneWidget);
+      expect(find.text('Received'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('booking-summary-collect')));
       expect(tapped, isTrue);
       expect(tester.takeException(), isNull);

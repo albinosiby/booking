@@ -316,6 +316,10 @@ test("slot grid marks booked, blocked and available half hours of the selected s
     f.owner,
     block(f, { start_time: "10:00", end_time: "12:00" }),
   );
+  await blocks.create(
+    f.owner,
+    block(f, { start_time: "13:30", end_time: "18:00" }),
+  );
   const grid = await blocks.slots(f.owner, {
     business_id: f.id,
     date,
@@ -332,6 +336,8 @@ test("slot grid marks booked, blocked and available half hours of the selected s
   assert.equal(status["10:00"], "blocked");
   assert.equal(status["11:30"], "blocked");
   assert.equal(status["12:00"], "available");
+  assert.equal(status["17:30"], "blocked");
+  assert.equal(status["18:00"], "available");
   const other = f.catalog.businesses[0].resources.find(
     (r: any) => r.id !== f.selection.resource_id,
   );

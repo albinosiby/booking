@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../models/booking_models.dart';
 
@@ -11,10 +10,12 @@ class BookingPaymentSummary extends StatelessWidget {
     required this.booking,
     required this.currency,
     this.onCollect,
+    this.onRefund,
   });
   final BookingRecord booking;
   final String currency;
   final VoidCallback? onCollect;
+  final VoidCallback? onRefund;
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +23,7 @@ class BookingPaymentSummary extends StatelessWidget {
     final refund = b.refundDue > 0, unpaid = b.balance > 0;
     final accent = refund ? colors.error : colors.primary;
     Widget line(String label, int amount, {bool emphasized = false}) => Padding(
-      padding: EdgeInsets.symmetric(vertical: 5.h),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -34,7 +35,7 @@ class BookingPaymentSummary extends StatelessWidget {
                   : theme.textTheme.bodyMedium,
             ),
           ),
-          SizedBox(width: 12.w),
+          const SizedBox(width: 12),
           Flexible(
             child: Text(
               bookingMoney(amount, currency),
@@ -51,41 +52,36 @@ class BookingPaymentSummary extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text('Payment', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 12),
           Row(
             children: [
-              Icon(Icons.account_balance_wallet_outlined, size: 20.r),
-              SizedBox(width: 8.w),
-              Expanded(
+              Flexible(
+                flex: 2,
                 child: Text(
-                  'Payment summary',
-                  style: theme.textTheme.titleMedium,
+                  refund
+                      ? 'Refund due'
+                      : unpaid
+                      ? 'Balance due'
+                      : 'Paid in full',
+                  style: theme.textTheme.labelLarge?.copyWith(color: accent),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                flex: 3,
+                child: Text(
+                  bookingMoney(refund ? b.refundDue : b.balance, currency),
+                  textAlign: TextAlign.end,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 20.h),
-          Text(
-            refund
-                ? 'Refund due'
-                : unpaid
-                ? 'Balance due'
-                : 'Fully paid',
-            style: theme.textTheme.labelLarge?.copyWith(color: accent),
-          ),
-          SizedBox(height: 4.h),
-          Text(
-            bookingMoney(refund ? b.refundDue : b.balance, currency),
-            style: theme.textTheme.headlineMedium?.copyWith(
-              color: accent,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          if (!refund && !unpaid)
-            Padding(
-              padding: EdgeInsets.only(top: 4.h),
-              child: const Text('No payment pending'),
-            ),
-          SizedBox(height: 20.h),
+          const SizedBox(height: 8),
           if (b.discountMinor > 0) ...[
             line('Subtotal', b.subtotal ?? b.total + b.discountMinor),
             line('Discount', -b.discountMinor),
@@ -95,32 +91,40 @@ class BookingPaymentSummary extends StatelessWidget {
                 style: theme.textTheme.bodySmall,
               ),
           ],
+          line('Received', b.netPaid),
           line('Booking total', b.total, emphasized: true),
-          line('Amount received', b.netPaid),
-          SizedBox(height: 8.h),
+          const SizedBox(height: 8),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8.r),
+            borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
               value: b.total <= 0 ? 1 : (b.netPaid / b.total).clamp(0.0, 1.0),
-              minHeight: 5.h,
+              minHeight: 5,
               backgroundColor: colors.surfaceContainerHighest,
             ),
           ),
           if (onCollect != null) ...[
-            SizedBox(height: 18.h),
+            const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
                 key: const ValueKey('booking-summary-collect'),
                 onPressed: onCollect,
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('Collect payment'),
+                label: Text('Collect ${bookingMoney(b.balance, currency)}'),
               ),
+            ),
+          ],
+          if (refund && onRefund != null) ...[
+            const SizedBox(height: 14),
+            AppButton(
+              label: 'Record refund',
+              secondary: true,
+              onPressed: onRefund,
             ),
           ],
           if (b.status == 'cancelled')
             Padding(
-              padding: EdgeInsets.only(top: 12.h),
+              padding: const EdgeInsets.only(top: 12),
               child: Text(
                 'Booking cancelled. Payments are refunded separately.',
                 style: theme.textTheme.bodySmall,

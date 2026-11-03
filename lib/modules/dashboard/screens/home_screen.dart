@@ -61,10 +61,18 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         maxWidth: 1200,
         scrollId: 'home-dashboard',
+        onRefresh: cubit.refreshBookings,
         floatingActionButton: workspace.hasPermission('manage_bookings')
             ? NewBookingFab(onPressed: () => context.push('/booking/new'))
             : null,
         children: [
+          if (s.error != null && workspace.organization != null) ...[
+            AppSectionFallback(
+              message: s.error!,
+              onRetry: cubit.refreshBookings,
+            ),
+            const SizedBox(height: 12),
+          ],
           if (widget.websiteLinks != null &&
               workspace.organization != null) ...[
             Align(

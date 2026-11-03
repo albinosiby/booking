@@ -143,6 +143,8 @@ void main() {
     expect(find.byKey(const ValueKey('block-time-10:00')), findsOneWidget);
     expect(find.text('Booked'), findsWidgets);
     expect(find.text('Blocked'), findsWidgets);
+    expect(find.text('to 18:30'), findsOneWidget);
+    expect(find.text('View existing blocks'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const ValueKey('block-time-10:00')));
     await tester.tap(find.byKey(const ValueKey('block-time-10:00')));
     await tester.pumpAndSettle();
@@ -185,6 +187,28 @@ void main() {
     await c.close();
     await w.close();
   });
+  test(
+    'a slot beginning at a previous booking end remains selectable',
+    () async {
+      final w = WorkspaceCubit(BookingSource());
+      await w.load();
+      final r = Blocks()
+        ..grid = [
+          const BlockSlot('17:30', 'booked'),
+          const BlockSlot('18:00', 'available'),
+          const BlockSlot('18:30', 'available'),
+        ];
+      final c = BlockFormCubit(w, r, const BlockLaunch(spaceId: 'space'));
+      await c.load();
+      c.allDay(false);
+      c.pick(c.state.slots.firstWhere((slot) => slot.time == '18:00'));
+      expect(c.state.start, '18:00');
+      expect(c.state.end, '18:30');
+      expect(c.state.hasRange, isTrue);
+      await c.close();
+      await w.close();
+    },
+  );
   test(
     'review precedes save, overnight dates roll forward and selection toggles',
     () async {

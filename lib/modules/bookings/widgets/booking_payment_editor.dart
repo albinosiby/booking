@@ -94,51 +94,57 @@ class BookingPaymentEditor extends StatelessWidget {
                   ),
                 ],
               ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 5,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ConfigurationField(
-                          key: ValueKey('payment-amount-${p.id}'),
-                          label: 'Amount · $currency',
-                          value: p.amount,
-                          numeric: true,
-                          enabled: enabled,
-                          onChanged: (v) =>
-                              onUpdate(p.id, (p) => p.copyWith(amount: v)),
-                        ),
-                        if (paymentError?.call(p) != null)
-                          Text(
-                            paymentError!(p)!,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                            ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final amount = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ConfigurationField(
+                        key: ValueKey('payment-amount-${p.id}'),
+                        label: 'Amount · $currency',
+                        value: p.amount,
+                        numeric: true,
+                        enabled: enabled,
+                        onChanged: (v) =>
+                            onUpdate(p.id, (p) => p.copyWith(amount: v)),
+                      ),
+                      if (paymentError?.call(p) != null)
+                        Text(
+                          paymentError!(p)!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
                           ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 6,
-                    child: AppPicker(
-                      label: refund ? 'Refund method' : 'Payment method',
-                      value: p.method,
-                      items: const [
-                        PickerItem('cash', 'Cash'),
-                        PickerItem('upi', 'UPI'),
-                        PickerItem('card', 'Card'),
-                        PickerItem('bank_transfer', 'Bank transfer'),
-                      ],
-                      enabled: enabled,
-                      onChanged: (v) =>
-                          onUpdate(p.id, (p) => p.copyWith(method: v)),
-                    ),
-                  ),
-                ],
+                        ),
+                    ],
+                  );
+                  final method = AppPicker(
+                    label: refund ? 'Refund method' : 'Payment method',
+                    value: p.method,
+                    items: const [
+                      PickerItem('cash', 'Cash'),
+                      PickerItem('upi', 'UPI'),
+                      PickerItem('card', 'Card'),
+                      PickerItem('bank_transfer', 'Bank transfer'),
+                    ],
+                    enabled: enabled,
+                    onChanged: (v) =>
+                        onUpdate(p.id, (p) => p.copyWith(method: v)),
+                  );
+                  if (constraints.maxWidth < 440) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [amount, const SizedBox(height: 12), method],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 5, child: amount),
+                      const SizedBox(width: 10),
+                      Expanded(flex: 6, child: method),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 12),
               if (onPayBalance != null && (remainingFor?.call(p.id) ?? 0) > 0)
