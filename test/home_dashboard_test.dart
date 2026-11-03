@@ -418,27 +418,34 @@ void main() {
         );
         addTearDown(router.dispose);
         final boundary = GlobalKey();
-        final previewTheme =
-            const bool.fromEnvironment('HOME_PREVIEWS') && size.width == 390
-            ? AppTheme.build(Brightness.light)
-            : darkTheme();
         await tester.pumpWidget(
           BlocProvider.value(
             value: workspace,
             child: ScreenUtilInit(
               designSize: const Size(390, 844),
-              builder: (_, _) => MaterialApp.router(
-                theme: previewTheme.copyWith(
-                  textTheme: previewTheme.textTheme.apply(fontFamily: 'Roboto'),
-                ),
-                routerConfig: router,
-                builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context).copyWith(
-                    textScaler: TextScaler.linear(size.width == 320 ? 1.6 : 1),
+              builder: (_, _) {
+                final previewTheme =
+                    const bool.fromEnvironment('HOME_PREVIEWS') &&
+                        size.width == 390
+                    ? AppTheme.build(Brightness.light)
+                    : darkTheme();
+                return MaterialApp.router(
+                  theme: previewTheme.copyWith(
+                    textTheme: previewTheme.textTheme.apply(
+                      fontFamily: 'Roboto',
+                    ),
                   ),
-                  child: RepaintBoundary(key: boundary, child: child!),
-                ),
-              ),
+                  routerConfig: router,
+                  builder: (context, child) => MediaQuery(
+                    data: MediaQuery.of(context).copyWith(
+                      textScaler: TextScaler.linear(
+                        size.width == 320 ? 1.6 : 1,
+                      ),
+                    ),
+                    child: RepaintBoundary(key: boundary, child: child!),
+                  ),
+                );
+              },
             ),
           ),
         );

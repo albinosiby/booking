@@ -356,7 +356,9 @@ class _MetaChip extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: colors.onSurfaceVariant),
           const SizedBox(width: 6),
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
+          Flexible(
+            child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ),
         ],
       ),
     );
