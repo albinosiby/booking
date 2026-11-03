@@ -37,6 +37,23 @@ String financeRangeLabel(FinanceFilter f) {
   return '${_shortDate(from, year: from.year != until.year)} – ${_shortDate(until, year: true)}';
 }
 
+String financeOverviewMoney(int minor, String currency) {
+  final whole = (minor.abs() ~/ 100).toString();
+  final grouped = StringBuffer();
+  for (var i = 0; i < whole.length; i++) {
+    grouped.write(whole[i]);
+    final remaining = whole.length - i - 1;
+    if (remaining > 0 &&
+        (currency == 'INR'
+            ? remaining == 3 || remaining > 3 && (remaining - 3) % 2 == 0
+            : remaining % 3 == 0)) {
+      grouped.write(',');
+    }
+  }
+  final cents = (minor.abs() % 100).toString().padLeft(2, '0');
+  return '${minor < 0 ? '−' : ''}${currency == 'INR' ? '₹' : currency} $grouped.$cents';
+}
+
 String financePeriodLabel(FinanceFilter f, String? today) {
   final t = DateTime.tryParse(today ?? '') ?? DateTime.now();
   if (f.until != bookingDate(t)) return financeRangeLabel(f);
@@ -75,7 +92,7 @@ class FinanceFilterBar extends StatelessWidget {
     final b = catalog.businesses
         .where((b) => b.id == filter.businessId)
         .firstOrNull;
-    if (b == null) return 'All businesses';
+    if (b == null) return 'All Businesses';
     return b.spaces.where((s) => s.id == filter.spaceId).firstOrNull?.name ??
         b.name;
   }
@@ -201,97 +218,160 @@ class FinanceNetCard extends StatelessWidget {
   final String period, currency;
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme, on = scheme.onPrimary;
-    final income = totals.income < 0 ? 0 : totals.income,
-        out = totals.expenses + totals.refunds;
+    final income = totals.income < 0 ? 0 : totals.income;
+    final out = totals.expenses + totals.refunds;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: scheme.primary,
-        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0B7723), Color(0xFF168B21), Color(0xFF39AF20)],
+        ),
+        border: Border.all(
+          color: const Color(0xFF9BEB68).withValues(alpha: .45),
+        ),
+        borderRadius: BorderRadius.circular(26),
       ),
-      child: DefaultTextStyle.merge(
-        style: TextStyle(color: on),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Net cash flow · $period',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: on.withValues(alpha: .8),
-              ),
-            ),
-            const SizedBox(height: 6),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                financeMoney(totals.net, currency),
-                style: const TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: SizedBox(
-                height: 6,
-                child: income + out <= 0
-                    ? ColoredBox(color: on.withValues(alpha: .2))
-                    : Row(
-                        children: [
-                          if (income > 0)
-                            Expanded(
-                              flex: income,
-                              child: ColoredBox(color: on),
-                            ),
-                          if (out > 0)
-                            Expanded(
-                              flex: out,
-                              child: ColoredBox(
-                                color: on.withValues(alpha: .3),
-                              ),
-                            ),
-                        ],
-                      ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 16,
-              runSpacing: 6,
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: CustomPaint(painter: _FinanceFlowBackdrop()),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _flow(Icons.south_west, 'In', income),
-                _flow(Icons.north_east, 'Out', out),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.calendar_month_outlined,
+                      color: Color(0xFFC6F7A9),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Net cash flow · $period',
+                        style: const TextStyle(
+                          color: Color(0xFFE5FFE0),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    financeOverviewMoney(totals.net, currency),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 34,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -.7,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _flow(
+                      Icons.south_west_rounded,
+                      'In',
+                      income,
+                      const Color(0xFF9DFF65),
+                    ),
+                    _flow(
+                      Icons.north_east_rounded,
+                      'Out',
+                      out,
+                      const Color(0xFFFF776F),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Out covers expenses and refunds',
+                  style: TextStyle(color: Color(0xFFE5FFE0), fontSize: 12),
+                ),
               ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Out covers expenses and refunds',
-              style: TextStyle(fontSize: 11, color: on.withValues(alpha: .7)),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _flow(IconData icon, String label, int amount) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(icon, size: 14),
-      const SizedBox(width: 4),
-      Text(
-        '$label ${financeMoney(amount, currency)}',
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-    ],
-  );
+  Widget _flow(IconData icon, String label, int amount, Color accent) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFF064C1C).withValues(alpha: .42),
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: accent),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                '$label ${financeOverviewMoney(amount, currency)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _FinanceFlowBackdrop extends CustomPainter {
+  const _FinanceFlowBackdrop();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final curve = Path()
+      ..moveTo(w * .55, h * .83)
+      ..cubicTo(w * .65, h * .66, w * .66, h * .48, w * .78, h * .5)
+      ..cubicTo(w * .89, h * .53, w * .88, h * .38, w * .98, h * .23);
+    canvas.drawPath(
+      curve,
+      Paint()
+        ..color = Colors.white.withValues(alpha: .13)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+    final bars = Paint()
+      ..color = const Color(0xFFAAEB66).withValues(alpha: .48);
+    for (var i = 0; i < 4; i++) {
+      final height = 12.0 + i * 11;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(w - 86 + i * 17, h - 32 - height, 11, height),
+          const Radius.circular(3),
+        ),
+        bars,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class FinanceDuesBanner extends StatelessWidget {
@@ -299,57 +379,86 @@ class FinanceDuesBanner extends StatelessWidget {
     super.key,
     required this.amount,
     required this.currency,
+    this.onTap,
   });
   final int amount;
   final String currency;
+  final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) {
-    final due = amount > 0, scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: due
-            ? financeAmber.withValues(alpha: .16)
-            : scheme.outline.withValues(alpha: .15),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            due ? Icons.receipt_long_outlined : Icons.check_circle_outline,
-            color: due ? financeAmber : scheme.primary,
-            size: 20,
+    final due = amount > 0;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: Ink(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF343519), Color(0xFF252B1C)],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          border: Border.all(color: financeAmber.withValues(alpha: .16)),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            child: Row(
               children: [
-                Text(
-                  due ? 'Booking dues' : 'No booking dues',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                Icon(
+                  due
+                      ? Icons.receipt_long_outlined
+                      : Icons.check_circle_outline,
+                  color: financeAmber,
+                  size: 28,
                 ),
-                Text(
-                  'Outstanding at period end',
-                  style: Theme.of(context).textTheme.bodySmall,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        due ? 'Booking dues' : 'No booking dues',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        'Outstanding at period end',
+                        style: const TextStyle(
+                          color: Color(0xFFE6E6DE),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                if (due) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        financeOverviewMoney(amount, currency),
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (onTap != null) ...[
+                  const SizedBox(width: 6),
+                  const Icon(Icons.chevron_right, color: financeAmber),
+                ],
               ],
             ),
           ),
-          if (due) ...[
-            const SizedBox(width: 8),
-            Flexible(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  financeMoney(amount, currency),
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -381,21 +490,30 @@ class FinanceQuickActions extends StatelessWidget {
                 child: Column(
                   children: [
                     Container(
-                      width: 48,
-                      height: 48,
+                      width: 54,
+                      height: 54,
                       decoration: BoxDecoration(
-                        color: scheme.primary.withValues(alpha: .12),
-                        borderRadius: BorderRadius.circular(16),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF1B371C), Color(0xFF132718)],
+                        ),
+                        border: Border.all(
+                          color: const Color(0xFF89CB70).withValues(alpha: .35),
+                        ),
+                        borderRadius: BorderRadius.circular(19),
                       ),
-                      child: Icon(a.icon, color: scheme.primary),
+                      child: Icon(a.icon, color: AppColors.lime, size: 26),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Text(
                       a.label,
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSurface,
+                      ),
                     ),
                   ],
                 ),
@@ -403,6 +521,173 @@ class FinanceQuickActions extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class FinanceTodayCollectionHeading extends StatelessWidget {
+  const FinanceTodayCollectionHeading({super.key});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 28, bottom: 12),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            "Today's collection",
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border.all(
+              color: Theme.of(
+                context,
+              ).colorScheme.outline.withValues(alpha: .5),
+            ),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.calendar_today_outlined, size: 16),
+              SizedBox(width: 7),
+              Text('Today', style: TextStyle(fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class FinanceTodayCollectionCard extends StatelessWidget {
+  const FinanceTodayCollectionCard({
+    super.key,
+    required this.total,
+    required this.methods,
+    required this.currency,
+  });
+  final int total;
+  final Map<String, int> methods;
+  final String currency;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final width = MediaQuery.sizeOf(context).width;
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    final stacked = width < 370 || scale > 1.25;
+    final summary = Row(
+      children: [
+        Image.asset(
+          'assets/branding/collection_wallet_icon.png',
+          width: 58,
+          height: 58,
+          semanticLabel: 'Collections wallet',
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Booking collections today',
+                maxLines: 2,
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+              ),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  financeOverviewMoney(total, currency),
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final breakdown = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final method in financeMethods)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              children: [
+                Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: _methodColors[method],
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    financeLabel(method),
+                    style: TextStyle(color: scheme.onSurface, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  financeOverviewMoney(methods[method] ?? 0, currency),
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF1B211E) : scheme.surface,
+        border: Border.all(color: scheme.outline.withValues(alpha: .45)),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: stacked
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                summary,
+                const SizedBox(height: 14),
+                Divider(color: scheme.outline.withValues(alpha: .4)),
+                const SizedBox(height: 8),
+                breakdown,
+              ],
+            )
+          : IntrinsicHeight(
+              child: Row(
+                children: [
+                  Expanded(flex: 9, child: summary),
+                  VerticalDivider(
+                    color: scheme.outline.withValues(alpha: .5),
+                    thickness: 1,
+                    width: 22,
+                  ),
+                  Expanded(flex: 10, child: breakdown),
+                ],
+              ),
+            ),
     );
   }
 }

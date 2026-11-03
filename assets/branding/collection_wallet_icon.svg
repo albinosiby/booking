@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="wallet" x1="28" y1="24" x2="103" y2="98" gradientUnits="userSpaceOnUse"><stop stop-color="#8DEB44"/><stop offset="1" stop-color="#237B18"/></linearGradient>
+    <linearGradient id="coin" x1="12" y1="83" x2="57" y2="111" gradientUnits="userSpaceOnUse"><stop stop-color="#FFE86B"/><stop offset="1" stop-color="#E9A500"/></linearGradient>
+  </defs>
+  <rect x="29" y="29" width="79" height="68" rx="12" fill="#173E19"/>
+  <rect x="34" y="23" width="68" height="70" rx="10" fill="url(#wallet)" stroke="#74D631" stroke-width="3"/>
+  <path d="M35 37h66" stroke="#B1F36C" stroke-width="4" opacity=".7"/>
+  <rect x="72" y="52" width="39" height="28" rx="7" fill="#276E1E" stroke="#8CE84A" stroke-width="3"/>
+  <circle cx="91" cy="66" r="4" fill="#B4F476"/>
+  <text x="53" y="72" font-family="Arial,sans-serif" font-size="30" font-weight="bold" fill="#D8FFB6">₹</text>
+  <ellipse cx="31" cy="101" rx="23" ry="8" fill="#B77A00"/>
+  <path d="M8 91v10c0 5 10 9 23 9s23-4 23-9V91" fill="url(#coin)" stroke="#F7BB13" stroke-width="2"/>
+  <ellipse cx="31" cy="91" rx="23" ry="8" fill="#FFD744" stroke="#FFE980" stroke-width="2"/>
+  <path d="M8 98c10 8 36 8 46 0M8 104c10 8 36 8 46 0" stroke="#FFE77C" stroke-width="2"/>
+  <circle cx="67" cy="105" r="17" fill="#F6B900" stroke="#FFE76B" stroke-width="3"/>
+  <circle cx="67" cy="105" r="12" stroke="#FFE779" stroke-width="1.5"/>
+  <text x="67" y="111" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" font-weight="bold" fill="#FFF4B6">₹</text>
+</svg>

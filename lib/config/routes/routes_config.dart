@@ -323,6 +323,13 @@ GoRouter createRouter(
         builder: (c, s) => const AccountsScreen(back: true),
       ),
       GoRoute(
+        path: '/accounts/booking-dues',
+        builder: (c, s) => const BookingListScreen(
+          mode: BookingListMode.payments,
+          initialDueView: true,
+        ),
+      ),
+      GoRoute(
         path: '/accounts/settings',
         builder: (c, s) => const AccountSettingsScreen(),
       ),

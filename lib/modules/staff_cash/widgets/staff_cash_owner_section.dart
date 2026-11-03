@@ -60,32 +60,130 @@ class _StaffCashOwnerSectionState extends State<StaffCashOwnerSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(top: 24, bottom: 8),
-            child: Text(
-              'Staff cash to collect',
-              style: Theme.of(
-                c,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            padding: const EdgeInsets.only(top: 28, bottom: 12),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.groups_2_outlined,
+                  color: AppColors.lime,
+                  size: 25,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Staff cash to collect',
+                    style: Theme.of(c).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           if (s.error != null && !s.loaded) AppErrorWidget(message: s.error!),
           for (final m in s.staff)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(m.name),
-              subtitle: Text(
-                m.holdingMinor == 0
-                    ? 'Settled'
-                    : m.holdingMinor > 0
-                    ? 'To collect ${financeMoney(m.holdingMinor, widget.currency)}'
-                    : 'To give ${financeMoney(-m.holdingMinor, widget.currency)}',
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: Theme.of(c).brightness == Brightness.dark
+                      ? const Color(0xFF242424)
+                      : Theme.of(c).colorScheme.surface,
+                  border: Border.all(
+                    color: Theme.of(
+                      c,
+                    ).colorScheme.outline.withValues(alpha: .35),
+                  ),
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final compact = box.maxWidth < 320;
+                    final action = m.holdingMinor == 0
+                        ? null
+                        : FilledButton.icon(
+                            onPressed: s.settling ? null : () => _settle(m),
+                            icon: const Icon(
+                              Icons.account_balance_wallet_outlined,
+                              size: 17,
+                            ),
+                            label: Text(
+                              m.holdingMinor > 0 ? 'Collect' : 'Give',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.lime,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          );
+                    final summary = Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 24,
+                          backgroundColor: const Color(0xFF267E18),
+                          child: Text(
+                            m.name.trim().isEmpty
+                                ? '?'
+                                : m.name.trim()[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 19,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                m.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              Text(
+                                m.holdingMinor == 0
+                                    ? 'Settled'
+                                    : m.holdingMinor > 0
+                                    ? 'To collect ${financeMoney(m.holdingMinor, widget.currency)}'
+                                    : 'To give ${financeMoney(-m.holdingMinor, widget.currency)}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(c).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!compact && action != null) ...[
+                          const SizedBox(width: 8),
+                          action,
+                        ],
+                      ],
+                    );
+                    if (!compact || action == null) return summary;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        summary,
+                        const SizedBox(height: 10),
+                        Align(alignment: Alignment.centerRight, child: action),
+                      ],
+                    );
+                  },
+                ),
               ),
-              trailing: m.holdingMinor == 0
-                  ? null
-                  : FilledButton.tonal(
-                      onPressed: s.settling ? null : () => _settle(m),
-                      child: Text(m.holdingMinor > 0 ? 'Collect' : 'Give'),
-                    ),
             ),
         ],
       );

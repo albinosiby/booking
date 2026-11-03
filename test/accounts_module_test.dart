@@ -1,5 +1,9 @@
 import 'package:eden_booking/modules/accounts/widgets/accounts_overview_widgets.dart'
-    show FinanceNetCard, FinanceQuickActions;
+    show
+        FinanceNetCard,
+        FinanceQuickActions,
+        FinanceTodayCollectionCard,
+        financeOverviewMoney;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -88,6 +92,7 @@ class FakeAccountsRepository extends Fake implements AccountsRepository {
       methods: {'cash': 15000, 'upi': 50000},
     ),
     previous: const FinanceTotals(),
+    outstanding: 272500,
     accounts: qaCatalog.accounts,
     trend: const [FinanceTrend('2026-10', 65000, 0)],
   );
@@ -189,6 +194,10 @@ void main() {
     expect(qaCatalog.destination('upi', 'business', 'space'), 'bank');
     expect(qaCatalog.destination('cash', 'business', 'space'), 'cash');
     expect(qaCatalog.destination('card', null, null), 'bank');
+  });
+  test('Accounts overview formats live INR totals with Indian grouping', () {
+    expect(financeOverviewMoney(1900000, 'INR'), '₹ 19,000.00');
+    expect(financeOverviewMoney(123456789, 'INR'), '₹ 12,34,567.89');
   });
   test(
     'expense form retains split accounts, scope and reason in repository request',
@@ -431,6 +440,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       if (screen == 'overview') {
+        expect(find.text('Manage your business finances'), findsOneWidget);
+        expect(find.byType(FinanceTodayCollectionCard), findsOneWidget);
+        expect(find.text('Booking collections today'), findsOneWidget);
+        expect(find.text('₹ 2,725.00'), findsWidgets);
+        expect(find.text('₹ 650.00'), findsWidgets);
+        expect(find.text('₹ 500.00'), findsWidgets);
         expect(
           tester.getTopLeft(find.text('Staff cash to collect')).dy,
           lessThan(tester.getTopLeft(find.text('Income by payment method')).dy),

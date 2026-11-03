@@ -16,9 +16,11 @@ class BookingListScreen extends StatefulWidget {
     super.key,
     this.mode = BookingListMode.bookings,
     this.initialBusinessId,
+    this.initialDueView = false,
   });
   final BookingListMode mode;
   final String? initialBusinessId;
+  final bool initialDueView;
   @override
   State<BookingListScreen> createState() => _BookingListScreenState();
 }
@@ -31,7 +33,9 @@ class _BookingListScreenState extends State<BookingListScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialBusinessId != null) {
+    if (widget.mode == BookingListMode.payments && widget.initialDueView) {
+      cubit.dueView(true);
+    } else if (widget.initialBusinessId != null) {
       cubit.business(widget.initialBusinessId);
     } else {
       cubit.load();
@@ -62,7 +66,10 @@ class _BookingListScreenState extends State<BookingListScreen> {
       }
       return AppPage(
         title: 'Payments',
-        subtitle: 'Manually recorded collections and refunds.',
+        back: widget.initialDueView,
+        subtitle: widget.initialDueView
+            ? 'Current outstanding balances and refunds.'
+            : 'Manually recorded collections and refunds.',
         scrollId: 'booking-list-payments',
         maxWidth: 900,
         children: [

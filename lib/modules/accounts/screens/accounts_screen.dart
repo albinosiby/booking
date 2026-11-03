@@ -111,6 +111,13 @@ class _AccountsScreenState extends State<AccountsScreen> {
           ),
       ],
       children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Text(
+            'Manage your business finances',
+            style: Theme.of(c).textTheme.bodyMedium,
+          ),
+        ),
         if (catalog != null && catalog.canView) ...[
           FinanceFilterBar(
             catalog: catalog,
@@ -142,7 +149,11 @@ class _AccountsScreenState extends State<AccountsScreen> {
               currency: currency,
             ),
             const SizedBox(height: 12),
-            FinanceDuesBanner(amount: o.outstanding, currency: currency),
+            FinanceDuesBanner(
+              amount: o.outstanding,
+              currency: currency,
+              onTap: () => _open('/accounts/booking-dues'),
+            ),
           ]),
         if (actions.isNotEmpty) ...[
           const SizedBox(height: 20),
@@ -156,9 +167,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
           ),
         if (o != null)
           dim([
-            const FinanceSection("Today's collection"),
-            FinanceMethodSplit(
-              title: 'Booking collections today',
+            const FinanceTodayCollectionHeading(),
+            FinanceTodayCollectionCard(
               total: o.today.collections,
               methods: o.today.methods,
               currency: currency,
