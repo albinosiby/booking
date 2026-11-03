@@ -91,6 +91,15 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
         );
         return;
       }
+      if (original != null && !original.canReschedule) {
+        emit(
+          BookingFormModel(
+            loading: false,
+            error: 'This booking can no longer be rescheduled.',
+          ),
+        );
+        return;
+      }
       var draft = original == null
           ? BookingDraft(
               businessId: launch.businessId,
@@ -735,6 +744,10 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
 
   Future<void> review() async {
     if (state.locked) return;
+    if (state.original != null && !state.original!.canReschedule) {
+      emit(state.copyWith(error: 'This booking can no longer be rescheduled.'));
+      return;
+    }
     if (state.draft.selection == null ||
         (state.option?.minimumDuration != null && !state.rangeComplete)) {
       return;
@@ -786,6 +799,10 @@ class BookingFormCubit extends Cubit<BookingFormModel> {
     if (state.saving || state.resultId != null) return;
     if (state.pending != null) {
       await _send(state.pending!);
+      return;
+    }
+    if (state.original != null && !state.original!.canReschedule) {
+      emit(state.copyWith(error: 'This booking can no longer be rescheduled.'));
       return;
     }
     if (!state.review || state.quote == null) return;

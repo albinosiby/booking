@@ -409,6 +409,36 @@ test("rescheduling keeps reference/payments and moves reservations atomically; l
   });
   assert.equal((await service.detail(f.owner, id)).refund_due_minor, 0);
 });
+test("started bookings cannot be rescheduled even when still confirmed", async () => {
+  const f = await fixture();
+  const { id } = await create(f);
+  const target = { ...f.selection, time: "11:00" };
+  const quote = await service.quote(f.owner, {
+    selection: target,
+    exclude_booking_id: id,
+  });
+  await db.query(
+    "UPDATE bookings SET starts_at=now()-interval '1 day',ends_at=now()-interval '23 hours' WHERE id=$1",
+    [id],
+  );
+  const before = await service.detail(f.owner, id);
+  assert.equal(before.status, "confirmed");
+  await assert.rejects(
+    () =>
+      service.reschedule(f.owner, id, {
+        command_key: randomUUID(),
+        version: before.version,
+        selection: target,
+        quote_token: quote.quote_token,
+        reason: "Late request",
+      }),
+    /Bookings that have started cannot be rescheduled/,
+  );
+  const after = await service.detail(f.owner, id);
+  assert.equal(after.version, before.version);
+  assert.equal(after.starts_at.toISOString(), before.starts_at.toISOString());
+  assert.deepEqual(after.selection, before.selection);
+});
 test("failed reschedule leaves original slot, totals, payments and version untouched", async () => {
   const f = await fixture(),
     a = await create(f),
@@ -1438,10 +1468,12 @@ test("availability distinguishes free grid intervals from valid booking starts",
   const occupied = result.slots.find((s: any) => s.time === "10:00")!;
   assert.equal(occupied.available, false);
   assert.equal(occupied.interval_available, false);
-  await assert.rejects(() => service.quote(f.owner, {
-    selection: { ...f.selection, time: "09:15" },
-    exclude_booking_id: null,
-  }));
+  await assert.rejects(() =>
+    service.quote(f.owner, {
+      selection: { ...f.selection, time: "09:15" },
+      exclude_booking_id: null,
+    }),
+  );
 });
 
 test("discounts are signed, persisted and bounded for all business types", async () => {

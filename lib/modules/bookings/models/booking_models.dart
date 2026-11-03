@@ -644,6 +644,10 @@ class BookingRecord extends Equatable {
   final List<BookingPayment> payments;
   final List<BookingEvent> history;
   final Map<String, dynamic>? websitePayment;
+  bool get canReschedule =>
+      status == 'confirmed' &&
+      admissionId == null &&
+      (DateTime.tryParse(startsAt)?.isAfter(DateTime.now()) ?? false);
   bool get checkedIn => history.any((event) => event.action == 'checked_in');
   bool get automaticallyCheckedIn => history.any(
     (event) =>

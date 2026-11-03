@@ -606,6 +606,10 @@ export class BookingService {
           throw new BadRequestException(
             "Only confirmed bookings can be rescheduled.",
           );
+        if (new Date(old.starts_at).getTime() <= Date.now())
+          throw new BadRequestException(
+            "Bookings that have started cannot be rescheduled.",
+          );
         if (v.selection.business_id !== old.business_id)
           throw new BadRequestException("Choose a space in the same business.");
         await this.access(m, b.id, v.selection.resource_id, db);

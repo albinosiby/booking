@@ -7,12 +7,63 @@ import 'package:eden_booking/di/injection.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/bookings/screens/booking_detail_screen.dart';
 import 'package:eden_booking/modules/bookings/models/booking_detail_model.dart';
+import 'package:eden_booking/modules/bookings/models/booking_models.dart';
 import 'package:eden_booking/modules/bookings/cubit/booking_detail_cubit.dart';
+import 'package:eden_booking/modules/bookings/cubit/booking_form_cubit.dart';
 import 'package:eden_booking/modules/bookings/widgets/booking_payment_summary.dart';
 import 'package:eden_booking/modules/bookings/widgets/booking_detail_overview.dart';
 import 'booking_module_test.dart' show form, customer;
 
 void main() {
+  testWidgets('past confirmed booking cannot be rescheduled', (tester) async {
+    final fixture = (await tester.runAsync(() async {
+      final (workspace, repository, controller) = await form();
+      customer(controller);
+      await controller.review();
+      await controller.confirm();
+      final id = controller.state.resultId!;
+      repository.records[id]!['starts_at'] = DateTime.now()
+          .subtract(const Duration(days: 1))
+          .toUtc()
+          .toIso8601String();
+      final reschedule = BookingFormCubit(
+        workspace,
+        repository,
+        BookingLaunch(rescheduleId: id),
+      );
+      await reschedule.load();
+      expect(
+        reschedule.state.error,
+        'This booking can no longer be rescheduled.',
+      );
+      await reschedule.close();
+      await controller.close();
+      return (workspace, repository, id);
+    }))!;
+    final (workspace, repository, id) = fixture;
+    await getIt.reset();
+    getIt.registerFactoryParam<BookingDetailCubit, WorkspaceCubit, String>(
+      (session, bookingId) =>
+          BookingDetailCubit(session, repository, bookingId),
+    );
+    addTearDown(getIt.reset);
+    addTearDown(workspace.close);
+    await tester.pumpWidget(
+      ScreenUtilInit(
+        designSize: const Size(390, 844),
+        builder: (context, _) => BlocProvider.value(
+          value: workspace,
+          child: MaterialApp(
+            theme: AppTheme.build(Brightness.light),
+            home: BookingDetailScreen(id: id),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Reschedule'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('booking details show payment method history and website ID', (
     tester,
   ) async {
@@ -76,6 +127,7 @@ void main() {
     expect(find.text('Payment history · 1'), findsOneWidget);
     expect(find.text('Collected by Owner'), findsOneWidget);
     expect(find.text('Transaction ID: UPI-DETAIL-123'), findsOneWidget);
+    expect(find.text('Reschedule'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets('website UPI claim stays visible beside recorded cash', (

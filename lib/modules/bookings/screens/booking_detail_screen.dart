@@ -398,7 +398,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   ),
                   const SizedBox(height: 8),
                 ],
-                if (b.status == 'confirmed') ...[
+                if (b.canReschedule) ...[
                   AppButton(
                     label: 'Reschedule',
                     icon: Icons.event_repeat,
