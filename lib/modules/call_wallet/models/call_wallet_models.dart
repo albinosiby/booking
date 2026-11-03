@@ -74,7 +74,7 @@ class WalletEntry extends Equatable {
       'Recharge · ${_method(paymentMethod)}',
     WalletEntryKind.adjustment when amountPaise >= 0 =>
       paymentMethod.isEmpty
-          ? 'Balance added'
+          ? 'Free credit'
           : 'Balance added · ${_method(paymentMethod)}',
     WalletEntryKind.adjustment => 'Balance correction',
     _ => kind.label,

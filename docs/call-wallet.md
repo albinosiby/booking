@@ -15,7 +15,8 @@ minimum.
   off and calls are recorded at ₹0, so a later rate is never applied backwards.
 - **Organization page → Call wallet**: balance, totals, every Cashfree order, the
   full wallet history, per-client price overrides (empty field = default) and
-  **Add balance** for money paid outside Cashfree, or a deduction to fix a mistake.
+  **Add balance** for money paid outside Cashfree, **Free credit** for balance the
+  client did not pay for (a reason is required), or a deduction to fix a mistake.
   Each credit records the admin, how the client paid and the receipt number.
   The form's request ID stops a double submit from adding money twice.
 - Every change is written to the admin audit log (`call_billing.defaults`,

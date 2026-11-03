@@ -359,8 +359,12 @@ test("admins credit offline payments once and alerts fire on crossing", async ()
     note: "Paid at the front desk",
   };
   await assert.rejects(
-    billing.adjust(platformAdmin, org, { ...credit, payment_mode: null }),
-    /how the client paid/,
+    billing.adjust(platformAdmin, org, {
+      ...credit,
+      payment_mode: null,
+      note: "",
+    }),
+    /note explaining/,
   );
   let r = await billing.adjust(platformAdmin, org, credit);
   assert.equal(r.duplicate, false);
@@ -449,4 +453,28 @@ test("payment backend refusals name a key mismatch and are logged", async () => 
   }
   assert.match(JSON.stringify(logged), /notify_url/);
   assert.doesNotMatch(JSON.stringify(logged), /test-api-key/);
+});
+
+test("admins can give free credit with a reason", async () => {
+  const before = (await wallet.status(owner)).balance_paise;
+  const r = await billing.adjust(platformAdmin, orgId, {
+    request_id: randomUUID(),
+    amount_paise: 50000,
+    payment_mode: null,
+    note: "Launch offer",
+  });
+  assert.equal(r.wallet.balance_paise, before + 50000);
+  assert.equal(r.wallet.totals.free_paise, 50000);
+  const entry = (await wallet.status(owner)).transactions[0];
+  assert.equal(entry.kind, "adjustment");
+  assert.equal(entry.payment_method, "");
+  assert.equal(entry.note, "Launch offer");
+  await assert.rejects(
+    billing.adjust(platformAdmin, orgId, {
+      request_id: randomUUID(),
+      amount_paise: -100,
+      payment_mode: "cash",
+    }),
+    /note explaining/,
+  );
 });

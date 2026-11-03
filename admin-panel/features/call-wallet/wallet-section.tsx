@@ -21,6 +21,7 @@ type Wallet = {
   totals: {
     recharged_paise: number;
     added_paise: number;
+    free_paise: number;
     deducted_paise: number;
     spent_paise: number;
     call_seconds: number;
@@ -74,9 +75,11 @@ function entryLabel(e: Wallet["ledger"][number]) {
   if (e.kind === "recharge")
     return `Online recharge${e.payment_method ? ` · ${e.payment_method.toUpperCase()}` : ""}`;
   if (e.kind === "adjustment")
-    return `${e.amount_paise >= 0 ? "Added by admin" : "Deducted by admin"}${
-      e.payment_method ? ` · ${label(e.payment_method)}` : ""
-    }`;
+    return e.amount_paise < 0
+      ? "Deducted by admin"
+      : e.payment_method
+        ? `Added by admin · ${label(e.payment_method)}`
+        : "Free credit by admin";
   return label(e.kind);
 }
 
@@ -113,7 +116,12 @@ export async function WalletSection({
         </div>
         <div className="stat">
           <b>{money(w.totals.added_paise - w.totals.deducted_paise)}</b>
-          <span>Added by admin (net)</span>
+          <span>
+            Added by admin (net)
+            {w.totals.free_paise > 0
+              ? ` · ${money(w.totals.free_paise)} free`
+              : ""}
+          </span>
         </div>
         <div className="stat">
           <b>{money(w.totals.spent_paise)}</b>
@@ -126,8 +134,9 @@ export async function WalletSection({
         <ActionForm action={adjustWallet}>
           <h2>Add balance</h2>
           <p className="sub">
-            For money the client paid you directly. It is added straight away
-            and shown in the client&apos;s wallet history.
+            Add money the client paid you directly, give free credit, or fix a
+            mistake. It applies straight away and shows in the client&apos;s
+            wallet history.
           </p>
           <input type="hidden" name="org" value={org} />
           <input type="hidden" name="request_id" value={randomUUID()} />
@@ -135,7 +144,8 @@ export async function WalletSection({
             <label>
               Action
               <select name="direction" defaultValue="add">
-                <option value="add">Add balance</option>
+                <option value="add">Add balance (client paid)</option>
+                <option value="free">Free credit (not paid)</option>
                 <option value="deduct">Deduct (correction)</option>
               </select>
             </label>
@@ -154,7 +164,7 @@ export async function WalletSection({
                   </option>
                 ))}
               </select>
-              <small>Ignored for deductions.</small>
+              <small>Only used when the client paid.</small>
             </label>
             <label>
               Receipt or reference
@@ -166,7 +176,7 @@ export async function WalletSection({
             <input
               name="note"
               maxLength={500}
-              placeholder="Required for deductions"
+              placeholder="Required for free credit and deductions"
             />
           </label>
           <label>

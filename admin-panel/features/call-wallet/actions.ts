@@ -109,7 +109,9 @@ export async function adjustWallet(_: ActionResult, form: FormData) {
   const amount = paise(form.get("amount"));
   if (amount == null || Number.isNaN(amount) || amount === 0)
     return { error: "Enter the amount in rupees." };
-  const deduct = form.get("direction") === "deduct";
+  const direction = String(form.get("direction") ?? "add");
+  const deduct = direction === "deduct",
+    free = direction === "free";
   const mode = String(form.get("payment_mode") ?? "");
   const org = String(form.get("org"));
   return execute(
@@ -118,11 +120,16 @@ export async function adjustWallet(_: ActionResult, form: FormData) {
     {
       request_id: String(form.get("request_id")),
       amount_paise: deduct ? -amount : amount,
-      payment_mode: deduct || !mode ? null : mode,
+      // Free credits and deductions record no payment.
+      payment_mode: deduct || free || !mode ? null : mode,
       external_reference: String(form.get("external_reference") ?? ""),
       note: String(form.get("note") ?? ""),
     },
-    deduct ? "Balance deducted." : "Balance added to the client's wallet.",
+    deduct
+      ? "Balance deducted."
+      : free
+        ? "Free credit added to the client's wallet."
+        : "Balance added to the client's wallet.",
     `/organizations/${org}`,
   );
 }

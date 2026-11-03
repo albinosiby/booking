@@ -44,11 +44,10 @@ const adjustmentSchema = z
     note: z.string().trim().max(500).default(""),
   })
   .strict()
-  .refine((v) => v.amount_paise < 0 || v.payment_mode, {
-    message: "Choose how the client paid.",
-  })
-  .refine((v) => v.amount_paise > 0 || v.note.length >= 3, {
-    message: "Add a note explaining the deduction.",
+  // No payment mode means a free credit the client did not pay for; like a
+  // deduction, it needs a reason.
+  .refine((v) => (v.amount_paise > 0 && v.payment_mode) || v.note.length >= 3, {
+    message: "Add a note explaining this change.",
   });
 const ledgerQuery = z
   .object({ offset: z.coerce.number().int().min(0).max(100000).default(0) })
@@ -155,6 +154,7 @@ export class AdminCallBillingService {
         `SELECT
           coalesce(sum(amount_paise) FILTER (WHERE kind='recharge'),0)::bigint AS recharged_paise,
           coalesce(sum(amount_paise) FILTER (WHERE kind='adjustment' AND amount_paise>0),0)::bigint AS added_paise,
+          coalesce(sum(amount_paise) FILTER (WHERE kind='adjustment' AND amount_paise>0 AND payment_mode IS NULL),0)::bigint AS free_paise,
           coalesce(-sum(amount_paise) FILTER (WHERE kind='adjustment' AND amount_paise<0),0)::bigint AS deducted_paise,
           coalesce(-sum(amount_paise) FILTER (WHERE kind='call_charge'),0)::bigint AS spent_paise,
           coalesce(sum(call_seconds) FILTER (WHERE kind='call_charge'),0)::bigint AS call_seconds,

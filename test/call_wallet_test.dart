@@ -63,6 +63,16 @@ void main() {
       'created_at': '2026-11-02T10:00:00Z',
     });
     expect(fix.title, 'Balance correction');
+    final free = WalletEntry.fromJson({
+      'id': '5',
+      'kind': 'adjustment',
+      'amount_paise': 50000,
+      'balance_after_paise': 109500,
+      'note': 'Launch offer',
+      'created_at': '2026-11-02T10:00:00Z',
+    });
+    expect(free.title, 'Free credit');
+    expect(free.details, 'Launch offer');
   });
 
   test('wallet reads admin plans, custom limits and the low threshold', () {
