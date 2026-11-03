@@ -48,10 +48,21 @@ export class PaymentGateway {
       );
     }
     const body = (await res.json().catch(() => null)) as any;
-    if (!res.ok)
+    if (!res.ok) {
+      // The payment backend's reason is safe to log and names the failing field
+      // or Cashfree's message; secrets are never part of it.
+      console.error("[call-wallet] payment service refused", {
+        path: path.replace(/booking_[A-Za-z0-9_-]+/, "booking_…"),
+        status: res.status,
+        error: String(body?.error ?? "").slice(0, 200),
+        detail: String(body?.detail ?? "").slice(0, 300),
+      });
       throw new ServiceUnavailableException(
-        "The payment service could not process this request. Please try again.",
+        res.status === 401
+          ? "Online recharge is not set up correctly. Please contact support."
+          : "The payment service could not process this request. Please try again.",
       );
+    }
     return body as T;
   }
   createOrder(input: {

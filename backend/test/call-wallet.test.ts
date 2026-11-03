@@ -422,3 +422,31 @@ test("admins credit offline payments once and alerts fire on crossing", async ()
   );
   assert.equal(audit.rows.length, 2);
 });
+
+test("payment backend refusals name a key mismatch and are logged", async () => {
+  const http = wallet.gateway.http;
+  const logged: unknown[] = [];
+  const error = console.error;
+  console.error = (...a: unknown[]) => void logged.push(a);
+  try {
+    for (const [status, message] of [
+      [401, /not set up correctly/],
+      [502, /could not process/],
+    ] as const) {
+      wallet.gateway.http = async () =>
+        new Response(
+          JSON.stringify({ error: "Refused", detail: "order_meta.notify_url : invalid" }),
+          { status, headers: { "Content-Type": "application/json" } },
+        );
+      await assert.rejects(
+        wallet.createOrder(owner, { amount_paise: 25000 }),
+        message,
+      );
+    }
+  } finally {
+    wallet.gateway.http = http;
+    console.error = error;
+  }
+  assert.match(JSON.stringify(logged), /notify_url/);
+  assert.doesNotMatch(JSON.stringify(logged), /test-api-key/);
+});
