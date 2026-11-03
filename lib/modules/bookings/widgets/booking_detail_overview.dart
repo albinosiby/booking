@@ -201,9 +201,10 @@ class WebsitePaymentReviewCard extends StatelessWidget {
 }
 
 class BookingInformationCard extends StatelessWidget {
-  const BookingInformationCard({super.key, required this.booking});
+  const BookingInformationCard({super.key, required this.booking, this.onCall});
 
   final BookingRecord booking;
+  final VoidCallback? onCall;
 
   @override
   Widget build(BuildContext context) {
@@ -316,17 +317,32 @@ class BookingInformationCard extends StatelessWidget {
               color: colors.surfaceContainerLow,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Wrap(
-              spacing: 20,
-              runSpacing: 8,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _DetailLine(
                   icon: Icons.person_outline_rounded,
                   child: Text(b.customer.name),
                 ),
-                _DetailLine(
-                  icon: Icons.phone_outlined,
-                  child: SelectableText(b.customer.phone),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _DetailLine(
+                        icon: Icons.phone_outlined,
+                        child: SelectableText(b.customer.phone),
+                      ),
+                    ),
+                    if (onCall != null) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        key: const ValueKey('booking-call-customer'),
+                        onPressed: onCall,
+                        icon: const Icon(Icons.call_outlined, size: 18),
+                        label: const Text('Call'),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),

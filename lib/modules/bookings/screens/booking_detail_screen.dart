@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../../../di/injection.dart';
 import '../../workspace/cubit/workspace_cubit.dart';
@@ -15,6 +16,14 @@ import '../widgets/booking_widgets.dart';
 import '../../invoices/repositories/invoice_repository.dart';
 import '../../invoices/cubit/invoice_cubits.dart';
 import '../../invoices/widgets/booking_invoices_card.dart';
+
+Uri? bookingPhoneUri(String value) {
+  final phone = value.trim();
+  if (!RegExp(r'^\+?[\d ()-]{7,25}$').hasMatch(phone)) return null;
+  final digits = phone.replaceAll(RegExp(r'\D'), '');
+  if (digits.length < 7 || digits.length > 15) return null;
+  return Uri(scheme: 'tel', path: '${phone.startsWith('+') ? '+' : ''}$digits');
+}
 
 class BookingDetailScreen extends StatefulWidget {
   const BookingDetailScreen({
@@ -41,6 +50,15 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   Future<void> copyReference(String reference) async {
     await Clipboard.setData(ClipboardData(text: reference));
     if (mounted) showMessage(context, 'Booking reference copied.');
+  }
+
+  Future<void> callCustomer(Uri uri) async {
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {
+      // The phone app may be unavailable on this device.
+    }
+    if (mounted) showMessage(context, 'Could not open the phone app.');
   }
 
   void collect() {
@@ -291,6 +309,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       final b = s.record,
           editing = s.action != BookingDetailAction.none,
           enabled = !s.locked;
+      final callUri = b == null ? null : bookingPhoneUri(b.customer.phone);
       return PopScope(
         canPop: !s.locked,
         child: AppPage(
@@ -371,7 +390,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 ),
               ],
               const SizedBox(height: 12),
-              BookingInformationCard(booking: b),
+              BookingInformationCard(
+                booking: b,
+                onCall: callUri == null ? null : () => callCustomer(callUri),
+              ),
               if (!editing && invoicesAvailable(getIt)) ...[
                 BookingInvoicesSection(
                   key: ValueKey('invoices-${b.id}'),

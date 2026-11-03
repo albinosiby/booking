@@ -15,6 +15,60 @@ import 'package:eden_booking/modules/bookings/widgets/booking_detail_overview.da
 import 'booking_module_test.dart' show form, customer;
 
 void main() {
+  test(
+    'booking call link keeps the country code and only dialable characters',
+    () {
+      expect(
+        bookingPhoneUri('+91 (98765) 43210')?.toString(),
+        'tel:+919876543210',
+      );
+      expect(bookingPhoneUri('98765-43210')?.toString(), 'tel:9876543210');
+      expect(bookingPhoneUri(''), isNull);
+      expect(bookingPhoneUri('not a phone'), isNull);
+    },
+  );
+  testWidgets('customer Call button works at 320px with large text', (
+    tester,
+  ) async {
+    final record = (await tester.runAsync(() async {
+      final (workspace, repository, controller) = await form();
+      customer(controller);
+      await controller.review();
+      await controller.confirm();
+      final record = await repository.detail(controller.state.resultId!);
+      await controller.close();
+      await workspace.close();
+      return record;
+    }))!;
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var called = false;
+    await tester.pumpWidget(
+      ScreenUtilInit(
+        designSize: const Size(390, 844),
+        builder: (context, _) => MaterialApp(
+          theme: AppTheme.build(Brightness.light),
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+            child: Scaffold(
+              body: SingleChildScrollView(
+                child: BookingInformationCard(
+                  booking: record,
+                  onCall: () => called = true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('booking-call-customer')));
+    expect(called, isTrue);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('past confirmed booking cannot be rescheduled', (tester) async {
     final fixture = (await tester.runAsync(() async {
       final (workspace, repository, controller) = await form();
@@ -128,6 +182,7 @@ void main() {
     expect(find.text('Collected by Owner'), findsOneWidget);
     expect(find.text('Transaction ID: UPI-DETAIL-123'), findsOneWidget);
     expect(find.text('Reschedule'), findsOneWidget);
+    expect(find.byKey(const ValueKey('booking-call-customer')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets('website UPI claim stays visible beside recorded cash', (
