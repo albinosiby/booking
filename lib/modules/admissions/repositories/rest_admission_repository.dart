@@ -21,6 +21,24 @@ class RestAdmissionRepository
   }
 
   @override
+  Future<AdmissionPage> paymentReminders(String group, {int cursor = 0}) async {
+    final response = await api.request(
+      '/admissions/payment-reminders?group=$group&cursor=$cursor',
+    );
+    return AdmissionPage(
+      List<Admission>.unmodifiable((response['items'] as List).map(decode)),
+      response['next_cursor'],
+    );
+  }
+
+  @override
+  Future<void> collectDue(
+    Admission admission,
+    List<BookingPaymentDraft> payments,
+    String key,
+  ) => this.payments(admission, payments, 'collection', '', key);
+
+  @override
   Future<void> deleteMembership(
     Admission admission,
     String reason,
@@ -74,6 +92,12 @@ class RestAdmissionRepository
                   p['name'],
                   List<int>.unmodifiable(p['durations']),
                   p['default_duration_minutes'],
+                  openDays: List<int>.unmodifiable(
+                    (p['operating']?['days'] as List?) ?? const [],
+                  ),
+                  opensAt: p['operating']?['opens_at'],
+                  closesAt: p['operating']?['closes_at'],
+                  allDay: p['operating']?['all_day'] == true,
                 ),
               ),
             ),
@@ -100,6 +124,7 @@ class RestAdmissionRepository
               ),
             ),
             spaceKind: b['space_kind'] ?? 'pool',
+            subscriptions: b['subscriptions'] == true,
           ),
         ),
       ),
@@ -181,6 +206,16 @@ class RestAdmissionRepository
     localNow: j['local_now'] ?? '',
     canMarkAttendance: j['can_attend'] == true,
     renewalId: j['renewal_id'],
+    renewalOpen: j['renewal_open'] == true,
+    subscription: j['plan_snapshot']['subscription'] == null
+        ? null
+        : AdmissionSubscription.fromJson(
+            Map<String, dynamic>.from(j['plan_snapshot']['subscription']),
+          ),
+    dueNow: j['due_now_minor'] ?? j['total_minor'],
+    owedNow: j['owed_now_minor'] ?? j['balance_minor'] ?? 0,
+    nextDueOn: j['next_due_on'],
+    nextDue: j['next_due_minor'],
     visits: List.unmodifiable(
       (j['sessions'] as List? ?? []).map(
         (s) => AdmissionVisit(
@@ -251,10 +286,19 @@ class RestAdmissionRepository
     if (d.amount != null && d.amountMinor == null) {
       throw const AppException('Enter a valid plan amount.');
     }
+    if (d.subscription && d.amountMinor == null) {
+      throw const AppException('Enter the monthly fee.');
+    }
     return {
       'business_id': d.businessId,
       'resource_id': d.poolId,
-      'plan_id': d.planId,
+      if (!d.subscription) 'plan_id': d.planId,
+      if (d.subscription)
+        'subscription': {
+          'monthly_minor': d.amountMinor,
+          'months': d.endsOn == null ? d.months : null,
+          'ends_on': d.endsOn,
+        },
       'starts_on': d.start,
       'mode': d.mode,
       'weekdays': d.mode == 'fixed' ? d.weekdays : <int>[],
@@ -266,7 +310,8 @@ class RestAdmissionRepository
           .map((p) => p.toJson())
           .toList(),
       'renewed_from': d.renewedFrom,
-      if (d.amount != null) 'plan_amount_minor': d.amountMinor,
+      if (d.amount != null && !d.subscription)
+        'plan_amount_minor': d.amountMinor,
     };
   }
 
@@ -369,6 +414,53 @@ class RestAdmissionRepository
       '/admissions/${a.id}/cancel',
       method: 'POST',
       data: {'command_key': key, 'version': a.version, 'reason': reason},
+    );
+  }
+
+  @override
+  Future<AdmissionPage> subscriptions({
+    String query = '',
+    String? status,
+    int cursor = 0,
+  }) async {
+    final uri = Uri(
+      path: '/admissions',
+      queryParameters: {
+        'q': query,
+        'subscription': 'true',
+        'status': ?status,
+        'cursor': '$cursor',
+      },
+    );
+    final j = await api.retainedRead(uri.toString());
+    return AdmissionPage(
+      List.unmodifiable((j['items'] as List).map(decode)),
+      j['next_cursor'],
+    );
+  }
+
+  @override
+  Future<void> reschedule(
+    Admission a, {
+    required String from,
+    required List<int> weekdays,
+    required String time,
+    required int duration,
+    required String reason,
+    required String key,
+  }) async {
+    await api.request(
+      '/admissions/${a.id}/schedule',
+      method: 'POST',
+      data: {
+        'command_key': key,
+        'version': a.version,
+        'from_date': from,
+        'weekdays': weekdays,
+        'time': time,
+        'duration_minutes': duration,
+        'reason': reason,
+      },
     );
   }
 }

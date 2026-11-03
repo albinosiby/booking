@@ -264,13 +264,13 @@ void main() {
           admission.state.draft.copyWith(mode: 'fixed', weekdays: [1, 3, 5]),
         );
         await tester.pumpAndSettle();
-        expect(find.text('Start time: 06:00'), findsOneWidget);
+        expect(find.text('Enter an exact time · 06:00'), findsOneWidget);
         expect(find.text('Mon'), findsWidgets);
         admission.update(
           admission.state.draft.copyWith(mode: 'flexible', weekdays: []),
         );
         await tester.pumpAndSettle();
-        expect(find.text('Start time: 06:00'), findsNothing);
+        expect(find.text('Enter an exact time · 06:00'), findsNothing);
 
         expect(tester.takeException(), isNull);
         final previous = admission;

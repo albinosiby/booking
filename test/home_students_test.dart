@@ -225,7 +225,12 @@ void main() {
     api.failLoad = true;
     await tester.tap(find.byTooltip('Refresh today’s students'));
     await tester.pumpAndSettle();
-    expect(find.text('Could not reach the server.'), findsOneWidget);
+    // Home shows a calm fallback, not the raw error.
+    expect(find.text('Could not reach the server.'), findsNothing);
+    expect(
+      find.text('Couldn’t load today’s students right now.'),
+      findsOneWidget,
+    );
     api.failLoad = false;
     api.revalidateReads();
     await tester.pumpAndSettle();

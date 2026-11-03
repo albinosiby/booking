@@ -751,6 +751,7 @@ class PoolConfiguration extends Equatable {
     Iterable<PoolResource> pools = const [],
     Iterable<PoolGroupOffer> offers = const [],
     Iterable<PoolPlan> plans = const [],
+    this.subscriptions = false,
   }) : pools = List.unmodifiable(pools),
        offers = List.unmodifiable(offers),
        plans = List.unmodifiable(plans);
@@ -758,14 +759,19 @@ class PoolConfiguration extends Equatable {
   final List<PoolGroupOffer> offers;
   final List<PoolPlan> plans;
 
+  /// Offers monthly subscriptions in New booking and admissions.
+  final bool subscriptions;
+
   PoolConfiguration copyWith({
     Iterable<PoolResource>? pools,
     Iterable<PoolGroupOffer>? offers,
     Iterable<PoolPlan>? plans,
+    bool? subscriptions,
   }) => PoolConfiguration(
     pools: pools ?? this.pools,
     offers: offers ?? this.offers,
     plans: plans ?? this.plans,
+    subscriptions: subscriptions ?? this.subscriptions,
   );
   Map<String, dynamic> toJson({bool localDraft = false}) => {
     'kind': 'pool_v1',
@@ -775,6 +781,7 @@ class PoolConfiguration extends Equatable {
         .map((o) => o.toJson(localDraft: localDraft))
         .toList(),
     'plans': plans.map((p) => p.toJson(localDraft: localDraft)).toList(),
+    if (subscriptions) 'subscriptions_enabled': true,
   };
   factory PoolConfiguration.fromJson(Map<String, dynamic> v) {
     final plans = (v['plans'] as List)
@@ -795,6 +802,7 @@ class PoolConfiguration extends Equatable {
       plans: plans.map(
         (p) => contacts.contains(p.coachId) ? p.copyWith(clearCoach: true) : p,
       ),
+      subscriptions: v['subscriptions_enabled'] == true,
     );
   }
   factory PoolConfiguration.initial(Business? business) {
@@ -1046,5 +1054,5 @@ class PoolConfiguration extends Equatable {
   }
 
   @override
-  List<Object?> get props => [pools, offers, plans];
+  List<Object?> get props => [pools, offers, plans, subscriptions];
 }

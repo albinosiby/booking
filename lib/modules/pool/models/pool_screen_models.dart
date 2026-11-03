@@ -48,8 +48,9 @@ class PoolPlansModel {
     this.coaches,
     this.coachesLoading,
     this.coachError,
-    this.totalPlanCount,
-  );
+    this.totalPlanCount, {
+    this.subscriptions = false,
+  });
   final List<PoolPlan> plans;
   final List<PoolResource> pools;
   final PoolPlan? selected;
@@ -58,6 +59,7 @@ class PoolPlansModel {
   final bool coachesLoading;
   final String? coachError;
   final int totalPlanCount;
+  final bool subscriptions;
 }
 
 class PoolReviewModel {

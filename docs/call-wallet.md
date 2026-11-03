@@ -209,6 +209,19 @@ DELETE FROM schema_migrations WHERE name='20261103120000_call_wallet_billing.sql
 COMMIT;
 ```
 
+## Migration `20261103140000_notification_kinds_combined.sql`
+
+`20261102090000_subscription_fee_notifications.sql` and the billing migration each
+recreate the push outbox CHECKs without the other's kind. This migration restores
+one CHECK that allows all of them: booking, cash handover, `subscription_fee_due`,
+`call_wallet_low` and `call_wallet_empty`. Apply it after both. It only replaces
+the two CHECK constraints.
+
+```sql
+SELECT pg_get_constraintdef(oid) FROM pg_constraint
+WHERE conname='booking_notification_events_kind_check';  -- lists all seven kinds
+```
+
 ## Operations
 
 - **Stuck `created`/`pending` order:** the owner can reopen the wallet page, or an

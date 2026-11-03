@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import '../../../core/state/configuration_setup_cubit.dart';
@@ -21,7 +22,7 @@ class CourtSetupCubit extends ConfigurationSetupCubit<CourtSetupState> {
   }
   final CourtRepository repository;
   @override
-  bool get hasDraftChanges => state.dirty;
+  bool get hasDraftChanges => state.dirty || state.pendingPlan != null;
   @override
   int get draftBaseVersion => state.version;
   @override
@@ -32,6 +33,8 @@ class CourtSetupCubit extends ConfigurationSetupCubit<CourtSetupState> {
       'section': state.section.name,
       'selected': state.selectedId,
       'resource_flow': state.resourceFlow,
+      if (state.pendingPlan != null)
+        'pending_plan': state.pendingPlan!.toJson(localDraft: true),
     },
   );
   @override
@@ -46,13 +49,21 @@ class CourtSetupCubit extends ConfigurationSetupCubit<CourtSetupState> {
       state.copyWith(
         draft: restored,
         version: draft.baseVersion,
-        dirty: true,
+        dirty: !_same(state.business?.configuration, restored),
         section:
             CourtSection.values
                 .where((s) => s.name == draft.navigation['section'])
                 .firstOrNull ??
             CourtSection.overview,
         selectedId: draft.navigation['selected'] as String?,
+        pendingPlan: draft.navigation['pending_plan'] is Map
+            ? CourtPlan.fromJson(
+                Map<String, dynamic>.from(
+                  draft.navigation['pending_plan'] as Map,
+                ),
+              )
+            : null,
+        clearPendingPlan: draft.navigation['pending_plan'] == null,
         resourceFlow: draft.navigation['resource_flow'] == true,
       ),
     );
@@ -99,6 +110,21 @@ class CourtSetupCubit extends ConfigurationSetupCubit<CourtSetupState> {
 
   void back() {
     if (state.disabled) return;
+    if (state.pendingPlan != null) {
+      emit(
+        state.copyWith(
+          section: CourtSection.coaching,
+          clearSelection: true,
+          clearPendingPlan: true,
+        ),
+      );
+      if (state.dirty) {
+        checkpointLocalDraft();
+      } else {
+        unawaited(clearLocalDraft());
+      }
+      return;
+    }
     if (state.resourceFlow && state.section == CourtSection.pricing) {
       open(CourtSection.courts, id: state.selectedId, resourceFlow: true);
       return;
@@ -186,19 +212,68 @@ class CourtSetupCubit extends ConfigurationSetupCubit<CourtSetupState> {
       allowance: coaching ? '12' : '20',
       courtIds: [first.id],
       hours: first.hours,
+      followCourtHours: true,
       classDuration: first.defaultDuration,
     );
-    _edit(state.draft.copyWith(plans: [...state.draft.plans, plan]));
-    open(CourtSection.coaching, id: plan.id);
+    emit(
+      state.copyWith(
+        pendingPlan: plan,
+        section: CourtSection.coaching,
+        selectedId: plan.id,
+      ),
+    );
+    checkpointLocalDraft();
   }
 
-  void updatePlan(String id, CourtPlan Function(CourtPlan) update) => _edit(
-    state.draft.copyWith(
-      plans: state.draft.plans.map((p) => p.id == id ? update(p) : p),
-    ),
-  );
+  void reminderDays(int days) {
+    if (state.disabled || days < 0 || days > 30) return;
+    _edit(state.draft.copyWith(reminderDays: days));
+  }
+
+  void subscriptions(bool on) {
+    if (state.disabled) return;
+    _edit(state.draft.copyWith(subscriptions: on));
+  }
+
+  void updatePlan(String id, CourtPlan Function(CourtPlan) update) {
+    if (state.pendingPlan?.id == id) {
+      if (state.disabled) return;
+      emit(state.copyWith(pendingPlan: update(state.pendingPlan!)));
+      return;
+    }
+    _edit(
+      state.draft.copyWith(
+        plans: state.draft.plans.map((p) => p.id == id ? update(p) : p),
+      ),
+    );
+  }
+
+  bool finishPlan() {
+    final plan = state.pendingPlan;
+    if (state.disabled || !state.data.isOwner || plan == null) return false;
+    final error = plan.validate(state.draft.courts, complete: true);
+    if (error != null) {
+      emit(state.copyWith(formError: error));
+      return false;
+    }
+    _edit(state.draft.copyWith(plans: [...state.draft.plans, plan]));
+    emit(
+      state.copyWith(
+        section: CourtSection.coaching,
+        clearSelection: true,
+        clearPendingPlan: true,
+      ),
+    );
+    checkpointLocalDraft();
+    return true;
+  }
+
   void removePlan(String id) {
     if (state.disabled) return;
+    if (state.pendingPlan?.id == id) {
+      back();
+      return;
+    }
     _edit(
       state.draft.copyWith(plans: state.draft.plans.where((p) => p.id != id)),
     );
@@ -354,6 +429,10 @@ class CourtSetupCubit extends ConfigurationSetupCubit<CourtSetupState> {
     required bool complete,
   }) async {
     if (state.disabled || !state.data.isOwner) return false;
+    if (state.pendingPlan != null) {
+      emit(state.copyWith(formError: 'Continue to add the new plan first.'));
+      return false;
+    }
     if (localDraftConflict) {
       emit(
         state.copyWith(
@@ -418,6 +497,7 @@ class CourtSetupCubit extends ConfigurationSetupCubit<CourtSetupState> {
           version: b.version,
           dirty: false,
           clearSelection: true,
+          clearPendingPlan: true,
           resourceFlow: false,
           editingReady: b.ready,
         ),

@@ -415,7 +415,7 @@ class AdmissionCubit extends Cubit<AdmissionState> {
       }
       if (collectOnRenewal && (a == null || !a.canRenew)) {
         throw const AppException(
-          'Choose an expired or completed plan that has not been renewed.',
+          'Choose a plan that is due for renewal and has not been renewed.',
         );
       }
       final b =
@@ -425,41 +425,75 @@ class AdmissionCubit extends Cubit<AdmissionState> {
           (strictLocation ? null : c.businesses.firstOrNull);
       final chosen = b?.plans.where((p) => p.id == planId).firstOrNull;
       final effectiveKind = a != null
-          ? (a.kind == 'coaching' ? 'coaching' : 'plans')
+          ? (a.subscription != null
+                ? 'subscription'
+                : a.kind == 'coaching'
+                ? 'coaching'
+                : 'plans')
           : formKind ?? (chosen?.kind == 'coaching' ? 'coaching' : 'plans');
+      final subscription = effectiveKind == 'subscription';
       final p =
           b?.pools.where((p) => p.id == (a?.poolId ?? poolId)).firstOrNull ??
           b?.pools
               .where((p) => chosen?.poolIds.contains(p.id) == true)
               .firstOrNull ??
           (strictLocation ? null : b?.pools.firstOrNull);
-      final plan = b?.plans
-          .where(
-            (plan) =>
-                (a != null
-                    ? plan.id == a.planId
-                    : chosen != null
-                    ? plan.id == chosen.id && plan.matchesKind(effectiveKind)
-                    : plan.matchesKind(effectiveKind)) &&
-                plan.poolIds.contains(p?.id),
-          )
-          .firstOrNull;
+      final plan = subscription
+          ? null
+          : b?.plans
+                .where(
+                  (plan) =>
+                      (a != null
+                          ? plan.id == a.planId
+                          : chosen != null
+                          ? plan.id == chosen.id &&
+                                plan.matchesKind(effectiveKind)
+                          : plan.matchesKind(effectiveKind)) &&
+                      plan.poolIds.contains(p?.id),
+                )
+                .firstOrNull;
       final today = b?.today ?? '';
       final draft = AdmissionDraft(
         businessId: b?.id,
         poolId: p?.id,
-        planId: plan?.id,
+        planId: subscription ? subscriptionPlanId : plan?.id,
         customer: a?.customer ?? customer ?? const BookingCustomer(),
         mode: plan?.trackAttendance == false
             ? 'membership'
-            : (a?.mode == 'fixed' ? 'fixed' : 'flexible'),
-        start: date != null && date.compareTo(today) >= 0 ? date : today,
-        time: a?.time ?? '06:00',
-        duration: plan?.duration ?? p?.defaultDuration ?? 60,
+            : subscription
+            ? 'fixed'
+            : a != null
+            ? (a.mode == 'fixed' ? 'fixed' : 'flexible')
+            : b?.court == true
+            ? 'fixed'
+            : 'flexible',
+        // An early renewal continues the day after the current term.
+        start: a != null && a.earlyRenewal
+            ? bookingDate(
+                DateTime.parse(
+                  '${a.expiry}T00:00:00Z',
+                ).add(const Duration(days: 1)),
+              )
+            : date != null && date.compareTo(today) >= 0
+            ? date
+            : today,
+        time: a?.time ?? p?.opensAt ?? '06:00',
+        // Renewals keep the member's hours; coaching keeps its class length.
+        duration:
+            plan?.duration ??
+            (a != null && a.duration > 0
+                ? a.duration
+                : p?.defaultDuration ?? 60),
         weekdays: plan?.trackAttendance == false
             ? const []
-            : a?.weekdays ?? const [],
+            : a?.weekdays ??
+                  (b?.court == true ? p?.openDays ?? const [] : const []),
         renewedFrom: a?.id,
+        // A renewed subscription keeps its monthly fee and length.
+        months: a?.subscription?.months ?? 1,
+        amount: a?.subscription == null
+            ? null
+            : (a!.subscription!.monthly / 100).toStringAsFixed(2),
       );
       emit(
         state.copyWith(
@@ -485,12 +519,16 @@ class AdmissionCubit extends Cubit<AdmissionState> {
 
   void update(AdmissionDraft d) {
     if (authorized && !state.busy && !state.locked) {
+      final before = state.planAmount;
       emit(state.copyWith(draft: d, clearPreview: true));
+      // Subscription fees follow the chosen days and hours.
+      if (state.planAmount != before) _syncRenewalCollection();
     }
   }
 
   void planAmount(String value) {
-    if (!state.catalog.canCollect ||
+    // Anyone enrolling sets a subscription's fee; plan prices need collection.
+    if ((!state.catalog.canCollect && !state.subscription) ||
         state.loading ||
         state.busy ||
         state.locked ||
@@ -561,15 +599,19 @@ class AdmissionCubit extends Cubit<AdmissionState> {
         state.locked ||
         state.preview != null ||
         state.draft.renewedFrom != null ||
-        !const {'plans', 'coaching'}.contains(value) ||
+        !const {'plans', 'coaching', 'subscription'}.contains(value) ||
         state.formKind == value) {
       return;
     }
+    final subscription = value == 'subscription';
     emit(
       state.copyWith(
         formKind: value,
         draft: state.draft.copyWith(
-          resetPlan: true,
+          resetPlan: !subscription,
+          planId: subscription ? subscriptionPlanId : null,
+          // A subscription always reserves a weekly slot.
+          mode: subscription ? 'fixed' : null,
           duration: state.pool?.defaultDuration ?? 60,
         ),
         clearPreview: true,
@@ -608,9 +650,11 @@ class AdmissionCubit extends Cubit<AdmissionState> {
     update(
       state.draft.copyWith(
         planId: id,
-        mode: p.trackAttendance
-            ? (state.draft.mode == 'fixed' ? 'fixed' : 'flexible')
-            : 'membership',
+        mode: !p.trackAttendance
+            ? 'membership'
+            : state.draft.mode == 'fixed'
+            ? 'fixed'
+            : 'flexible',
         weekdays: p.trackAttendance ? state.draft.weekdays : const [],
         duration: p.duration ?? state.pool?.defaultDuration,
       ),
@@ -736,14 +780,28 @@ class AdmissionCubit extends Cubit<AdmissionState> {
         state.paymentEntry.received <= 0) {
       error ??= 'Enter the payment collected for the new plan.';
     }
-    if (d.amount != null && !state.catalog.canCollect) {
+    if (d.amount != null && !state.catalog.canCollect && !state.subscription) {
       error =
           'Payment collection permission is required to change the plan amount.';
     }
-    if (d.planId == null ||
-        d.poolId == null ||
-        !state.availablePlans.any((p) => p.id == d.planId)) {
+    if (d.poolId == null ||
+        (state.subscription
+            ? state.business == null
+            : d.planId == null ||
+                  !state.availablePlans.any((p) => p.id == d.planId))) {
       error = 'Choose a space and plan.';
+    }
+    if (state.subscription && state.business?.subscriptions == false) {
+      error =
+          'Subscriptions are off for this space. Turn them on in Configure first.';
+    }
+    if (state.subscription && d.weekdays.isEmpty) {
+      error = 'Choose the weekdays this subscription reserves.';
+    }
+    if (state.subscription &&
+        d.endsOn != null &&
+        d.endsOn!.compareTo(d.start) < 0) {
+      error = 'Choose an end date on or after the activation date.';
     }
     if (!state.validVisitDuration) {
       error =
@@ -909,6 +967,28 @@ class AdmissionCubit extends Cubit<AdmissionState> {
   Future<void> cancel(String reason) {
     final a = state.detail!, k = key;
     return mutate(() => repository.cancel(a, reason, k));
+  }
+
+  /// Moves the open subscription's remaining sessions to a new weekly slot.
+  Future<void> reschedule({
+    required String from,
+    required List<int> weekdays,
+    required String time,
+    required int duration,
+    required String reason,
+  }) {
+    final a = state.detail!, k = key;
+    return mutate(
+      () => repository.reschedule(
+        a,
+        from: from,
+        weekdays: weekdays,
+        time: time,
+        duration: duration,
+        reason: reason,
+        key: k,
+      ),
+    );
   }
 
   @override

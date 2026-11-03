@@ -235,6 +235,63 @@ void main() {
     await repo.events.close();
   });
 
+  testWidgets(
+    'Home shows no loaders and a calm fallback when a section fails',
+    (tester) async {
+      final source = BookingSource(), repo = HomeBookings();
+      getIt.registerSingleton<WorkspaceRepository>(source);
+      registerFeatureDependencies(getIt);
+      await getIt.unregister<BookingRepository>();
+      getIt.registerSingleton<BookingRepository>(repo);
+      await getIt.unregister<HomeCubit>();
+      getIt.registerFactoryParam<HomeCubit, WorkspaceCubit, void>(
+        (workspace, _) =>
+            HomeCubit(SessionDashboardRepository(workspace), repo),
+      );
+      final workspace = WorkspaceCubit(source);
+      await workspace.load();
+      addTearDown(workspace.close);
+      addTearDown(repo.events.close);
+      final gate = Completer<OutstandingPage>();
+      repo.pending = gate;
+      await tester.pumpWidget(
+        BlocProvider.value(
+          value: workspace,
+          child: ScreenUtilInit(
+            designSize: const Size(390, 844),
+            builder: (_, _) => MaterialApp(home: const HomeScreen()),
+          ),
+        ),
+      );
+      await tester.pump();
+      // Still loading balances: the page shows its layout, not a loader.
+      expect(find.byType(AppLoadingState), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.text('Collect payments'), findsOneWidget);
+      repo.pending = null;
+      repo.dueFailure = const AppException('Offline', code: 'NETWORK');
+      gate.completeError(repo.dueFailure!);
+      await tester.pumpAndSettle();
+      expect(find.text('Offline'), findsNothing);
+      expect(find.byType(AppErrorWidget), findsNothing);
+      expect(
+        find.text('Couldn’t load payments to collect right now.'),
+        findsOneWidget,
+      );
+      repo.dueFailure = null;
+      expect(find.text('Try again'), findsOneWidget);
+    await tester.ensureVisible(find.text('Try again'));
+    await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Couldn’t load payments to collect right now.'),
+        findsNothing,
+      );
+      expect(find.text('Customer booking'), findsWidgets);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   for (final size in [
     const Size(1280, 1000),
     const Size(390, 844),
@@ -314,19 +371,15 @@ void main() {
         expect(find.text('Upcoming today'), findsNothing);
         expect(find.text('Outstanding'), findsNothing);
         expect(find.text('Due amount to collect'), findsOneWidget);
-        expect(
-          tester.widget<AppEmptyState>(find.byType(AppEmptyState)).showCard,
-          isFalse,
-        );
-        final upcoming = tester.getTopLeft(
-          find.text('Upcoming space bookings'),
-        );
-        final payments = tester.getTopLeft(find.text('Payments to collect'));
+        expect(find.text('No more bookings today.'), findsOneWidget);
+        // Wide: schedule left, Collect right. Phone: Collect first.
+        final upcoming = tester.getTopLeft(find.text('Today’s schedule'));
+        final payments = tester.getTopLeft(find.text('Collect payments'));
         if (size.width > 900) {
           expect(upcoming.dy, payments.dy);
           expect(payments.dx, greaterThan(upcoming.dx));
         } else {
-          expect(payments.dy, greaterThan(upcoming.dy));
+          expect(upcoming.dy, greaterThan(payments.dy));
         }
         expect(tester.takeException(), isNull);
         if (const bool.fromEnvironment('HOME_PREVIEWS')) {

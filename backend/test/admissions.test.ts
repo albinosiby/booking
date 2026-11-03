@@ -322,7 +322,7 @@ test("agreed fee validates minor units, binds preview and command keys, and requ
     /different data/i,
   );
 });
-test("calendar expiry and insufficient fixed schedules", () => {
+test("calendar expiry and fixed schedules with no matching dates", () => {
   assert.equal(
     expiryFrom({ expiry_mode: "after_months", expiry_months: 1 }, "2028-01-31"),
     "2028-02-29",
@@ -333,7 +333,7 @@ test("calendar expiry and insufficient fixed schedules", () => {
   );
   assert.throws(
     () => fixedDates("2030-01-01", "2030-01-02", [1], 25),
-    /Only 0/,
+    /No selected weekdays occur before expiry/,
   );
 });
 test("flexible attendance is idempotent, counts once per date, uses shared inventory and posts admission payments", async () => {

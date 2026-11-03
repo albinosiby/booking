@@ -94,6 +94,25 @@ class AdmissionState extends Equatable {
   int get minimumVisitDuration => pool?.defaultDuration ?? 60;
   bool get adjustableVisitDuration =>
       plan != null && plan!.trackAttendance && plan!.kind != 'coaching';
+
+  /// Visit lengths an end time may set, shortest first.
+  List<int> get endDurations {
+    if (plan?.trackAttendance != true) return const [];
+    final options = <int>{};
+    void steps() {
+      for (var m = minimumVisitDuration; m <= 1440; m += 30) {
+        options.add(m);
+      }
+    }
+
+    if (adjustableVisitDuration) {
+      steps();
+    } else {
+      options.add(draft.duration);
+    }
+    return List.unmodifiable(options.toList()..sort());
+  }
+
   bool get validVisitDuration =>
       plan?.trackAttendance == false ||
       (adjustableVisitDuration
@@ -101,20 +120,52 @@ class AdmissionState extends Equatable {
                 draft.duration <= 1440 &&
                 (draft.duration - minimumVisitDuration) % 30 == 0
           : plan?.duration == null || draft.duration == plan!.duration);
+  bool get subscription => formKind == 'subscription' || draft.subscription;
   String? get expiry => preview?.expiry ?? plan?.expiryFor(draft.start);
-  int? get planAmount => draft.amount == null ? plan?.total : draft.amountMinor;
+
+  /// Sessions a subscription reserves: every chosen weekday until expiry.
+  int get subscriptionSessions {
+    final end = expiry;
+    return plan?.subscription == true && end != null
+        ? fixedSessionCount(draft.start, end, draft.weekdays)
+        : 0;
+  }
+
+  /// Subscriptions have no configured price; staff agree a monthly fee.
+  int? get configuredAmount => subscription ? null : plan?.total;
+
+  /// The whole amount: for subscriptions the monthly fee × months.
+  int? get planAmount => subscription
+      ? (draft.amountMinor == null
+            ? null
+            : draft.amountMinor! * (draft.endsOn == null ? draft.months : 1))
+      : draft.amount == null
+      ? configuredAmount
+      : draft.amountMinor;
   String get planAmountText =>
-      draft.amount ?? ((plan?.total ?? 0) / 100).toStringAsFixed(2);
-  String? get planAmountError =>
-      draft.amount != null && draft.amountMinor == null
-      ? 'Enter a valid plan amount (0–1,000,000, up to two decimal places).'
+      draft.amount ??
+      (subscription ? '' : ((configuredAmount ?? 0) / 100).toStringAsFixed(2));
+  String? get planAmountError => subscription && draft.amount == null
+      ? 'Enter the monthly fee.'
+      : draft.amount != null && draft.amountMinor == null
+      ? 'Enter a valid ${subscription ? 'monthly fee' : 'plan amount'} (0–1,000,000, up to two decimal places).'
+      : subscription && (planAmount ?? 0) > 100000000
+      ? 'The subscription is above the maximum amount. Choose fewer months or a lower fee.'
       : null;
   BookingPaymentEntryModel get paymentEntry => BookingPaymentEntryModel(
     total: preview?.total ?? planAmount,
     payments: draft.payments,
   );
-  AdmissionPlan? get plan =>
-      business?.plans.where((p) => p.id == draft.planId).firstOrNull;
+  AdmissionPlan? get plan => subscription
+      ? business == null
+            ? null
+            : AdmissionPlan.subscriptionFor(
+                business!,
+                months: draft.endsOn == null ? draft.months : null,
+                endsOn: draft.endsOn,
+                monthly: draft.amountMinor ?? 0,
+              )
+      : business?.plans.where((p) => p.id == draft.planId).firstOrNull;
   @override
   List<Object?> get props => [
     catalog,

@@ -32,6 +32,7 @@ class GatedBlocks extends Blocks {
   Future<SlotBlockPage> list(
     String businessId,
     String date, {
+    String? spaceId,
     int cursor = 0,
   }) async => SlotBlockPage(existing, null);
   @override

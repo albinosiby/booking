@@ -19,6 +19,7 @@ class CourtPlan extends Equatable {
     this.price = '',
     this.enabled = true,
     this.trackAttendance = true,
+    this.followCourtHours = false,
     CourtHours? hours,
     this.classDuration = 60,
     this.seats = '8',
@@ -30,7 +31,7 @@ class CourtPlan extends Equatable {
   final String? expiryDate, coachId;
   final List<String> courtIds;
   final bool enabled;
-  final bool trackAttendance;
+  final bool trackAttendance, followCourtHours;
   final CourtHours hours;
   final int classDuration;
   bool get coaching => kind == 'coaching';
@@ -67,11 +68,11 @@ class CourtPlan extends Equatable {
         classes = int.tryParse(allowance),
         students = int.tryParse(seats);
     if (name.trim().length < 2 || name.trim().length > 100) {
-      return 'Give each coaching plan a 2–100 character name.';
+      return 'Give each plan a 2–100 character name.';
     }
     if (trackAttendance &&
         (classes == null || classes < 1 || classes > 10000)) {
-      return 'Enter 1–10000 classes for $name.';
+      return 'Enter 1–10000 ${coaching ? 'classes' : 'play days'} for $name.';
     }
     if (trackAttendance &&
         coaching &&
@@ -95,14 +96,19 @@ class CourtPlan extends Equatable {
         courtIds.any((id) => !courts.any((c) => c.id == id))) {
       return 'Choose existing courts for $name.';
     }
-    final error = hours.validate();
-    if (error != null) return '$name: $error';
+    if (!followCourtHours) {
+      final error = hours.validate();
+      if (error != null) return '$name: $error';
+    }
     // The server checks that the coach is assigned to every court.
     if (enabled) {
       for (final court in courts.where((c) => courtIds.contains(c.id))) {
         if (!court.enabled ||
-            (trackAttendance && !hours.within(court.hours)) ||
             (trackAttendance &&
+                !followCourtHours &&
+                !hours.within(court.hours)) ||
+            (trackAttendance &&
+                !followCourtHours &&
                 !hours.allDay &&
                 (coaching ? classDuration : court.defaultDuration) >
                     hours.span)) {
@@ -134,6 +140,7 @@ class CourtPlan extends Equatable {
     String? price,
     bool? enabled,
     bool? trackAttendance,
+    bool? followCourtHours,
     CourtHours? hours,
     int? classDuration,
     String? seats,
@@ -153,6 +160,7 @@ class CourtPlan extends Equatable {
     price: price ?? this.price,
     enabled: enabled ?? this.enabled,
     trackAttendance: trackAttendance ?? this.trackAttendance,
+    followCourtHours: followCourtHours ?? this.followCourtHours,
     hours: hours ?? this.hours,
     classDuration: classDuration ?? this.classDuration,
     seats: seats ?? this.seats,
@@ -174,6 +182,7 @@ class CourtPlan extends Equatable {
     'court_ids': courtIds,
     'allowance': trackAttendance ? int.tryParse(allowance) : 0,
     'track_attendance': trackAttendance,
+    'follow_court_hours': followCourtHours,
     'expiry_mode': expiryMode,
     'expiry_days': expiryMode == 'after_start'
         ? int.tryParse(expiryDays)
@@ -213,6 +222,7 @@ class CourtPlan extends Equatable {
       price: local['price'] ?? courtMoney(v['price_minor']),
       enabled: v['enabled'],
       trackAttendance: v['track_attendance'] != false,
+      followCourtHours: v['follow_court_hours'] == true,
       hours: CourtHours.fromJson(Map<String, dynamic>.from(v['availability'])),
       classDuration: v['class_duration_minutes'] ?? 60,
       seats: local['seats'] ?? '${v['class_seats'] ?? 8}',
@@ -234,6 +244,7 @@ class CourtPlan extends Equatable {
     price,
     enabled,
     trackAttendance,
+    followCourtHours,
     hours,
     classDuration,
     seats,

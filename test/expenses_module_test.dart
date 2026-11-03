@@ -18,6 +18,7 @@ import 'package:eden_booking/modules/expenses/repositories/expenses_repository.d
 import 'package:eden_booking/modules/expenses/cubit/expenses_cubit.dart';
 import 'package:eden_booking/modules/expenses/cubit/expense_form_cubit.dart';
 import 'package:eden_booking/modules/expenses/widgets/expenses_widgets.dart';
+import 'package:eden_booking/modules/expenses/widgets/expense_daily_breakdown.dart';
 import 'package:eden_booking/modules/accounts/models/accounts_models.dart';
 import 'package:eden_booking/modules/accounts/cubit/accounts_cubits.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
@@ -109,6 +110,81 @@ Future<WorkspaceCubit> workspace() async {
 }
 
 void main() {
+  testWidgets(
+    'daily expense cards show purpose, space, methods and day actions',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const summary = ExpenseDailyTotal(
+        gross: 20000,
+        reversals: 5000,
+        expenseCount: 1,
+        reversalCount: 1,
+        methods: {'cash': 10000, 'upi': 5000},
+        purposes: [
+          ExpensePurposeTotal(
+            'Maintenance',
+            'Floodlight repair',
+            'Court 1',
+            20000,
+          ),
+        ],
+        purposeCount: 1,
+      );
+      int? chosenDay;
+      var addCount = 0;
+      var downloadCount = 0;
+      Future<void> pumpDaily(int? selectedDay) => tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.all(16),
+              child: ExpenseDailyBreakdown(
+                summary: ExpenseSummary(
+                  15000,
+                  1,
+                  const {'2026-10-15': 20000},
+                  const [],
+                  dailyTotals: const {'2026-10-15': summary},
+                ),
+                anchor: DateTime(2026, 10),
+                currency: 'INR',
+                selectedDay: selectedDay,
+                onDay: (day) => chosenDay = day,
+                onClearDay: () => chosenDay = null,
+                onAddExpense: () => addCount++,
+                onDownloadDay: () => downloadCount++,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await pumpDaily(null);
+      expect(find.text('Expenses by day'), findsOneWidget);
+      expect(
+        find.textContaining('Maintenance · Floodlight repair · Court 1'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Reversals'), findsOneWidget);
+      expect(find.textContaining('Cash'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('expense-day-2026-10-15')));
+      expect(chosenDay, 15);
+
+      await pumpDaily(chosenDay);
+      expect(find.text('Selected day’s expenses'), findsOneWidget);
+      expect(find.textContaining('Net cash spent'), findsOneWidget);
+      expect(find.textContaining('Net bank spent'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('expense-day-add')));
+      await tester.tap(find.byKey(const ValueKey('expense-day-download')));
+      expect(addCount, 1);
+      expect(downloadCount, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test(
     'month/year bounds include full period and aggregate correct months',
     () {
@@ -284,6 +360,8 @@ void main() {
       if (page == 'expenses') {
         expect(find.text('Monthly'), findsOneWidget);
         expect(find.text('Add expense'), findsOneWidget);
+        expect(find.byType(ExpenseChart), findsOneWidget);
+        expect(find.text('View trend'), findsNothing);
         await tester.tap(find.byTooltip('Download report'));
         await tester.pumpAndSettle();
         final reportSpace = find.byKey(const ValueKey('expense-report-space'));

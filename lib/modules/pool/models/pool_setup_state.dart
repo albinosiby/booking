@@ -86,6 +86,7 @@ class PoolSetupState extends WorkspaceState {
     coachesLoading,
     coachError,
     draft.plans.length,
+    subscriptions: draft.subscriptions,
   );
   PoolReviewModel get reviewModel =>
       PoolReviewModel(draft, currency, coaches: coaches);

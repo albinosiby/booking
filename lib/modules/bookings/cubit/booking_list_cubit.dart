@@ -8,21 +8,27 @@ import '../repositories/booking_repository.dart';
 import '../../workspace/repositories/refreshable_reads.dart';
 import '../../workspace/cubit/workspace_state.dart' show LoadStatus;
 import 'booking_form_cubit.dart';
+import '../../booking_blocks/repositories/slot_block_repository.dart';
 
 class BookingListCubit extends Cubit<BookingListModel> {
-  BookingListCubit(this.session, this.repository, this.mode)
-    : super(
-        BookingListModel(
-          date: mode == BookingListMode.bookings
-              ? null
-              : bookingDate(DateTime.now()),
-        ),
-      ) {
+  BookingListCubit(
+    this.session,
+    this.repository,
+    this.mode, {
+    this.blockRepository,
+  }) : super(
+         BookingListModel(
+           date: mode == BookingListMode.bookings
+               ? null
+               : bookingDate(DateTime.now()),
+         ),
+       ) {
     scope = bookingScope(session);
     subscription = session.snapshots.listen((_) {
       if (bookingScope(session) != scope) {
         scope = bookingScope(session);
         generation++;
+        blockGeneration++;
         countGeneration++;
         countWindow = null;
         loadedFilter = null;
@@ -45,13 +51,18 @@ class BookingListCubit extends Cubit<BookingListModel> {
       refreshCounts();
       load();
     });
+    blockChanges = mode == BookingListMode.calendar
+        ? blockRepository?.changes.listen((_) => load())
+        : null;
   }
   final WorkspaceSession session;
   final BookingRepository repository;
   final BookingListMode mode;
+  final SlotBlockRepository? blockRepository;
+  StreamSubscription<void>? blockChanges;
   late String scope;
   late StreamSubscription subscription, changes;
-  int generation = 0, countGeneration = 0;
+  int generation = 0, blockGeneration = 0, countGeneration = 0;
   String? loadedFilter;
   String resultKey(BookingListModel s) =>
       '$scope/${s.date}/${s.businessId}/${s.spaceId}/${s.status}/${s.query}/${s.dueView}';
@@ -97,6 +108,7 @@ class BookingListCubit extends Cubit<BookingListModel> {
           spaceId: captured.spaceId,
           query: captured.query.isEmpty ? null : captured.query,
           status: captured.status,
+          excludeAdmissions: mode == BookingListMode.bookings,
         );
         if (!isClosed && g == countGeneration && countScope(state) == filter) {
           emit(state.copyWith(dateCounts: counts, countsLoading: false));
@@ -122,9 +134,56 @@ class BookingListCubit extends Cubit<BookingListModel> {
     }
   }
 
+  Future<void> loadBlocks(
+    BookingCatalog catalog,
+    BookingListModel filter,
+    int blockRequest,
+  ) async {
+    final source = blockRepository, date = filter.date;
+    if (source == null || date == null) return;
+    try {
+      final entries = <CalendarBlockEntry>[];
+      for (final business in catalog.filters) {
+        if (filter.businessId != null && filter.businessId != business.id) {
+          continue;
+        }
+        if (filter.spaceId != null &&
+            !business.spaces.any((space) => space.id == filter.spaceId)) {
+          continue;
+        }
+        var cursor = 0;
+        while (true) {
+          final page = await source.list(
+            business.id,
+            date,
+            spaceId: filter.spaceId,
+            cursor: cursor,
+          );
+          if (isClosed || blockRequest != blockGeneration) return;
+          entries.addAll(
+            page.items.map((block) => CalendarBlockEntry(business, block)),
+          );
+          if (page.next == null) break;
+          cursor = page.next!;
+        }
+      }
+      entries.sort((a, b) => a.block.start.compareTo(b.block.start));
+      if (!isClosed && blockRequest == blockGeneration) {
+        emit(state.copyWith(blocks: entries, blocksLoading: false));
+      }
+    } catch (e) {
+      if (!isClosed && blockRequest == blockGeneration) {
+        emit(
+          state.copyWith(blocksLoading: false, blocksError: bookingError(e)),
+        );
+      }
+    }
+  }
+
   Future<void> load({bool more = false}) async {
     if (more && (state.loadingMore || state.next == null)) return;
     final g = ++generation, filter = state;
+    if (!more) blockGeneration++;
     final retain = more || loadedFilter == resultKey(filter);
     if (!more && mode == BookingListMode.calendar) refreshCounts();
     emit(
@@ -133,6 +192,13 @@ class BookingListCubit extends Cubit<BookingListModel> {
         hasLoaded: retain && state.hasLoaded,
         loadingMore: more,
         bookings: retain ? null : const [],
+        blocks: retain ? null : const [],
+        blocksLoading: more
+            ? null
+            : mode == BookingListMode.calendar &&
+                  blockRepository != null &&
+                  filter.date != null,
+        clearBlocksError: !more,
         collections: retain ? null : const [],
         outstanding: retain ? null : const [],
         clearNext: !more,
@@ -203,6 +269,9 @@ class BookingListCubit extends Cubit<BookingListModel> {
           query: filter.query.isEmpty ? null : filter.query,
           status: filter.status,
           cursor: more ? filter.next! : 0,
+          // Plan and subscription sessions live in Admissions; the
+          // Calendar keeps them so held courts still look taken.
+          excludeAdmissions: mode == BookingListMode.bookings,
         );
         if (!isClosed && g == generation) {
           loadedFilter = resultKey(filter);
@@ -218,6 +287,12 @@ class BookingListCubit extends Cubit<BookingListModel> {
             ),
           );
         }
+        if (mode == BookingListMode.calendar &&
+            !more &&
+            !isClosed &&
+            g == generation) {
+          await loadBlocks(catalog, filter, blockGeneration);
+        }
       }
     } catch (e) {
       if (!isClosed && g == generation) {
@@ -230,6 +305,7 @@ class BookingListCubit extends Cubit<BookingListModel> {
           state.copyWith(
             loading: false,
             loadingMore: false,
+            blocksLoading: false,
             error: bookingError(e),
           ),
         );
@@ -304,10 +380,12 @@ class BookingListCubit extends Cubit<BookingListModel> {
   @override
   Future<void> close() async {
     generation++;
+    blockGeneration++;
     countGeneration++;
     countTimer?.cancel();
     await subscription.cancel();
     await changes.cancel();
+    await blockChanges?.cancel();
     return super.close();
   }
 }

@@ -188,28 +188,39 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
       expect(r.requests.single.weekdays, [3, 5]);
-      expect(find.text('Free start times · Wed/Fri'), findsOneWidget);
-      expect(find.text('Taken · 1 date'), findsOneWidget);
-      expect(find.text('Free'), findsOneWidget);
+      expect(find.text('Choose start & end · Wed/Fri'), findsOneWidget);
+      expect(find.text('Booked · 1 of 2 dates'), findsOneWidget);
+      expect(find.text('Available'), findsOneWidget);
       expect(find.text('7 of 10 left'), findsOneWidget);
       expect(
-        find.textContaining('06:00 is taken on 1 of 2 dates'),
+        find.textContaining('06:00–07:00 is booked on 1 of 2 dates'),
         findsOneWidget,
       );
 
       await tester.ensureVisible(
-        find.byKey(const ValueKey('admission-slot-07:00')),
+        find.byKey(const ValueKey('booking-time-07:00')),
       );
-      await tester.tap(find.byKey(const ValueKey('admission-slot-07:00')));
+      await tester.tap(find.byKey(const ValueKey('booking-time-07:00')));
       await tester.pumpAndSettle();
       expect(c.state.draft.time, '07:00');
-      expect(find.text('Selected'), findsOneWidget);
-      expect(find.textContaining('is taken on'), findsNothing);
+      // Like booking: the start waits for an end; 08:00 ends a 1 h visit.
+      expect(find.text('Start · tap to clear'), findsOneWidget);
+      expect(find.text('1 h'), findsOneWidget);
+      expect(find.text('Not a valid end'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('booking-time-08:00')));
+      await tester.pumpAndSettle();
+      expect(c.state.draft.duration, 60);
+      expect(find.text('End · tap to clear'), findsOneWidget);
+      expect(find.textContaining('is booked on'), findsNothing);
+      // Tapping the start clears it, so any free start can be chosen.
+      await tester.tap(find.byKey(const ValueKey('booking-time-07:00')));
+      await tester.pumpAndSettle();
+      expect(find.text('Start · tap to clear'), findsNothing);
 
       await tester.ensureVisible(
-        find.byKey(const ValueKey('admission-slot-06:00')),
+        find.byKey(const ValueKey('booking-time-06:00')),
       );
-      await tester.tap(find.byKey(const ValueKey('admission-slot-06:00')));
+      await tester.tap(find.byKey(const ValueKey('booking-time-06:00')));
       await tester.pumpAndSettle();
       expect(find.text('06:00–07:00 is taken'), findsOneWidget);
       expect(find.text('Wed, 5 Jun 2030 at 6:00 AM'), findsOneWidget);
@@ -228,6 +239,53 @@ void main() {
       });
     },
   );
+
+  test('subscription start then end offers each hour option that is free', () {
+    SlotChartTime at(String time, {bool taken = false}) => SlotChartTime(
+      time: time,
+      endTime: time,
+      status: taken ? 'taken' : 'available',
+      sessionCount: 8,
+      clashCount: taken ? 2 : 0,
+    );
+    final chart = AdmissionSlotChart(
+      expiresOn: '2030-07-01',
+      times: [
+        at('17:00'),
+        at('18:00'),
+        at('19:00', taken: true),
+        at('20:00'),
+        at('21:00'),
+      ],
+    );
+    Map<String, String?> labels(PlanPick pick, {int duration = 60}) => {
+      for (final c in planCells(
+        chart,
+        start: '17:00',
+        duration: duration,
+        durations: const [60, 120, 180],
+        step: 60,
+        pick: pick,
+      ))
+        c.time: c.cell.label,
+    };
+    expect(labels(PlanPick.end), {
+      '17:00': 'Start · tap to clear',
+      '18:00': '1 h',
+      '19:00': '2 h',
+      '20:00': 'Booked',
+      '21:00': 'Not a valid end',
+    });
+    expect(labels(PlanPick.done, duration: 120), {
+      '17:00': 'Start · tap to clear',
+      '18:00': 'Selected range',
+      '19:00': 'End · tap to clear',
+      '20:00': 'Available',
+      '21:00': 'Available',
+    });
+    expect(rangeClash(chart, '17:00', 120, 60), isNull);
+    expect(rangeClash(chart, '18:00', 120, 60), (2, 8));
+  });
 
   testWidgets('booked booking slots open who holds them; free slots select', (
     tester,

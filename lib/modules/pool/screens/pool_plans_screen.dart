@@ -35,7 +35,7 @@ class PoolPlansScreen extends StatelessWidget {
       );
     }
     if (p == null) {
-      return PoolItemList(
+      final list = PoolItemList(
         items: model.plans
             .map(
               (p) => (
@@ -54,6 +54,26 @@ class PoolPlansScreen extends StatelessWidget {
           id: id,
         ),
         enabled: !disabled,
+      );
+      if (coaching) return list;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppCard(
+            child: SwitchListTile(
+              key: const ValueKey('pool-subscriptions'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Subscriptions'),
+              subtitle: const Text(
+                'Members pay a monthly fee and keep a weekly time slot. Turn on to show Subscription in New booking.',
+              ),
+              value: model.subscriptions,
+              onChanged: disabled ? null : cubit.subscriptions,
+            ),
+          ),
+          const SizedBox(height: 16),
+          list,
+        ],
       );
     }
     void update(PoolPlan Function(PoolPlan) change) =>

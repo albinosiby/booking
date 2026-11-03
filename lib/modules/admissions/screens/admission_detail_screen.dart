@@ -12,6 +12,8 @@ import '../repositories/admission_repository.dart';
 import '../cubit/admission_cubit.dart';
 import '../cubit/admission_state.dart';
 import '../widgets/admission_cards.dart';
+import '../widgets/admission_payment_sheet.dart';
+import '../widgets/subscription_sections.dart';
 import '../../../utils/helpers/time_format.dart';
 
 class AdmissionDetailScreen extends StatefulWidget {
@@ -102,7 +104,7 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
       context: context,
       scrollable: false,
       showDragHandle: false,
-      builder: (context) => _AdmissionPaymentSheet(
+      builder: (context) => AdmissionPaymentSheet(
         refund: refund,
         currency: cubit.state.catalog.currency,
         limit: refund ? a.paid : a.balance,
@@ -156,8 +158,37 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
   }
 
   Future<void> cancelAdmission() async {
-    final why = await reason('Cancel admission');
+    final stop = cubit.state.detail?.subscription != null;
+    final why = await reason(stop ? 'Stop subscription' : 'Cancel admission');
     if (why != null && mounted) await cubit.cancel(why);
+  }
+
+  Future<void> reschedule(Admission a) async {
+    final s = cubit.state;
+    final minimum =
+        s.catalog.businesses
+            .where((b) => b.id == a.businessId)
+            .firstOrNull
+            ?.pools
+            .where((p) => p.id == a.poolId)
+            .firstOrNull
+            ?.defaultDuration ??
+        30;
+    final next = await showRescheduleSheet(
+      context,
+      admission: a,
+      today: a.today,
+      minimumDuration: minimum,
+    );
+    if (next != null && mounted) {
+      await cubit.reschedule(
+        from: next.from,
+        weekdays: next.weekdays,
+        time: next.time,
+        duration: next.duration,
+        reason: next.reason,
+      );
+    }
   }
 
   Future<void> deleteMembership() async {
@@ -234,6 +265,12 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
         scheme = theme.colorScheme,
         muted = scheme.onSurface.withValues(alpha: .65),
         unit = a.kind == 'coaching' ? 'classes' : 'days',
+        unreserved =
+            a.allowance -
+            a.visits.where((visit) => visit.status != 'cancelled').length,
+        unreservedUnit = a.kind == 'coaching'
+            ? (unreserved == 1 ? 'class' : 'classes')
+            : (unreserved == 1 ? 'day' : 'days'),
         status = admissionStatusColor(context, a.status);
     return AppCard(
       padding: const EdgeInsets.all(18),
@@ -328,6 +365,13 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
               a.mode == 'fixed'
                   ? 'Fixed schedule · sessions count after they end'
                   : 'Flexible · one deduction per attendance date',
+            ),
+          if (a.mode == 'fixed' &&
+              (a.status == 'active' || a.status == 'upcoming') &&
+              unreserved > 0)
+            _InfoRow(
+              Icons.info_outline,
+              '$unreserved $unreservedUnit ${unreserved == 1 ? 'has' : 'have'} no reservation and ${unreserved == 1 ? 'expires' : 'expire'} on ${a.expiry}.',
             ),
           if (a.kind == 'coaching')
             _InfoRow(Icons.person_outline, 'Coach · ${a.coach}'),
@@ -511,6 +555,16 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
       spacing: 8.w,
       runSpacing: 8.h,
       children: [
+        if (a.subscription != null &&
+            ['active', 'upcoming'].contains(a.status) &&
+            !a.deleted &&
+            s.catalog.canManage)
+          OutlinedButton.icon(
+            key: const ValueKey('subscription-reschedule'),
+            onPressed: enabled ? () => reschedule(a) : null,
+            icon: const Icon(Icons.event_repeat_outlined, size: 18),
+            label: const Text('Reschedule'),
+          ),
         if (a.renewalId != null)
           OutlinedButton.icon(
             onPressed: () => context.push('/admissions/${a.renewalId}'),
@@ -672,6 +726,17 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
         secondary: [
           AppPanel(title: 'Student & plan', child: summary(a, s)),
           ...actionButtons(a, s, enabled),
+          if (a.subscription != null) ...[
+            const SizedBox(height: 28),
+            AppPanel(
+              title: 'Monthly fees',
+              child: SubscriptionFeesCard(
+                admission: a,
+                currency: currency,
+                today: a.today,
+              ),
+            ),
+          ],
           const SizedBox(height: 28),
           AppPanel(
             title: 'Payments',
@@ -746,10 +811,14 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
                 tooltip: 'More actions',
                 enabled: enabled,
                 onSelected: (_) => cancelAdmission(),
-                itemBuilder: (context) => const [
+                itemBuilder: (context) => [
                   PopupMenuItem(
                     value: 'cancel',
-                    child: Text('Cancel admission'),
+                    child: Text(
+                      a.subscription != null
+                          ? 'Stop subscription'
+                          : 'Cancel admission',
+                    ),
                   ),
                 ],
               ),
@@ -772,6 +841,14 @@ class _AdmissionDetailScreenState extends State<AdmissionDetailScreen> {
               money(a, currency),
               SizedBox(height: 16.h),
               ...actionButtons(a, s, enabled),
+              if (a.subscription != null) ...[
+                section('Monthly fees'),
+                SubscriptionFeesCard(
+                  admission: a,
+                  currency: currency,
+                  today: a.today,
+                ),
+              ],
               if (!a.membershipOnly) ...[
                 section(
                   'Sessions & attendance',
@@ -818,6 +895,7 @@ String admissionAction(String action) => switch (action) {
   'collection' => 'Payment collected',
   'refund' => 'Refund recorded',
   'cancelled' => 'Admission cancelled',
+  'rescheduled' => 'Weekly slot rescheduled',
   'deleted' => 'Membership deleted · history and dues retained',
   'session_cancel' => 'Session cancelled',
   'session_reschedule' => 'Session rescheduled',
@@ -923,125 +1001,4 @@ class _HistoryEntry extends StatelessWidget {
       ),
     );
   }
-}
-
-class _AdmissionPaymentSheet extends StatefulWidget {
-  const _AdmissionPaymentSheet({
-    required this.refund,
-    required this.currency,
-    required this.limit,
-  });
-  final bool refund;
-  final String currency;
-  final int limit;
-  @override
-  State<_AdmissionPaymentSheet> createState() => _AdmissionPaymentSheetState();
-}
-
-class _AdmissionPaymentSheetState extends State<_AdmissionPaymentSheet> {
-  late List<BookingPaymentDraft> payments;
-  String reason = '', error = '';
-  @override
-  void initState() {
-    super.initState();
-    payments = [
-      BookingPaymentDraft(
-        amount: widget.refund ? '' : (widget.limit / 100).toStringAsFixed(2),
-      ),
-    ];
-  }
-
-  void addPayment() {
-    final remaining =
-        widget.limit -
-        payments.fold<int>(
-          0,
-          (amount, payment) => amount + (payment.minor ?? 0),
-        );
-    setState(
-      () => payments = [
-        ...payments,
-        BookingPaymentDraft(
-          amount: !widget.refund && remaining > 0
-              ? (remaining / 100).toStringAsFixed(2)
-              : '',
-        ),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    child: Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        24,
-        20,
-        MediaQuery.viewInsetsOf(context).bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            widget.refund
-                ? 'Record admission refund'
-                : 'Collect admission payment',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 16),
-          Text('Maximum ${bookingMoney(widget.limit, widget.currency)}'),
-          BookingPaymentEditor(
-            payments: payments,
-            enabled: true,
-            currency: widget.currency,
-            refund: widget.refund,
-            onAdd: addPayment,
-            onRemove: (id) => setState(
-              () => payments = payments.where((p) => p.id != id).toList(),
-            ),
-            onUpdate: (id, change) => setState(
-              () => payments = payments
-                  .map((p) => p.id == id ? change(p) : p)
-                  .toList(),
-            ),
-          ),
-          if (widget.refund)
-            ConfigurationField(
-              label: 'Refund reason',
-              value: reason,
-              onChanged: (v) => reason = v,
-            ),
-          if (error.isNotEmpty) Text(error),
-          const SizedBox(height: 16),
-          AppButton(
-            label: 'Save',
-            onPressed: () {
-              final selected = payments.where((p) => !p.isBlank).toList();
-              final validation = selected.isEmpty
-                  ? 'Enter at least one payment.'
-                  : selected
-                        .map((p) => p.validate())
-                        .whereType<String>()
-                        .firstOrNull;
-              if (validation != null ||
-                  selected.fold(0, (n, p) => n + (p.minor ?? 0)) >
-                      widget.limit ||
-                  (widget.refund && reason.trim().length < 2)) {
-                setState(
-                  () => error =
-                      validation ??
-                      (widget.refund
-                          ? 'Check the amount and provide a refund reason.'
-                          : 'Check the amount collected.'),
-                );
-                return;
-              }
-              Navigator.pop(context, (selected, reason.trim()));
-            },
-          ),
-        ],
-      ),
-    ),
-  );
 }

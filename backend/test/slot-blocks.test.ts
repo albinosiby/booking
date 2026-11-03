@@ -414,6 +414,50 @@ test("staff can manage assigned spaces only and cannot unblock a multi-space own
   assert.equal(listed.items[0].spaces.length, 1);
   await assert.rejects(() => blocks.unblock(staff, saved.id, {}));
 });
+test("view-only calendar staff can read assigned blocked slots but cannot change them", async () => {
+  const f = await fixture(),
+    viewer = actor();
+  const invite = await workspace.invite(f.owner, {
+    email: viewer.email,
+    display_name: "Calendar viewer",
+    role: "staff",
+    permissions: ["view_bookings"],
+    assignments: [
+      { business_id: f.id, resource_ids: [f.selection.resource_id] },
+    ],
+  });
+  await workspace.accept(
+    viewer,
+    new URL(invite.invitation_url).searchParams.get("token")!,
+  );
+  const saved = await blocks.create(f.owner, block(f));
+  const visible = await blocks.list(viewer, {
+    business_id: f.id,
+    date,
+    resource_id: f.selection.resource_id,
+  });
+  assert.equal(visible.items.length, 1);
+  assert.equal(visible.items[0].can_unblock, false);
+  assert.equal(visible.items[0].created_by, "");
+  assert.equal(
+    (
+      await blocks.list(f.owner, {
+        business_id: f.id,
+        date,
+        resource_id: f.config.courts[1].id,
+      })
+    ).items.length,
+    0,
+  );
+  await assert.rejects(() =>
+    blocks.list(viewer, {
+      business_id: f.id,
+      date,
+      resource_id: f.config.courts[1].id,
+    }),
+  );
+  await assert.rejects(() => blocks.unblock(viewer, saved.id, {}));
+});
 test("rescheduling with a previously issued quote cannot enter a newly blocked interval", async () => {
   const f = await fixture(),
     saved = await create(f),

@@ -274,6 +274,9 @@ export function createHandler(
   add("GET", "/v1/admissions/catalog", (i) =>
     services.admissions.catalog(i.actor),
   );
+  add("GET", "/v1/admissions/payment-reminders", (i) =>
+    services.admissions.paymentReminders(i.actor, i.query),
+  );
   add("GET", "/v1/admissions/expired", (i) =>
     services.admissions.expired(i.actor, i.query),
   );
@@ -322,6 +325,9 @@ export function createHandler(
   );
   add("POST", "/v1/admissions/:id/payments", (i) =>
     services.admissions.payments(i.actor, i.params.id, i.body),
+  );
+  add("POST", "/v1/admissions/:id/schedule", (i) =>
+    services.admissions.reschedule(i.actor, i.params.id, i.body),
   );
   add("POST", "/v1/admissions/:id/cancel", (i) =>
     services.admissions.cancel(i.actor, i.params.id, i.body),

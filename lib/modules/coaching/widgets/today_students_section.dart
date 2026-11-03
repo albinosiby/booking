@@ -48,6 +48,13 @@ class _TodayStudentsSectionState extends State<TodayStudentsSection>
     super.dispose();
   }
 
+  /// Home shows no inline errors: a failed action is reported once.
+  Future<void> act(Future<void> Function() action) async {
+    await action();
+    final error = cubit.state.error;
+    if (mounted && error != null) showMessage(context, error);
+  }
+
   Future<void> openClasses() async {
     await context.push(Routes.myClasses);
     if (mounted) await cubit.refreshToday(force: true);
@@ -107,14 +114,20 @@ class _TodayStudentsSectionState extends State<TodayStudentsSection>
             ),
           ),
           const SizedBox(height: 12),
-          if (state.loading)
-            const AppLoadingState(label: 'Loading today’s students…'),
-          if (state.error != null) AppErrorWidget(message: state.error!),
+          // Data updates in place; only an empty, failed load gets a fallback.
+          if (state.error != null &&
+              !state.loading &&
+              students.isEmpty &&
+              state.flexibleStudents.isEmpty)
+            AppSectionFallback(
+              message: 'Couldn’t load today’s students right now.',
+              onRetry: () => cubit.refreshToday(force: true),
+            ),
           if (state.pendingCheckIn)
             TextButton.icon(
               onPressed: state.busy || state.loading
                   ? null
-                  : cubit.retryCheckIn,
+                  : () => act(cubit.retryCheckIn),
               icon: const Icon(Icons.cloud_upload_outlined),
               label: const Text('Finish attendance save'),
             ),
@@ -159,12 +172,15 @@ class _TodayStudentsSectionState extends State<TodayStudentsSection>
                       session: c,
                       student: student,
                       enabled: !disabled && state.error == null,
-                      onMark: (value) => cubit.mark(student, value),
+                      onMark: (value) => act(() => cubit.mark(student, value)),
                     ),
               ],
             ),
           ],
-          FlexibleStudentsPanel(state: state, onPresent: cubit.checkIn),
+          FlexibleStudentsPanel(
+            state: state,
+            onPresent: (student) => act(() => cubit.checkIn(student)),
+          ),
         ],
       );
     },

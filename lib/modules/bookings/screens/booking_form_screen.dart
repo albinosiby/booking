@@ -154,12 +154,17 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final mode in PoolBookingMode.values)
+            for (final mode in PoolBookingMode.values.where(
+              (m) =>
+                  m != PoolBookingMode.subscription ||
+                  s.business?.subscriptions == true,
+            ))
               ChoiceChip(
                 label: Text(switch (mode) {
                   PoolBookingMode.singleVisit => 'Court booking',
                   PoolBookingMode.swimming => 'Court plan',
                   PoolBookingMode.coaching => 'Coaching',
+                  PoolBookingMode.subscription => 'Subscription',
                 }),
                 selected: s.poolMode == mode,
                 onSelected: enabled ? (_) => poolMode(mode) : null,
@@ -634,7 +639,9 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   Widget admissionSection(BookingFormModel s, AdmissionState a) =>
       BookingFormSection(
         number: 3,
-        title: s.poolMode == PoolBookingMode.coaching
+        title: s.poolMode == PoolBookingMode.subscription
+            ? 'Subscription'
+            : s.poolMode == PoolBookingMode.coaching
             ? 'Coaching plan'
             : s.business?.type == 'pool'
             ? 'Swimming plan'
@@ -642,7 +649,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         children: [
           if (a.loading) const AppLoadingState(initial: false),
           if (a.error != null) AppErrorWidget(message: a.error!),
-          if (!a.loading && a.availablePlans.isEmpty) ...[
+          if (!a.loading && !a.subscription && a.availablePlans.isEmpty) ...[
             const AppEmptyState(
               showCard: false,
               title: 'No matching plans',
@@ -673,16 +680,19 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
     children: [
       if (a.loading)
         const Text('Loading payment settings…')
-      else if (a.catalog.canCollect) ...[
-        if (a.plan != null) ...[
+      else ...[
+        // A subscription's fee is agreed per person, so it is always entered.
+        if (a.plan != null && (a.catalog.canCollect || a.subscription)) ...[
           AdmissionPlanAmountField(cubit: admission!, state: a),
           const SizedBox(height: 12),
         ],
-        AdmissionPaymentFields(cubit: admission!, state: a),
-      ] else
-        const Text(
-          'You can confirm unpaid. Payment collection requires permission.',
-        ),
+        if (a.catalog.canCollect)
+          AdmissionPaymentFields(cubit: admission!, state: a)
+        else
+          const Text(
+            'You can confirm unpaid. Payment collection requires permission.',
+          ),
+      ],
     ],
   );
   Widget admissionConfirm(AdmissionState a) => SafeArea(

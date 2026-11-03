@@ -23,6 +23,12 @@ export class AdmissionController {
   @Get("catalog") catalog(@Req() r: AuthRequest) {
     return this.service.catalog(r.actor);
   }
+  @Get("payment-reminders") paymentReminders(
+    @Req() request: AuthRequest,
+    @Query() query: unknown,
+  ) {
+    return this.service.paymentReminders(request.actor, query);
+  }
   @Get("expired") expired(
     @Req() request: AuthRequest,
     @Query() query: unknown,
@@ -92,6 +98,13 @@ export class AdmissionController {
     @Body() v: unknown,
   ) {
     return this.service.payments(r.actor, id, v);
+  }
+  @Post(":id/schedule") reschedule(
+    @Req() r: AuthRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() v: unknown,
+  ) {
+    return this.service.reschedule(r.actor, id, v);
   }
   @Post(":id/cancel") cancel(
     @Req() r: AuthRequest,

@@ -47,6 +47,7 @@ class AdmissionTypeRepository extends AdmissionsFake {
             'Coach Asha',
           ),
         ],
+        subscriptions: true,
       ),
     ],
   );
@@ -154,6 +155,7 @@ void main() {
         expect(typePicker(tester).items.map((item) => item.label), [
           'Plan',
           'Coaching',
+          'Subscription',
         ]);
         await chooseType(tester, 'Coaching');
         expect(cubit.state.formKind, 'coaching');

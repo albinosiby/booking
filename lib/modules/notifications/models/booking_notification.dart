@@ -7,19 +7,25 @@ class BookingNotification extends Equatable {
     required this.userId,
     required this.kind,
     this.settlementId,
+    this.admissionId,
     this.title,
     this.body,
   });
   final String eventId, bookingId, userId, kind;
-  final String? settlementId;
+  final String? settlementId, admissionId;
   bool get cashCollection => kind == 'staff_cash_collected';
   bool get callWallet => walletKinds.contains(kind);
+  static const walletKinds = ['call_wallet_low', 'call_wallet_empty'];
+
+  /// A subscription's monthly fee is due today.
+  bool get subscriptionFee => kind == 'subscription_fee_due';
   String get route => cashCollection
       ? '/payments'
+      : subscriptionFee
+      ? '/admissions/$admissionId'
       : callWallet
       ? '/profile/agent-calls/wallet'
       : '/booking/$bookingId';
-  static const walletKinds = ['call_wallet_low', 'call_wallet_empty'];
   final String? title, body;
   static final _uuid = RegExp(
     r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$',
@@ -33,13 +39,16 @@ class BookingNotification extends Equatable {
         booking = data['booking_id'],
         user = data['recipient_user_id'],
         kind = data['event_type'];
-    final settlement = data['settlement_id'];
-    final cash = kind == 'staff_cash_collected';
-    final wallet = walletKinds.contains(kind);
+    final settlement = data['settlement_id'], admission = data['admission_id'];
+    final cash = kind == 'staff_cash_collected',
+        fee = kind == 'subscription_fee_due',
+        wallet = walletKinds.contains(kind);
     if (event is! String ||
         !_uuid.hasMatch(event) ||
         (cash
             ? settlement is! String || !_uuid.hasMatch(settlement)
+            : fee
+            ? admission is! String || !_uuid.hasMatch(admission)
             : !wallet && (booking is! String || !_uuid.hasMatch(booking))) ||
         user is! String ||
         user.isEmpty ||
@@ -48,14 +57,16 @@ class BookingNotification extends Equatable {
           'cancelled',
           'rescheduled',
           'staff_cash_collected',
+          'subscription_fee_due',
           ...walletKinds,
         ].contains(kind)) {
       return null;
     }
     return BookingNotification(
       eventId: event,
-      bookingId: cash || wallet ? '' : booking as String,
+      bookingId: cash || fee || wallet ? '' : booking as String,
       settlementId: cash ? settlement as String : null,
+      admissionId: fee ? admission as String : null,
       userId: user,
       kind: kind as String,
       title: title,
@@ -66,7 +77,9 @@ class BookingNotification extends Equatable {
   Map<String, String> toData() => {
     'event_id': eventId,
     if (cashCollection) 'settlement_id': settlementId!,
-    if (!cashCollection && !callWallet) 'booking_id': bookingId,
+    if (subscriptionFee) 'admission_id': admissionId!,
+    if (!cashCollection && !subscriptionFee && !callWallet)
+      'booking_id': bookingId,
     'recipient_user_id': userId,
     'event_type': kind,
   };
@@ -77,6 +90,7 @@ class BookingNotification extends Equatable {
     userId,
     kind,
     settlementId,
+    admissionId,
     title,
     body,
   ];

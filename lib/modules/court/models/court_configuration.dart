@@ -306,17 +306,30 @@ class CourtConfiguration extends Equatable {
   CourtConfiguration({
     Iterable<CourtResource> courts = const [],
     Iterable<CourtPlan> plans = const [],
+    this.reminderDays = defaultReminderDays,
+    this.subscriptions = false,
   }) : courts = List.unmodifiable(courts),
        plans = List.unmodifiable(plans);
 
+  static const defaultReminderDays = 3;
   final List<CourtResource> courts;
   final List<CourtPlan> plans;
+
+  /// Days before a plan ends when Home lists it for next month's payment.
+  final int reminderDays;
+
+  /// Offers monthly subscriptions in New booking and admissions.
+  final bool subscriptions;
   CourtConfiguration copyWith({
     Iterable<CourtResource>? courts,
     Iterable<CourtPlan>? plans,
+    int? reminderDays,
+    bool? subscriptions,
   }) => CourtConfiguration(
     courts: courts ?? this.courts,
     plans: plans ?? this.plans,
+    reminderDays: reminderDays ?? this.reminderDays,
+    subscriptions: subscriptions ?? this.subscriptions,
   );
 
   /// Removes references to a deleted court from plans and coach contacts.
@@ -337,6 +350,9 @@ class CourtConfiguration extends Equatable {
     'courts': courts.map((p) => p.toJson(localDraft: localDraft)).toList(),
     if (plans.isNotEmpty)
       'plans': plans.map((p) => p.toJson(localDraft: localDraft)).toList(),
+    if (reminderDays != defaultReminderDays)
+      'renewal_reminder_days': reminderDays,
+    if (subscriptions) 'subscriptions_enabled': true,
   };
   factory CourtConfiguration.fromJson(Map<String, dynamic> v) {
     // Coach contacts were replaced by team coaches; their plans are
@@ -354,6 +370,8 @@ class CourtConfiguration extends Equatable {
             ? plan.copyWith(clearCoach: true)
             : plan;
       }),
+      reminderDays: v['renewal_reminder_days'] ?? defaultReminderDays,
+      subscriptions: v['subscriptions_enabled'] == true,
     );
   }
   factory CourtConfiguration.initial(Business? b) {
@@ -494,5 +512,5 @@ class CourtConfiguration extends Equatable {
   }
 
   @override
-  List<Object?> get props => [courts, plans];
+  List<Object?> get props => [courts, plans, reminderDays, subscriptions];
 }

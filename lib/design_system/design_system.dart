@@ -13,6 +13,7 @@ export 'components/app_card.dart';
 export 'components/app_status_badge.dart';
 export 'components/app_empty_state.dart';
 export 'components/app_error_widget.dart';
+export 'components/app_section_fallback.dart';
 export 'layouts/adaptive_scaffold.dart';
 export 'layouts/app_page.dart';
 export 'layouts/responsive_builder.dart';

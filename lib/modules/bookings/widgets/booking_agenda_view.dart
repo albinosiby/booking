@@ -62,7 +62,12 @@ class BookingAgendaView extends StatelessWidget {
     final wide = calendar && isDesktopWidth(context);
     // Desktop Bookings list: toolbar, summary tiles and a two-column grid.
     final desk = !calendar && isDesktopWidth(context);
-    final empty = s.hasLoaded && s.error == null && s.bookings.isEmpty;
+    final empty =
+        s.hasLoaded &&
+        s.error == null &&
+        s.bookings.isEmpty &&
+        (!calendar ||
+            (s.blocks.isEmpty && !s.blocksLoading && s.blocksError == null));
     final dayHeader = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -163,6 +168,22 @@ class BookingAgendaView extends StatelessWidget {
       ],
       if (s.error != null)
         AppErrorWidget(message: s.error!, onRetry: cubit.refresh),
+      if (calendar && s.blocksLoading)
+        const AppLoadingState(label: 'Loading blocked slots…'),
+      if (calendar && s.blocksError != null)
+        AppErrorWidget(message: s.blocksError!, onRetry: cubit.load),
+      if (calendar && s.blocks.isNotEmpty) ...[
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text('Blocked slots', style: theme.textTheme.titleMedium),
+        ),
+        for (final entry in s.blocks)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: CalendarBlockCard(entry: entry, date: s.date ?? ''),
+          ),
+        const SizedBox(height: 12),
+      ],
       if (calendar)
         for (final space in orderedWorkspaceBusinesses(
           context,
@@ -463,7 +484,9 @@ class _BookingEmptyMessage extends StatelessWidget {
       ),
       const SizedBox(height: 16),
       Text(
-        calendar ? 'No bookings on this day' : 'Your schedule starts here',
+        calendar
+            ? 'No bookings or blocked slots on this day'
+            : 'Your schedule starts here',
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.titleMedium,
       ),
@@ -479,6 +502,65 @@ class _BookingEmptyMessage extends StatelessWidget {
       ),
     ],
   );
+}
+
+class CalendarBlockCard extends StatelessWidget {
+  const CalendarBlockCard({super.key, required this.entry, required this.date});
+
+  final CalendarBlockEntry entry;
+  final String date;
+
+  String edge(String stamp) {
+    final parts = stamp.split('T');
+    if (parts.length < 2 || parts[1].length < 5) return stamp;
+    final time = parts[1].substring(0, 5);
+    return parts[0] == date ? time : '$time · ${parts[0]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final block = entry.block;
+    final theme = Theme.of(context), colors = theme.colorScheme;
+    final time = block.allDay
+        ? 'All day'
+        : '${edge(block.start)} – ${edge(block.end)}';
+    final spaces = block.spaces.isNotEmpty
+        ? block.spaces.join(', ')
+        : block.sharedGround
+        ? 'Shared ground'
+        : 'Space unavailable';
+    return AppCard(
+      key: ValueKey('calendar-block-${block.id}'),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.lock_clock_outlined, color: colors.error, size: 21),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Blocked · ${entry.business.name}',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text('$spaces · $time'),
+                Text(
+                  entry.business.timezone,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class BookingCalendarPanel extends StatefulWidget {

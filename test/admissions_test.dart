@@ -6,11 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:eden_booking/di/injection.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import 'package:eden_booking/modules/admissions/cubit/admission_cubit.dart';
+import 'package:eden_booking/modules/admissions/cubit/admission_state.dart';
 import 'package:eden_booking/modules/admissions/models/admission_models.dart';
 import 'package:eden_booking/modules/admissions/repositories/admission_repository.dart';
 import 'package:eden_booking/modules/admissions/screens/admission_form_screen.dart';
 import 'package:eden_booking/modules/admissions/screens/admission_detail_screen.dart';
 import 'package:eden_booking/modules/admissions/screens/admissions_screen.dart';
+import 'package:eden_booking/modules/admissions/widgets/admission_form_fields.dart';
 import 'package:eden_booking/modules/bookings/models/booking_models.dart';
 import 'package:eden_booking/modules/workspace/cubit/workspace_cubit.dart';
 import 'package:eden_booking/modules/workspace/repositories/workspace_session.dart';
@@ -189,7 +191,15 @@ class CourtAdmissionsFake extends AdmissionsFake {
         '2030-06-04',
         'Asia/Kolkata',
         [
-          AdmissionPool('court', 'Court 1', [60], 60),
+          AdmissionPool(
+            'court',
+            'Court 1',
+            [60],
+            60,
+            openDays: [1, 2, 3, 4, 5, 6, 7],
+            opensAt: '07:00',
+            closesAt: '22:00',
+          ),
         ],
         [
           AdmissionPlan(
@@ -233,6 +243,62 @@ Future<WorkspaceCubit> workspace() async {
 }
 
 void main() {
+  testWidgets('fixed admission review explains unscheduled plan days', (
+    tester,
+  ) async {
+    final catalog = await CourtAdmissionsFake().catalog();
+    await tester.pumpWidget(
+      ScreenUtilInit(
+        designSize: const Size(390, 844),
+        builder: (context, _) => MaterialApp(
+          theme: AppTheme.build(Brightness.light),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: AdmissionReviewSummary(
+                state: AdmissionState(
+                  catalog: catalog,
+                  draft: const AdmissionDraft(
+                    businessId: 'academy',
+                    poolId: 'court',
+                    planId: 'pass',
+                    mode: 'fixed',
+                    start: '2030-06-04',
+                    customer: BookingCustomer(
+                      name: 'Player',
+                      phone: '9876543210',
+                    ),
+                  ),
+                  preview: AdmissionPreview(
+                    'token',
+                    '2030-07-04',
+                    200000,
+                    List.filled(18, 'Reserved visit'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('18 of 20 plan days reserved'), findsOneWidget);
+    expect(
+      find.text(
+        '2 days have no reservation and will expire unused on 2030-07-04.',
+      ),
+      findsOneWidget,
+    );
+  });
+  test('new court admission starts with court days and opening time', () async {
+    final w = await workspace(), c = AdmissionCubit(w, CourtAdmissionsFake());
+    await c.loadForm(businessId: 'academy', poolId: 'court', planId: 'pass');
+    expect(c.state.draft.mode, 'fixed');
+    expect(c.state.draft.weekdays, [1, 2, 3, 4, 5, 6, 7]);
+    expect(c.state.draft.time, '07:00');
+    await c.close();
+    await w.close();
+  });
   test(
     'renewal retains customer and gets the current plan, with no inherited payments',
     () async {

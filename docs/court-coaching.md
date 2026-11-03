@@ -4,8 +4,8 @@ Badminton, tennis and basketball businesses can now sell **court plans** (like s
 
 ## Owner setup
 
-1. **Court settings → Plans & coaching → Add coaching plan** (or **Add court plan**, see below). Choose the courts the plan can run on, number of classes, validity (days, months, years or fixed date), total price, class duration, maximum students per class and the coaching days/times. The coaching times must fit inside the opening hours of every selected court. Coaching plans are optional; a court business without plans is unchanged.
-2. **Save changes** (or Activate). Enabled plans need at least one court and a price before an active business can be saved.
+1. **Court settings → Plans & coaching → Add coaching plan** (or **Add court plan**, see below). This opens an uncommitted plan editor. Choose the courts, session count, validity, price and other plan details. **Follow court opening hours** is on for new plans: admission sessions may use any of the selected court's configured opening days and hours. Turn it off to set narrower plan days and hours. Coaching plans also need class duration and seat limit.
+2. Press **Continue** to validate and add the plan to the local settings list. **Cancel new plan** discards it. **Save changes** (or Activate) publishes the settings. An enabled plan needs a court and price before Continue succeeds; adding a plan does not publish it immediately.
 3. **Team & access → Edit staff → Coaching plans.** Coaches are team members with **Also a coach** turned on in their staff access (see [Staff coaches](staff-coaches.md)). Their courts are the courts of that staff access. **Assign coaching plans** offers only plans whose courts they cover.
 
 **Court plans** (Court settings → Plans & coaching → Add court plan) give a player a number of play days within validity. There is no class size or coach. Each visit reserves the whole court like an ordinary booking: a second player cannot use that court at the same time. Visits use the court's minimum duration and can be extended in 30-minute steps. Flexible plans deduct one day per attendance date. Fixed schedules reserve every visit up front, and each reserved visit counts once it ends. In Plans & Coaching, court plans appear in the **Plans** tab for the selected court, and the booking form offers **Court booking / Court plan / Coaching**.
@@ -14,7 +14,7 @@ Badminton, tennis and basketball businesses can now sell **court plans** (like s
 
 Use **Profile → Plans & Coaching → New admission**, or the booking form: on a court business, pick a court, then choose **Coaching** instead of **Court booking**. Select the plan, activation date and attendance mode:
 
-- **Fixed weekly schedule:** chosen weekdays and start time reserve every class up front, within validity.
+- **Fixed weekly schedule:** chosen weekdays and start time reserve visits up front, within validity, up to the plan's session allowance. New tracked court admissions start in this mode with the court's opening days and start time preselected. Staff can change both before review. Preview lists the exact dated sessions and warns when fewer dates fit than the plan allowance; after confirmation they appear with time on Calendar. For example, a 28-day plan with only 18 matching weekdays before its one-month expiry reserves 18 visits. The other 10 days have no reservation and expire unused at the end of the term. At least one matching date is required.
 - **Flexible:** no advance student reservation. Coach Home and My classes list flexible students before visits exist. **Mark present** joins the matching running class on the selected court, using its exact start/end time. **Start class & mark present** starts an eligible class at server time when none is running, reserving the court with the first student's attendance. Subsequent students share that interval up to the seat limit. Admission-detail join-only requests still require a running class. Ordinary flexible court access plans use the server's current business-local time and the admission's saved visit duration. There is no attendance time picker. See [Flexible coaching attendance](flexible-coaching-attendance.md).
 
 ## How a batch uses the court
@@ -32,14 +32,14 @@ Deleting a court with admission history is refused; disable it after its admissi
 
 ## Data and API
 
-- `court_v1` business configuration supports an **optional** `plans` array: `plans` (`kind: "play"` or `"coaching"`; play plans keep `class_duration_minutes`, `class_seats` and `coach_id` null; `court_ids`, validity, `price_minor`, `availability`, `class_duration_minutes`, `class_seats`, `coach_id`, `renewal: "none"`). Coach identities reference active team memberships; separate `coaches` contact arrays are rejected. Existing configurations without plans stay valid.
+- `court_v1` business configuration supports an **optional** `plans` array: `plans` (`kind: "play"` or `"coaching"`; play plans keep `class_duration_minutes`, `class_seats` and `coach_id` null; `court_ids`, validity, `price_minor`, `availability`, optional `follow_court_hours`, `class_duration_minutes`, `class_seats`, `coach_id`, `renewal: "none"`). When `follow_court_hours` is true, admission scheduling checks the selected court's current operating hours and ignores the stored plan availability. Existing plans without the flag retain their plan availability. Coach identities reference active team memberships; separate `coaches` contact arrays are rejected. Existing configurations without plans stay valid.
 - Admissions already use the generic `admissions.resource_id`, `bookings` and `booking_allocations` tables, so court admissions reuse them unchanged. Court visits use the same inventory key as ordinary court bookings (`<business>:<court>`).
-- `GET /v1/admissions/catalog` now also lists ready court businesses. Each business has `type` and `space_kind` (`pool` or `court`). Spaces are still returned under `pools`, and plan space IDs under `pool_ids`, so older clients keep parsing the response.
+- `GET /v1/admissions/catalog` now also lists ready court businesses. Each business has `type` and `space_kind` (`pool` or `court`). Spaces are still returned under `pools`, with their `operating` hours, and plan space IDs under `pool_ids`, so older clients keep parsing the response.
 - No new routes: the existing Nest controllers and the hosted Edge routes in `backend/edge/handler.ts` already expose admissions and `PATCH /v1/businesses/:id/court-configuration`.
 
 ## Database migration
 
-**Court plans need no schema change.** Plan definitions and their staff-coach IDs live in the existing `businesses.configuration` JSON, and the admissions schema from `20261020120000_admissions.sql` already stores any resource. That migration must already be applied (it is a prerequisite for pool admissions too). Staff-coach conversion and the unified permission backfill are additional data-migration prerequisites described in [Unified staff management](team-coaches.md).
+**Court plans and the follow-hours option need no schema change.** Plan definitions and their staff-coach IDs live in the existing `businesses.configuration` JSON, and the admissions schema from `20261020120000_admissions.sql` already stores any resource. That migration must already be applied (it is a prerequisite for pool admissions too). Staff-coach conversion and the unified permission backfill are additional data-migration prerequisites described in [Unified staff management](team-coaches.md).
 
 Check it is present (read-only):
 

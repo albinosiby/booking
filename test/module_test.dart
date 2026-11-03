@@ -172,7 +172,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Collected today'), findsOneWidget);
       expect(find.text('Configure'), findsOneWidget);
-      expect(find.text('No bookings yet'), findsOneWidget);
+      expect(find.text('No more bookings today.'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await cubit.close();
     },

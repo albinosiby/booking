@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../../bookings/models/slot_holder.dart';
+import 'admission_models.dart' show subscriptionPlanId;
 
 /// A fixed weekly schedule to lay out before choosing its start time.
 class SlotChartRequest extends Equatable {
@@ -11,14 +12,22 @@ class SlotChartRequest extends Equatable {
     required this.start,
     required this.weekdays,
     required this.duration,
+    this.months,
+    this.endsOn,
   });
   final String businessId, poolId, planId, start;
   final List<int> weekdays;
   final int duration;
+
+  /// A subscription's length instead of a configured plan.
+  final int? months;
+  final String? endsOn;
+  bool get subscription => planId == subscriptionPlanId;
   Map<String, dynamic> toJson() => {
     'business_id': businessId,
     'resource_id': poolId,
-    'plan_id': planId,
+    if (!subscription) 'plan_id': planId,
+    if (subscription) 'subscription': {'months': months, 'ends_on': endsOn},
     'starts_on': start,
     'weekdays': weekdays,
     'duration_minutes': duration,
@@ -31,6 +40,8 @@ class SlotChartRequest extends Equatable {
     start,
     weekdays,
     duration,
+    months,
+    endsOn,
   ];
 }
 

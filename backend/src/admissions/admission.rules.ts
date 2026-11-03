@@ -13,7 +13,9 @@ export const enrollmentSchema = z
   .object({
     business_id: z.uuid(),
     resource_id: z.uuid(),
-    plan_id: z.uuid(),
+    // Exactly one of a configured plan or a staff-agreed subscription.
+    plan_id: z.uuid().optional(),
+    subscription: z.lazy(() => subscriptionSchema).optional(),
     starts_on: calendarDate,
     mode: z.enum(["fixed", "flexible", "membership"]),
     weekdays: z.array(z.number().int().min(1).max(7)).max(7),
@@ -34,12 +36,110 @@ export const slotChartSchema = z
   .object({
     business_id: z.uuid(),
     resource_id: z.uuid(),
-    plan_id: z.uuid(),
+    plan_id: z.uuid().optional(),
+    subscription: z.lazy(() => subscriptionTermSchema).optional(),
     starts_on: calendarDate,
     weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
     duration_minutes: z.number().int().min(30).max(1440),
   })
   .strict();
+/** Days before a term ends when it is listed for next month's payment. */
+export function reminderDays(configuration: Row | null | undefined): number {
+  return configuration?.renewal_reminder_days ?? 3;
+}
+/** Every subscription shares this plan id; its terms live in the snapshot. */
+export const SUBSCRIPTION_PLAN_ID = "00000000-0000-4000-8000-000000000005";
+export function isSubscription(plan: Row | null | undefined) {
+  return plan?.subscription != null;
+}
+/** Length of a subscription: whole months, or a custom last day. */
+export const subscriptionTermSchema = z
+  .object({
+    months: z.number().int().min(1).max(24).nullable(),
+    ends_on: calendarDate.nullable(),
+  })
+  .strict();
+/** Staff-agreed subscription: fee per month (or for the custom period). */
+export const subscriptionSchema = subscriptionTermSchema
+  .extend({ monthly_minor: z.number().int().min(0).max(100000000) })
+  .strict();
+export function subscriptionExpiry(
+  start: string,
+  term: z.infer<typeof subscriptionTermSchema>,
+) {
+  if ((term.months === null) === (term.ends_on === null))
+    throw new BadRequestException(
+      "Choose a number of months or a custom end date.",
+    );
+  return term.months
+    ? expiryFrom(
+        { expiry_mode: "after_months", expiry_months: term.months },
+        start,
+      )
+    : term.ends_on!;
+}
+/**
+ * Monthly fees: month k is due k months after activation, so each month end
+ * opens the next fee. A custom period is a single fee due at activation.
+ */
+export function instalments(
+  start: string,
+  term: z.infer<typeof subscriptionSchema>,
+) {
+  const count = term.months ?? 1;
+  return Array.from({ length: count }, (_, k) => ({
+    due_on: k
+      ? expiryFrom({ expiry_mode: "after_months", expiry_months: k }, start)
+      : start,
+    amount_minor: term.monthly_minor,
+  }));
+}
+/** Fees due on or before [date]. */
+export function dueBy(plan: Row, date: string) {
+  return ((plan.subscription?.instalments ?? []) as Row[])
+    .filter((i) => i.due_on <= date)
+    .reduce((n, i) => n + i.amount_minor, 0);
+}
+/** A plan-like snapshot so subscriptions reuse the admission engine. */
+export function subscriptionPlan(
+  configuration: Row | null | undefined,
+  start: string,
+  term: z.infer<typeof subscriptionSchema>,
+) {
+  if (configuration?.subscriptions_enabled !== true)
+    throw new BadRequestException(
+      "Subscriptions are off for this space. Turn them on in Configure first.",
+    );
+  const expires = subscriptionExpiry(start, term),
+    fees = instalments(start, term),
+    total = fees.reduce((n, i) => n + i.amount_minor, 0);
+  if (total > 100000000)
+    throw new BadRequestException(
+      "This subscription is above the maximum amount. Choose fewer months or a lower fee.",
+    );
+  return {
+    id: SUBSCRIPTION_PLAN_ID,
+    name: "Subscription",
+    kind: configuration?.kind === "pool_v1" ? "swimming" : "play",
+    enabled: true,
+    track_attendance: true,
+    follow_court_hours: true,
+    expiry_mode: "fixed_date",
+    expiry_date: expires,
+    price_minor: total,
+    allowance: 0,
+    class_duration_minutes: null,
+    class_seats: null,
+    coach_id: null,
+    renewal: "none",
+    subscription: {
+      months: term.months,
+      ends_on: term.months ? null : expires,
+      monthly_minor: term.monthly_minor,
+      instalments: fees,
+    },
+  };
+}
 export function expiryFrom(plan: Row, start: string) {
   if (plan.expiry_mode === "fixed_date") return plan.expiry_date as string;
   if (plan.expiry_mode === "after_start")
@@ -124,7 +224,10 @@ export function interval(
   const start = zonedTime(date, time, zone),
     end = start + duration * 60000;
   const endStamp = localStamp(end, zone);
-  for (const hours of [pool.operating, plan.availability]) {
+  for (const hours of [
+    pool.operating,
+    ...(plan.follow_court_hours ? [] : [plan.availability]),
+  ]) {
     const minute = (v: string) =>
       Number(v.slice(0, 2)) * 60 + Number(v.slice(3));
     const overnight =
@@ -192,9 +295,9 @@ export function fixedDates(
     if (weekdays.includes(new Date(date + "T00:00:00Z").getUTCDay() || 7))
       dates.push(date);
   }
-  if (dates.length !== allowance)
+  if (!dates.length)
     throw new BadRequestException(
-      `Only ${dates.length} of ${allowance} sessions fit before expiry. Choose an earlier start or more weekdays.`,
+      "No selected weekdays occur before expiry. Choose another weekday or an earlier start date.",
     );
   return dates;
 }

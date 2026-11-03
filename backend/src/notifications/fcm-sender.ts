@@ -6,6 +6,8 @@ import {
   type BookingNotificationDetails,
   staffCashNotificationBody,
   type StaffCashNotificationDetails,
+  subscriptionFeeNotificationBody,
+  type SubscriptionFeeDetails,
 } from "./notification-content";
 
 export type PushMessage = {
@@ -15,6 +17,8 @@ export type PushMessage = {
   settlementId?: string | null;
   cashDetails?: StaffCashNotificationDetails | null;
   walletDetails?: CallWalletNotificationDetails | null;
+  admissionId?: string | null;
+  feeDetails?: SubscriptionFeeDetails | null;
   forStaff?: boolean;
   userId: string;
   kind: string;
@@ -118,6 +122,7 @@ export class FcmSender implements PushSender {
         staff_cash_collected: "Cash collection confirmed",
         call_wallet_low: "Call balance is low",
         call_wallet_empty: "Call balance is empty",
+        subscription_fee_due: "Subscription fee due",
       } as Record<string, string>
     )[m.kind];
     if (!title) throw new PushFailure("INVALID_EVENT", false);
@@ -127,14 +132,18 @@ export class FcmSender implements PushSender {
         throw new Error();
       const wallet = m.kind.startsWith("call_wallet_");
       if (wallet && !m.walletDetails) throw new Error();
+      if (m.kind === "subscription_fee_due" && !m.admissionId)
+        throw new Error();
       body =
         m.kind === "staff_cash_collected"
           ? staffCashNotificationBody(m.cashDetails!, m.forStaff === true)
-          : wallet
-            ? callWalletNotificationBody(
-                m.walletDetails!,
-                m.kind === "call_wallet_empty",
-              )
+          : m.kind === "subscription_fee_due"
+            ? subscriptionFeeNotificationBody(m.feeDetails!)
+            : wallet
+              ? callWalletNotificationBody(
+                  m.walletDetails!,
+                  m.kind === "call_wallet_empty",
+                )
             : bookingNotificationBody(m.reference, m.details);
     } catch {
       throw new PushFailure("INVALID_EVENT", false);
@@ -163,8 +172,10 @@ export class FcmSender implements PushSender {
                 event_id: m.eventId,
                 ...(m.kind === "staff_cash_collected"
                   ? { settlement_id: m.settlementId! }
-                  : m.kind.startsWith("call_wallet_")
-                    ? {}
+                  : m.kind === "subscription_fee_due"
+                    ? { admission_id: m.admissionId! }
+                    : m.kind.startsWith("call_wallet_")
+                      ? {}
                     : { booking_id: m.bookingId! }),
                 event_type: m.kind,
                 recipient_user_id: m.userId,

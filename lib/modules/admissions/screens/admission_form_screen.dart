@@ -122,16 +122,22 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
         AppPicker(
           key: const ValueKey('admission-type'),
           label: 'Admission type',
-          value: s.formKind == 'coaching' ? 'coaching' : 'plans',
+          value: s.formKind == 'coaching' || s.formKind == 'subscription'
+              ? s.formKind
+              : 'plans',
           enabled:
               enabled &&
               !s.loading &&
               s.preview == null &&
               widget.renewalId == null &&
               s.draft.renewedFrom == null,
-          items: const [
-            PickerItem('plans', 'Plan'),
-            PickerItem('coaching', 'Coaching'),
+          items: [
+            const PickerItem('plans', 'Plan'),
+            const PickerItem('coaching', 'Coaching'),
+            // Shown when Configure turned subscriptions on for this space.
+            if (s.business?.subscriptions == true ||
+                s.formKind == 'subscription')
+              const PickerItem('subscription', 'Subscription'),
           ],
           onChanged: cubit.admissionType,
         ),
@@ -150,7 +156,11 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
         ],
         SizedBox(height: 12.h),
         ...location(s, enabled),
-        if (s.availablePlans.isNotEmpty)
+        if (s.subscription) ...[
+          AdmissionScheduleFields(cubit: cubit, state: s, showPlanKind: false),
+          SizedBox(height: 12.h),
+          AdmissionPlanAmountField(cubit: cubit, state: s),
+        ] else if (s.availablePlans.isNotEmpty)
           AdmissionScheduleFields(cubit: cubit, state: s, showPlanKind: false)
         else ...[
           AppEmptyState(
@@ -175,7 +185,9 @@ class _AdmissionFormScreenState extends State<AdmissionFormScreen> {
   Widget reviewButton(AdmissionState s, bool enabled) => AppButton(
     label: s.renewAndCollect ? 'Review renewal' : 'Review admission',
     busy: s.busy,
-    onPressed: enabled && s.availablePlans.isNotEmpty ? cubit.review : null,
+    onPressed: enabled && (s.subscription || s.availablePlans.isNotEmpty)
+        ? cubit.review
+        : null,
   );
 
   List<Widget> confirm(AdmissionState s) => [

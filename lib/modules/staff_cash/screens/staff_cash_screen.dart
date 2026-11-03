@@ -193,9 +193,7 @@ class _StaffCashScreenState extends State<StaffCashScreen> {
               ),
               const SizedBox(height: 12),
               amounts(
-                [
-                  ('Given to owner · all time', d.handedOverMinor),
-                ],
+                [('Given to owner · all time', d.handedOverMinor)],
                 currency,
                 minimumWidth: 230,
               ),
