@@ -235,29 +235,30 @@ void main() {
       });
     });
 
-    test('time edits leave review and clear the grid range', () async {
+    test('time edits leave review and clear the grid selection', () async {
       await using((r, c) async {
         await c.submit();
         expect(c.state.review, isTrue);
         c.time('11:00', start: true);
         expect(c.state.review, isFalse);
         expect(c.state.custom, isTrue);
-        expect(c.state.hasRange, isFalse);
+        expect(c.state.ranges, isEmpty);
+        expect(c.state.anchor, isNull);
       });
     });
 
     test(
-      'date changes: same date ignored, new date reloads grid and clears range',
+      'date changes: same date ignored, new date reloads grid and clears selection',
       () async {
         await using((r, c) async {
           c.allDay(false);
           await c.loadSlots();
           c.pick(const BlockSlot('10:00', 'available'));
-          expect(c.state.hasRange, isTrue);
+          expect(c.state.anchor, '10:00');
           c.date(c.state.date);
-          expect(c.state.hasRange, isTrue);
+          expect(c.state.anchor, '10:00');
           c.date('2030-06-05');
-          expect(c.state.hasRange, isFalse);
+          expect(c.state.anchor, isNull);
           expect(c.state.date, '2030-06-05');
         });
       },
@@ -354,7 +355,7 @@ void main() {
     );
 
     test(
-      'grid picks: booked, blocked, past and unknown cells cannot start a range',
+      'grid picks: booked, blocked, past and unknown cells cannot be selected',
       () async {
         await using((r, c) async {
           c.allDay(false);
@@ -366,9 +367,10 @@ void main() {
             const BlockSlot('10:00', 'weird-status'),
           ]) {
             c.pick(s);
-            expect(c.state.hasRange, isFalse, reason: s.status);
+            expect(c.state.anchor, isNull, reason: s.status);
           }
           c.pick(const BlockSlot('23:30', 'available'));
+          c.pick(const BlockSlot('24:00', 'end'));
           expect(c.state.start, '23:30');
           expect(c.state.end, '00:00');
           await c.submit();
@@ -383,27 +385,24 @@ void main() {
     );
 
     test(
-      'grid range does not extend across a booked cell and tapping start clears',
+      'grid start/end taps: booked half hours stop a range but can end one',
       () async {
         await using((r, c) async {
           c.allDay(false);
           await c.loadSlots();
           c.pick(const BlockSlot('08:00', 'available'));
+          expect(c.state.canEnd('09:00'), isTrue);
+          expect(c.state.canEnd('09:30'), isFalse);
           c.pick(const BlockSlot('10:30', 'available'));
           expect(
-            c.state.from,
+            c.state.anchor,
             '10:30',
-            reason: '09:00 is booked so the range restarts',
+            reason: '09:00 is booked, so the start moves instead',
           );
+          c.pick(const BlockSlot('11:30', 'available'));
+          expect(c.state.ranges, [const BlockPeriod('10:30', '11:30')]);
           c.pick(const BlockSlot('10:30', 'available'));
-          expect(c.state.hasRange, isFalse);
-          c.pick(const BlockSlot('10:00', 'available'));
-          c.pick(const BlockSlot('09:30', 'available'));
-          expect(
-            c.state.from,
-            '09:30',
-            reason: 'earlier tap restarts the range',
-          );
+          expect(c.state.ranges, isEmpty);
         });
       },
     );
@@ -573,12 +572,17 @@ void main() {
           await tester.ensureVisible(cell);
           await tester.tap(cell);
           await tester.pumpAndSettle();
-          // Tapping a booked cell (09:00) must not change the selection.
-          final booked = find.byKey(const ValueKey('block-time-09:00'));
+          // Tapping a booked time (09:30) must not change the pending start.
+          final booked = find.byKey(const ValueKey('block-time-09:30'));
           await tester.ensureVisible(booked);
           await tester.tap(booked, warnIfMissed: false);
           await tester.pumpAndSettle();
-          expect(find.text('Until 10:30'), findsOneWidget);
+          expect(find.text('Start'), findsOneWidget);
+          final end = find.byKey(const ValueKey('block-time-11:00'));
+          await tester.ensureVisible(end);
+          await tester.tap(end);
+          await tester.pumpAndSettle();
+          expect(find.text('10:00 – 11:00'), findsOneWidget);
           expect(tester.takeException(), isNull);
           await tester.ensureVisible(find.text('Review block'));
           await tester.tap(find.text('Review block'));

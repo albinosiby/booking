@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../../../utils/helpers/time_format.dart';
 import '../../bookings/models/booking_models.dart';
 
 class BlockLaunch {
@@ -56,6 +57,20 @@ String blockSlotEnd(String time, int minutes) {
       minutes;
   final wrapped = total % 1440;
   return '${(wrapped ~/ 60).toString().padLeft(2, '0')}:${(wrapped % 60).toString().padLeft(2, '0')}';
+}
+
+/// One continuous interval to block. [end] at or before [start] finishes on
+/// the next day; grid ranges use 24:00 for midnight until they are saved.
+class BlockPeriod extends Equatable {
+  const BlockPeriod(this.start, this.end);
+  final String start, end;
+  bool overlaps(String from, String until) =>
+      start.compareTo(until) < 0 && from.compareTo(end) < 0;
+  bool get overnight => end.compareTo(start) <= 0;
+  String get label =>
+      '$start – ${TimeFormat.display(end)}${overnight && end != '00:00' ? ' +1 day' : ''}';
+  @override
+  List<Object?> get props => [start, end];
 }
 
 class SlotBlockPage {
@@ -151,33 +166,68 @@ class BlockFormModel extends Equatable {
     this.loading = false,
     this.saving = false,
     this.review = false,
-    this.pending,
+    Iterable<BlockRequest> pending = const [],
     this.savedId,
     this.error,
     Iterable<BlockSlot> slots = const [],
     this.slotStep = 30,
     this.slotsLoading = false,
     this.slotsError,
-    this.from,
-    this.until,
+    Iterable<BlockPeriod> ranges = const [],
+    this.anchor,
     this.custom = false,
   }) : spaces = Set.unmodifiable(spaces),
-       slots = List.unmodifiable(slots);
+       pending = List.unmodifiable(pending),
+       slots = List.unmodifiable(slots),
+       ranges = List.unmodifiable(
+         [...ranges]..sort((a, b) => a.start.compareTo(b.start)),
+       );
   final BookingCatalog catalog;
   final String? businessId, savedId, error;
   final String date, start, end;
   final Set<String> spaces;
   final bool allDay, loading, saving, review;
-  final BlockRequest? pending;
 
-  /// Grid state for Specific hours; [from] and [until] are inclusive cell times.
+  /// Requests whose save result is unknown; retried with the same keys.
+  final List<BlockRequest> pending;
+
+  /// Grid state for Specific hours: tiles are clock times. [anchor] is a
+  /// tapped start waiting for its end; [ranges] are finished start–end pairs.
   final List<BlockSlot> slots;
   final int slotStep;
   final bool slotsLoading, custom;
-  final String? slotsError, from, until;
-  bool get locked => saving || pending != null;
-  bool get hasRange => from != null && until != null;
-  bool get timeChosen => allDay || custom || hasRange;
+  final String? slotsError, anchor;
+  final List<BlockPeriod> ranges;
+  bool get locked => saving || pending.isNotEmpty;
+  bool get timeChosen => allDay || custom || ranges.isNotEmpty;
+
+  /// What will be blocked: the whole day, the exact times, or each range.
+  List<BlockPeriod> get periods => allDay
+      ? const [BlockPeriod('00:00', '00:00')]
+      : custom
+      ? [BlockPeriod(start, end)]
+      : [
+          for (final r in ranges)
+            BlockPeriod(r.start, r.end == '24:00' ? '00:00' : r.end),
+        ];
+
+  /// Whether a range from [anchor] may finish at [time]: every half hour in
+  /// between is free and it does not overlap another chosen range.
+  bool canEnd(String time) {
+    final from = anchor;
+    if (from == null || time.compareTo(from) <= 0) return false;
+    final between = slots.where(
+      (s) => s.time.compareTo(from) >= 0 && s.time.compareTo(time) < 0,
+    );
+    return between.isNotEmpty &&
+        between.every((s) => s.open) &&
+        !ranges.any((r) => r.overlaps(from, time));
+  }
+
+  BlockPeriod? rangeAt(String time) => ranges
+      .where((r) => r.start.compareTo(time) <= 0 && time.compareTo(r.end) < 0)
+      .firstOrNull;
+
   int get busySlots => slots.where((s) => s.status == 'booked').length;
   String get startTime => allDay ? '00:00' : start;
   String get endTime => allDay ? '00:00' : end;
@@ -198,6 +248,8 @@ class BlockFormModel extends Equatable {
       ? 'Choose at most 100 spaces.'
       : date.isEmpty
       ? 'Choose a date.'
+      : !allDay && !custom && anchor != null
+      ? 'Tap the end time for the block starting at $anchor.'
       : !timeChosen
       ? 'Choose the hours to block.'
       : null;
@@ -212,7 +264,7 @@ class BlockFormModel extends Equatable {
     bool? loading,
     bool? saving,
     bool? review,
-    BlockRequest? pending,
+    Iterable<BlockRequest>? pending,
     bool clearPending = false,
     String? savedId,
     String? error,
@@ -221,9 +273,9 @@ class BlockFormModel extends Equatable {
     bool? slotsLoading,
     String? slotsError,
     bool clearSlotsError = false,
-    String? from,
-    String? until,
-    bool clearRange = false,
+    Iterable<BlockPeriod>? ranges,
+    String? anchor,
+    bool clearAnchor = false,
     bool? custom,
   }) => BlockFormModel(
     catalog: catalog ?? this.catalog,
@@ -236,15 +288,15 @@ class BlockFormModel extends Equatable {
     loading: loading ?? this.loading,
     saving: saving ?? this.saving,
     review: review ?? this.review,
-    pending: clearPending ? null : pending ?? this.pending,
+    pending: clearPending ? const [] : pending ?? this.pending,
     savedId: savedId ?? this.savedId,
     error: error,
     slots: slots ?? this.slots,
     slotStep: slotStep ?? this.slotStep,
     slotsLoading: slotsLoading ?? this.slotsLoading,
     slotsError: clearSlotsError ? null : slotsError ?? this.slotsError,
-    from: clearRange ? null : from ?? this.from,
-    until: clearRange ? null : until ?? this.until,
+    ranges: ranges ?? this.ranges,
+    anchor: clearAnchor ? null : anchor ?? this.anchor,
     custom: custom ?? this.custom,
   );
   @override
@@ -266,8 +318,8 @@ class BlockFormModel extends Equatable {
     slotStep,
     slotsLoading,
     slotsError,
-    from,
-    until,
+    ranges,
+    anchor,
     custom,
   ];
 }

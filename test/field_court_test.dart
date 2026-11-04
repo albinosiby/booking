@@ -109,7 +109,10 @@ void main() {
     });
     test('duplicate names rejected regardless of case/space/enabled', () {
       expect(
-        check([court(id: 'a', name: 'Centre'), court(id: 'b', name: ' CENTRE ')]),
+        check([
+          court(id: 'a', name: 'Centre'),
+          court(id: 'b', name: ' CENTRE '),
+        ]),
         'Use unique court names and identifiers.',
       );
       expect(
@@ -140,8 +143,18 @@ void main() {
 
   group('Court durations, buffers, hours', () {
     test('duration bounds and counts', () {
-      expect(check([court(durations: [29], defaultDuration: 29)]), isNotNull);
-      expect(check([court(durations: [30], defaultDuration: 30)]), isNull);
+      expect(
+        check([
+          court(durations: [29], defaultDuration: 29),
+        ]),
+        isNotNull,
+      );
+      expect(
+        check([
+          court(durations: [30], defaultDuration: 30),
+        ]),
+        isNull,
+      );
       expect(
         check([
           court(
@@ -166,7 +179,9 @@ void main() {
     });
     test('default duration must be allowed', () {
       expect(
-        check([court(durations: [60], defaultDuration: 90)], complete: false),
+        check([
+          court(durations: [60], defaultDuration: 90),
+        ], complete: false),
         isNotNull,
       );
     });
@@ -215,36 +230,56 @@ void main() {
       expect(check([court(price: '')], complete: true), isNotNull);
     });
     test('disabled court with blank price may complete', () {
-      expect(check([court(price: '', enabled: false), court(id: 'x', name: 'Other')]), isNull);
+      expect(
+        check([
+          court(price: '', enabled: false),
+          court(id: 'x', name: 'Other'),
+        ]),
+        isNull,
+      );
     });
     test('overlapping price rules and the 40 rule cap', () {
       CourtTariff t(String id, String a, String b, {List<int>? days}) =>
           CourtTariff(
             id: id,
-            hours: CourtHours(opens: a, closes: b, days: days ?? [1, 2, 3, 4, 5, 6, 7]),
+            hours: CourtHours(
+              opens: a,
+              closes: b,
+              days: days ?? [1, 2, 3, 4, 5, 6, 7],
+            ),
             rates: const [CourtRate(60, '1')],
           );
       expect(
-        check([court(tariffs: [t('a', '06:00', '12:00'), t('b', '11:00', '14:00')])]),
+        check([
+          court(tariffs: [t('a', '06:00', '12:00'), t('b', '11:00', '14:00')]),
+        ]),
         'Price rules overlap for Court 1.',
       );
       expect(
         check([
-          court(tariffs: [
-            t('a', '06:00', '12:00', days: [1]),
-            t('b', '06:00', '12:00', days: [2]),
-          ]),
+          court(
+            tariffs: [
+              t('a', '06:00', '12:00', days: [1]),
+              t('b', '06:00', '12:00', days: [2]),
+            ],
+          ),
         ]),
         isNull,
       );
       expect(
         check([
-          court(tariffs: [for (var i = 0; i < 41; i++) t('t$i', '06:00', '07:00')]),
+          court(
+            tariffs: [for (var i = 0; i < 41; i++) t('t$i', '06:00', '07:00')],
+          ),
         ], complete: false),
         isNotNull,
       );
       expect(
-        check([court(tariffs: [t('same', '06:00', '08:00'), t('same', '09:00', '10:00')])]),
+        check([
+          court(
+            tariffs: [t('same', '06:00', '08:00'), t('same', '09:00', '10:00')],
+          ),
+        ]),
         isNotNull,
         reason: 'duplicate tariff ids',
       );
@@ -300,14 +335,35 @@ void main() {
       }
     });
     test('fixed date: format, completeness, and past dates with `today`', () {
-      expect(run(plan(expiryMode: 'fixed_date', date: '2031-01-01'), today: '2030-01-01'), isNull);
-      expect(run(plan(expiryMode: 'fixed_date', date: '2031-02-31')), isNotNull);
+      expect(
+        run(
+          plan(expiryMode: 'fixed_date', date: '2031-01-01'),
+          today: '2030-01-01',
+        ),
+        isNull,
+      );
+      expect(
+        run(plan(expiryMode: 'fixed_date', date: '2031-02-31')),
+        isNotNull,
+      );
       expect(run(plan(expiryMode: 'fixed_date', date: '1/1/2031')), isNotNull);
       expect(run(plan(expiryMode: 'fixed_date')), isNotNull);
       expect(run(plan(expiryMode: 'fixed_date'), complete: false), isNull);
-      expect(run(plan(expiryMode: 'fixed_date', date: '2020-01-01'), today: '2030-01-01'), isNotNull);
-      expect(run(plan(expiryMode: 'fixed_date', date: '2030-01-01'), today: '2030-01-01'), isNull,
-          reason: 'expiry day itself is included');
+      expect(
+        run(
+          plan(expiryMode: 'fixed_date', date: '2020-01-01'),
+          today: '2030-01-01',
+        ),
+        isNotNull,
+      );
+      expect(
+        run(
+          plan(expiryMode: 'fixed_date', date: '2030-01-01'),
+          today: '2030-01-01',
+        ),
+        isNull,
+        reason: 'expiry day itself is included',
+      );
     });
     test('price rules', () {
       for (final v in ['-1', '1.234', 'abc', '1000001']) {
@@ -330,21 +386,38 @@ void main() {
       );
     });
     test('more than 50 plans', () {
-      final plans = [for (var i = 0; i < 51; i++) plan(id: 'p$i', name: 'Plan $i')];
+      final plans = [
+        for (var i = 0; i < 51; i++) plan(id: 'p$i', name: 'Plan $i'),
+      ];
       expect(check([court()], plans: plans), 'Use at most 50 coaching plans.');
     });
     test('plan and court ids must not collide', () {
-      expect(check([court(id: 'same')], plans: [plan(id: 'same', ids: const ['same'])]), isNotNull);
+      expect(
+        check(
+          [court(id: 'same')],
+          plans: [
+            plan(id: 'same', ids: const ['same']),
+          ],
+        ),
+        isNotNull,
+      );
     });
     test('validity label reflects the draft', () {
       expect(plan(expiryMode: 'fixed_date').validityLabel, 'Expires not set');
-      expect(plan(months: '3').validityLabel, '3 calendar months from activation');
+      expect(
+        plan(months: '3').validityLabel,
+        '3 calendar months from activation',
+      );
     });
   });
 
   group('Court serialisation', () {
     test('server json trims text and stores minor units', () {
-      final j = court(name: '  Centre  ', surface: ' Clay ', price: '19.99').toJson();
+      final j = court(
+        name: '  Centre  ',
+        surface: ' Clay ',
+        price: '19.99',
+      ).toJson();
       expect(j['name'], 'Centre');
       expect(j['surface'], 'Clay');
       expect(j['tariffs'][0]['rates'][0]['price_minor'], 1999);
@@ -368,8 +441,13 @@ void main() {
     });
     test('removing a court strips references and the coach', () {
       final cfg = CourtConfiguration(
-        courts: [court(id: 'c1'), court(id: 'c2', name: 'Two')],
-        plans: [plan(ids: const ['c1']).copyWith(coachId: 'coach')],
+        courts: [
+          court(id: 'c1'),
+          court(id: 'c2', name: 'Two'),
+        ],
+        plans: [
+          plan(ids: const ['c1']).copyWith(coachId: 'coach'),
+        ],
       ).withoutCourt('c1');
       expect(cfg.plans.first.courtIds, isEmpty);
       expect(cfg.plans.first.coachId, isNull);

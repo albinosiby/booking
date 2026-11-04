@@ -240,7 +240,9 @@ class BlockFormCubit extends BlockCubit<BlockFormModel> {
 
   void date(String v) {
     if (state.locked || state.date == v) return;
-    emit(state.copy(date: v, review: false, clearRange: true));
+    emit(
+      state.copy(date: v, review: false, ranges: const [], clearAnchor: true),
+    );
     loadSlots();
   }
 
@@ -258,7 +260,8 @@ class BlockFormCubit extends BlockCubit<BlockFormModel> {
         end: start ? null : v,
         review: false,
         custom: true,
-        clearRange: true,
+        ranges: const [],
+        clearAnchor: true,
       ),
     );
   }
@@ -270,36 +273,52 @@ class BlockFormCubit extends BlockCubit<BlockFormModel> {
     }
   }
 
-  static bool _open(List<BlockSlot> slots, String from, String until) =>
-      slots.any((s) => s.time == from) &&
-      slots
-          .where(
-            (s) => s.time.compareTo(from) >= 0 && s.time.compareTo(until) <= 0,
-          )
-          .every((s) => s.open);
-
-  /// First tap marks the start, a later tap the last half hour; tapping the
-  /// start again clears the selection.
+  /// Tiles are clock times, as on New booking: tap where a block starts,
+  /// then where it ends (09:00 then 10:00 blocks 9 to 10). Tapping a chosen
+  /// range's start or a time inside it removes that range; tapping the
+  /// pending start again cancels it. Several ranges become separate blocks.
   void pick(BlockSlot slot) {
     final s = state, t = slot.time;
-    if (s.locked || !slot.open) return;
-    if (s.hasRange && t == s.from) {
-      emit(s.copy(clearRange: true, review: false));
-      return;
+    if (s.locked) return;
+    BlockFormModel next;
+    if (s.anchor != null) {
+      if (t == s.anchor) {
+        next = s.copy(clearAnchor: true);
+      } else if (s.canEnd(t)) {
+        next = s.copy(
+          ranges: [...s.ranges, BlockPeriod(s.anchor!, t)],
+          clearAnchor: true,
+        );
+      } else if (slot.open && s.rangeAt(t) == null) {
+        next = s.copy(anchor: t);
+      } else {
+        return;
+      }
+    } else {
+      final hit = s.rangeAt(t);
+      if (hit != null) {
+        next = s.copy(ranges: s.ranges.where((r) => r != hit));
+      } else if (slot.open) {
+        next = s.copy(anchor: t);
+      } else {
+        return;
+      }
     }
-    final extend =
-        s.hasRange && t.compareTo(s.from!) > 0 && _open(s.slots, s.from!, t);
-    final from = extend ? s.from! : t;
+    final periods = next.periods;
     emit(
-      s.copy(
-        from: from,
-        until: t,
-        start: from,
-        end: blockSlotEnd(t, s.slotStep),
+      next.copy(
         custom: false,
         review: false,
+        start: periods.firstOrNull?.start,
+        end: periods.lastOrNull?.end,
       ),
     );
+  }
+
+  void clearPicked() {
+    if (!state.locked) {
+      emit(state.copy(ranges: const [], clearAnchor: true, review: false));
+    }
   }
 
   int slotGeneration = 0;
@@ -312,7 +331,8 @@ class BlockFormCubit extends BlockCubit<BlockFormModel> {
           slots: [],
           slotsLoading: false,
           clearSlotsError: true,
-          clearRange: true,
+          ranges: const [],
+          clearAnchor: true,
           error: s.error,
         ),
       );
@@ -322,13 +342,17 @@ class BlockFormCubit extends BlockCubit<BlockFormModel> {
     try {
       final r = await repository.slots(b.id, s.date, s.spaces);
       if (isClosed || !authorized || g != slotGeneration) return;
-      final keep = state.hasRange && _open(r.slots, state.from!, state.until!);
+      final fresh = state.copy(slots: r.slots, slotStep: r.step);
+      bool free(BlockPeriod p) =>
+          fresh.copy(anchor: p.start, ranges: const []).canEnd(p.end);
+      final anchor = fresh.anchor;
       emit(
-        state.copy(
-          slots: r.slots,
-          slotStep: r.step,
+        fresh.copy(
           slotsLoading: false,
-          clearRange: !keep,
+          ranges: fresh.ranges.where(free),
+          clearAnchor:
+              anchor != null &&
+              r.slots.where((x) => x.time == anchor).firstOrNull?.open != true,
           error: state.error,
         ),
       );
@@ -350,7 +374,7 @@ class BlockFormCubit extends BlockCubit<BlockFormModel> {
 
   Future<void> submit() async {
     if (!authorized || state.saving || state.savedId != null) return;
-    if (state.pending == null) {
+    if (state.pending.isEmpty) {
       final error = state.validation;
       if (error != null) {
         emit(state.copy(error: error));
@@ -361,26 +385,31 @@ class BlockFormCubit extends BlockCubit<BlockFormModel> {
         return;
       }
     }
-    final request =
-        state.pending ??
-        BlockRequest(
-          key: const Uuid().v4(),
-          businessId: state.businessId!,
-          spaces: state.spaces,
-          date: state.date,
-          allDay: state.allDay,
-          start: state.start,
-          end: state.end,
-        );
+    final requests = state.pending.isNotEmpty
+        ? state.pending
+        : [
+            for (final p in state.periods)
+              BlockRequest(
+                key: const Uuid().v4(),
+                businessId: state.businessId!,
+                spaces: state.spaces,
+                date: state.date,
+                allDay: state.allDay,
+                start: p.start,
+                end: p.end,
+              ),
+          ];
     final g = generation;
-    emit(state.copy(saving: true, pending: request));
-    try {
-      final id = await repository.create(request);
-      if (current(g)) {
-        emit(state.copy(saving: false, clearPending: true, savedId: id));
-      }
-    } catch (e) {
-      if (current(g)) {
+    emit(state.copy(saving: true, pending: requests));
+    final saved = <BlockRequest>[], failed = <(BlockRequest, Object)>[];
+    String? id;
+    for (var i = 0; i < requests.length; i++) {
+      final request = requests[i];
+      try {
+        id = await repository.create(request);
+        saved.add(request);
+      } catch (e) {
+        if (!current(g)) return;
         if (accessFailure(e)) {
           emit(BlockFormModel(error: bookingError(e)));
           return;
@@ -394,17 +423,47 @@ class BlockFormCubit extends BlockCubit<BlockFormModel> {
               'UNAUTHENTICATED',
               'REQUEST_ERROR',
             ].contains(e.code);
-        emit(
-          state.copy(
-            saving: false,
-            clearPending: !uncertain,
-            error: uncertain
-                ? 'Could not confirm the block. Retry to verify the same request.'
-                : bookingError(e),
-          ),
-        );
-        if (!uncertain) unawaited(loadSlots());
+        if (uncertain) {
+          emit(
+            state.copy(
+              saving: false,
+              pending: requests.sublist(i),
+              error: saved.isEmpty
+                  ? 'Could not confirm the block. Retry to verify the same request.'
+                  : '${_hours(saved)} blocked. Could not confirm the rest. Retry to verify the same request.',
+            ),
+          );
+          return;
+        }
+        failed.add((request, e));
       }
     }
+    if (!current(g)) return;
+    if (failed.isEmpty) {
+      emit(state.copy(saving: false, clearPending: true, savedId: id));
+      return;
+    }
+    final done = {for (final r in saved) (r.start, r.end)};
+    final keep = state.ranges.where(
+      (p) => !done.contains((p.start, p.end == '24:00' ? '00:00' : p.end)),
+    );
+    emit(
+      state.copy(
+        saving: false,
+        clearPending: true,
+        review: saved.isEmpty && state.review,
+        ranges: keep,
+        error: [
+          if (saved.isNotEmpty) '${_hours(saved)} blocked.',
+          for (final (r, e) in failed)
+            '${requests.length > 1 && !r.allDay ? '${_hours([r])}: ' : ''}${bookingError(e)}',
+        ].join(' '),
+      ),
+    );
+    unawaited(loadSlots());
   }
+
+  static String _hours(List<BlockRequest> requests) => requests
+      .map((r) => r.allDay ? 'Entire day' : BlockPeriod(r.start, r.end).label)
+      .join(', ');
 }

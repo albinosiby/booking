@@ -17,6 +17,8 @@ class AppPage extends StatelessWidget {
     this.bottomBar,
     this.floatingActionButton,
     this.showAppBar = false,
+    this.appBarTitle,
+    this.appBarHeight,
     this.compactHeader = false,
     this.inlineDesktopTitle = false,
     this.fillRemaining,
@@ -31,6 +33,8 @@ class AppPage extends StatelessWidget {
   final Widget? bottomBar;
   final Widget? floatingActionButton;
   final bool showAppBar;
+  final Widget? appBarTitle;
+  final double? appBarHeight;
   final bool compactHeader;
 
   /// Put the desktop title beside Back and omit the separate introduction.
@@ -71,8 +75,10 @@ class AppPage extends StatelessWidget {
     appBar: !wide && (back || showAppBar)
         ? AppBar(
             automaticallyImplyLeading: back,
+            toolbarHeight: appBarHeight,
             title: showAppBar
-                ? Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)
+                ? appBarTitle ??
+                      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)
                 : null,
             leading: onBack == null
                 ? null

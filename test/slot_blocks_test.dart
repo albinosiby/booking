@@ -56,6 +56,17 @@ class Blocks implements SlotBlockRepository {
   }
 }
 
+class FailSecond extends Blocks {
+  @override
+  Future<String> create(BlockRequest request) async {
+    requests.add(request);
+    if (requests.length == 2) {
+      throw const AppException('Already blocked.', code: 'CONFLICT');
+    }
+    return 'saved';
+  }
+}
+
 void main() {
   testWidgets(
     'block form has no reason field and renders review on narrow screens',
@@ -143,47 +154,92 @@ void main() {
     expect(find.byKey(const ValueKey('block-time-10:00')), findsOneWidget);
     expect(find.text('Booked'), findsWidgets);
     expect(find.text('Blocked'), findsWidgets);
-    expect(find.text('to 18:30'), findsOneWidget);
     expect(find.text('View existing blocks'), findsOneWidget);
-    await tester.ensureVisible(find.byKey(const ValueKey('block-time-10:00')));
-    await tester.tap(find.byKey(const ValueKey('block-time-10:00')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const ValueKey('block-time-11:30')));
-    await tester.tap(find.byKey(const ValueKey('block-time-11:30')));
-    await tester.pumpAndSettle();
-    expect(find.text('Until 12:00'), findsOneWidget);
-    expect(find.text('10:00 – 12:00'), findsOneWidget);
+    for (final t in ['10:00', '12:30']) {
+      await tester.ensureVisible(find.byKey(ValueKey('block-time-$t')));
+      await tester.tap(find.byKey(ValueKey('block-time-$t')));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('From'), findsOneWidget);
+    expect(find.text('To'), findsOneWidget);
+    expect(find.text('Blocking'), findsNWidgets(4));
+    expect(find.text('10:00 – 12:30'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
   });
-  test('grid ranges stop at booked slots and set request times', () async {
+  test(
+    'start and end taps make ranges; several ranges save separately',
+    () async {
+      final w = WorkspaceCubit(BookingSource());
+      await w.load();
+      final r = Blocks(),
+          c = BlockFormCubit(w, r, const BlockLaunch(spaceId: 'space'));
+      await c.load();
+      c.allDay(false);
+      await c.submit();
+      expect(c.state.error, 'Choose the hours to block.');
+      BlockSlot at(String t) => c.state.slots.firstWhere((s) => s.time == t);
+      List<String> labels() => [for (final p in c.state.periods) p.label];
+      // 09:00 is booked, so it cannot start a block.
+      c.pick(at('09:00'));
+      expect(c.state.anchor, isNull);
+      // 08:00 then 09:00 blocks 8 to 9; a booked tile can still be the end.
+      c.pick(at('08:00'));
+      await c.submit();
+      expect(c.state.error, contains('Tap the end time'));
+      c.pick(at('09:00'));
+      expect(labels(), ['08:00 – 09:00']);
+      // 11:00 then 12:00, then the gap 10:00 then 11:00.
+      c.pick(at('11:00'));
+      c.pick(at('12:00'));
+      c.pick(at('10:00'));
+      c.pick(at('11:00'));
+      expect(labels(), ['08:00 – 09:00', '10:00 – 11:00', '11:00 – 12:00']);
+      // A range cannot run across the booked 09:00–10:00.
+      c.pick(at('08:00'));
+      expect(labels(), ['10:00 – 11:00', '11:00 – 12:00']);
+      c.pick(at('08:30'));
+      c.pick(at('12:00'));
+      expect(c.state.anchor, '12:00', reason: 'restarted, not a range');
+      c.pick(at('12:00'));
+      expect(c.state.anchor, isNull);
+      // Tapping a time inside a range removes it.
+      c.pick(at('10:30'));
+      expect(labels(), ['11:00 – 12:00']);
+      // The midnight tile ends the last half hour.
+      c.pick(at('23:30'));
+      c.pick(const BlockSlot('24:00', 'end'));
+      await c.submit();
+      expect(c.state.review, isTrue);
+      await c.submit();
+      expect(c.state.savedId, 'saved');
+      expect(r.requests.map((q) => (q.start, q.end, q.endDate)), [
+        ('11:00', '12:00', '2030-06-04'),
+        ('23:30', '00:00', '2030-06-05'),
+      ]);
+      expect(r.requests.map((q) => q.key).toSet(), hasLength(2));
+      await c.close();
+      await w.close();
+    },
+  );
+  test('a definite failure keeps only the unsaved hours selected', () async {
     final w = WorkspaceCubit(BookingSource());
     await w.load();
-    final r = Blocks(),
+    final r = FailSecond(),
         c = BlockFormCubit(w, r, const BlockLaunch(spaceId: 'space'));
     await c.load();
     c.allDay(false);
-    await c.submit();
-    expect(c.state.error, 'Choose the hours to block.');
     BlockSlot at(String t) => c.state.slots.firstWhere((s) => s.time == t);
-    c.pick(at('09:00'));
-    expect(c.state.hasRange, isFalse);
-    c.pick(at('08:00'));
-    c.pick(at('10:00'));
-    expect(c.state.from, '10:00');
-    expect(c.state.until, '10:00');
-    c.pick(at('11:30'));
-    expect((c.state.start, c.state.end), ('10:00', '12:00'));
-    c.pick(at('10:00'));
-    expect(c.state.hasRange, isFalse);
-    c.pick(at('23:30'));
-    expect(c.state.end, '00:00');
-    expect(c.state.endDate, '2030-06-05');
+    for (final t in ['10:00', '11:00', '12:00', '13:00']) {
+      c.pick(at(t));
+    }
     await c.submit();
     await c.submit();
-    expect(r.requests.single.start, '23:30');
-    expect(r.requests.single.end, '00:00');
+    expect(c.state.savedId, isNull);
+    expect(c.state.locked, isFalse);
+    expect(c.state.ranges, [const BlockPeriod('12:00', '13:00')]);
+    expect(c.state.error, contains('10:00 – 11:00 blocked.'));
     await c.close();
     await w.close();
   });
@@ -202,9 +258,10 @@ void main() {
       await c.load();
       c.allDay(false);
       c.pick(c.state.slots.firstWhere((slot) => slot.time == '18:00'));
+      expect(c.state.anchor, '18:00');
+      c.pick(c.state.slots.firstWhere((slot) => slot.time == '18:30'));
       expect(c.state.start, '18:00');
       expect(c.state.end, '18:30');
-      expect(c.state.hasRange, isTrue);
       await c.close();
       await w.close();
     },

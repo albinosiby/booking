@@ -162,6 +162,9 @@ export function createHandler(
   add("POST", "/v1/notifications/devices", (i) =>
     services.notifications.register(i.actor, i.body),
   );
+  add("GET", "/v1/notifications/inbox", (i) =>
+    services.notifications.list(i.actor, i.query.before),
+  );
   add("POST", "/v1/notifications/devices/:id/unregister", (i) =>
     services.notifications.unregister(i.actor, i.params.id, i.body),
   );

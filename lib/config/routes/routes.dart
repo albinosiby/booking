@@ -5,6 +5,7 @@ class Routes {
       organization = '/organization',
       onboarding = '/onboarding/businesses',
       home = '/home',
+      notifications = '/notifications',
       calendar = '/calendar',
       bookings = '/bookings',
       bookingBlocks = '/bookings/blocks',

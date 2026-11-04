@@ -155,16 +155,18 @@ void main() {
       expect(details(pool(capacity: '1')), isNull);
       expect(details(pool(capacity: '10000')), isNull);
     });
-    test('hex and plus sign are rejected by the model', () {
-      expect(details(pool(capacity: '0x10')), isNotNull);
-      expect(details(pool(capacity: '+5')), isNotNull);
-    }, skip: 'BUG-1: int.tryParse accepts "0x10" and "+5" as capacity');
+    test(
+      'hex and plus sign are rejected by the model',
+      () {
+        expect(details(pool(capacity: '0x10')), isNotNull);
+        expect(details(pool(capacity: '+5')), isNotNull);
+      },
+      skip: 'BUG-1: int.tryParse accepts "0x10" and "+5" as capacity',
+    );
     test('capacity round trips through json as an int', () {
       final json = pool(capacity: '25').toJson();
       expect(json, isA<Map>());
-      final restored = PoolResource.fromJson(
-        Map<String, dynamic>.from(json),
-      );
+      final restored = PoolResource.fromJson(Map<String, dynamic>.from(json));
       expect(restored.capacity, '25');
     });
   });
@@ -217,19 +219,31 @@ void main() {
       expect(details(pool(minDepth: '5.01', maxDepth: '5')), isNotNull);
     });
     test('empty depths: allowed while incomplete, required when enabled', () {
-      expect(details(pool(minDepth: '', maxDepth: ''), complete: false), isNull);
+      expect(
+        details(pool(minDepth: '', maxDepth: ''), complete: false),
+        isNull,
+      );
       expect(
         details(pool(minDepth: '', maxDepth: ''), complete: true),
         'Enter both depths for Pool A.',
       );
       expect(
-        details(pool(minDepth: '', maxDepth: '', enabled: false), complete: true),
+        details(
+          pool(minDepth: '', maxDepth: '', enabled: false),
+          complete: true,
+        ),
         isNull,
       );
-      expect(details(pool(minDepth: '3', maxDepth: ''), complete: true), isNotNull);
+      expect(
+        details(pool(minDepth: '3', maxDepth: ''), complete: true),
+        isNotNull,
+      );
     });
     test('depth with non-numeric text is rejected even if incomplete', () {
-      expect(details(pool(minDepth: 'x', maxDepth: ''), complete: false), isNotNull);
+      expect(
+        details(pool(minDepth: 'x', maxDepth: ''), complete: false),
+        isNotNull,
+      );
     });
   });
 
@@ -237,12 +251,19 @@ void main() {
     test('duration bounds 30..1440', () {
       for (final d in [29, 0, -30, 1441]) {
         expect(
-          check([pool(durations: [d], defaultDuration: d)]),
+          check([
+            pool(durations: [d], defaultDuration: d),
+          ]),
           isNotNull,
           reason: '$d',
         );
       }
-      expect(check([pool(durations: [30], defaultDuration: 30)]), isNull);
+      expect(
+        check([
+          pool(durations: [30], defaultDuration: 30),
+        ]),
+        isNull,
+      );
       expect(
         check([
           pool(
@@ -255,15 +276,20 @@ void main() {
       );
     });
     test('empty, duplicate and default-not-listed durations rejected', () {
-      expect(check([pool(durations: [], defaultDuration: 60, tariffs: [])]), isNotNull);
       expect(
-        check([pool(durations: [60, 60], defaultDuration: 60, tariffs: [])],
-            complete: false),
+        check([pool(durations: [], defaultDuration: 60, tariffs: [])]),
         isNotNull,
       );
       expect(
-        check([pool(durations: [60], defaultDuration: 90, tariffs: [])],
-            complete: false),
+        check([
+          pool(durations: [60, 60], defaultDuration: 60, tariffs: []),
+        ], complete: false),
+        isNotNull,
+      );
+      expect(
+        check([
+          pool(durations: [60], defaultDuration: 90, tariffs: []),
+        ], complete: false),
         isNotNull,
       );
     });
@@ -302,7 +328,15 @@ void main() {
       );
     });
     test('malformed times rejected', () {
-      for (final t in ['24:00', '9:00', '09:60', '', 'aa:bb', '09:00:00', '٠٩:٠٠']) {
+      for (final t in [
+        '24:00',
+        '9:00',
+        '09:60',
+        '',
+        'aa:bb',
+        '09:00:00',
+        '٠٩:٠٠',
+      ]) {
         expect(PoolHours(opens: t).validate(), isNotNull, reason: t);
         expect(PoolHours(closes: t).validate(), isNotNull, reason: t);
       }
@@ -369,7 +403,17 @@ void main() {
       for (final ok in ['0', '1', '199.5', '199.50', '1000000', ' 10 ']) {
         expect(check([pool(price: ok)]), isNull, reason: ok);
       }
-      for (final bad in ['', ' ', '-1', '1.999', '1000001', 'abc', '1e3', '💰', '١٠']) {
+      for (final bad in [
+        '',
+        ' ',
+        '-1',
+        '1.999',
+        '1000001',
+        'abc',
+        '1e3',
+        '💰',
+        '١٠',
+      ]) {
         expect(check([pool(price: bad)]), isNotNull, reason: '"$bad"');
       }
     });
@@ -412,12 +456,24 @@ void main() {
         hours: PoolHours(opens: '06:00', closes: '22:00'),
         tariffs: ts,
       );
-      expect(check([with_([t('a', '06:00', '12:00'), t('b', '11:00', '15:00')])]),
-          'Price rules overlap for Pool A.');
-      expect(check([with_([t('a', '06:00', '12:00'), t('b', '12:00', '22:00')])]),
-          isNull);
-      expect(check([with_([t('a', '06:00', '22:00'), t('b', '08:00', '09:00')])]),
-          isNotNull);
+      expect(
+        check([
+          with_([t('a', '06:00', '12:00'), t('b', '11:00', '15:00')]),
+        ]),
+        'Price rules overlap for Pool A.',
+      );
+      expect(
+        check([
+          with_([t('a', '06:00', '12:00'), t('b', '12:00', '22:00')]),
+        ]),
+        isNull,
+      );
+      expect(
+        check([
+          with_([t('a', '06:00', '22:00'), t('b', '08:00', '09:00')]),
+        ]),
+        isNotNull,
+      );
     });
     test('more than 40 price rules rejected', () {
       final tariffs = [
@@ -434,7 +490,11 @@ void main() {
       final p = pool(
         durations: [60, 90],
         tariffs: [
-          PoolTariff(id: 't', hours: PoolHours(), rates: const [PoolRate(60, '1')]),
+          PoolTariff(
+            id: 't',
+            hours: PoolHours(),
+            rates: const [PoolRate(60, '1')],
+          ),
         ],
       );
       expect(check([p], complete: false), isNotNull);
@@ -512,7 +572,7 @@ void main() {
     });
     test('more than 50 offers rejected', () {
       final offers = [
-        for (var i = 0; i < 51; i++) offer(name: 'Offer $i').copyWith()
+        for (var i = 0; i < 51; i++) offer(name: 'Offer $i').copyWith(),
       ];
       expect(
         PoolConfiguration(pools: [pool()], offers: offers).validate(),
@@ -580,19 +640,33 @@ void main() {
     });
     test('fixed date', () {
       expect(run(plan(expiryMode: 'fixed_date', date: '2030-12-31')), isNull);
-      expect(run(plan(expiryMode: 'fixed_date', date: '2030-02-30')), isNotNull);
-      expect(run(plan(expiryMode: 'fixed_date', date: '30-12-2030')), isNotNull);
-      expect(run(plan(expiryMode: 'fixed_date', date: '')), isNotNull);
-      expect(run(plan(expiryMode: 'fixed_date')), isNotNull,
-          reason: 'complete needs a date');
-      expect(run(plan(expiryMode: 'fixed_date'), complete: false), isNull);
-    });
-    test('fixed date in the past is not rejected by the model', () {
       expect(
-        run(plan(expiryMode: 'fixed_date', date: '2001-01-01')),
+        run(plan(expiryMode: 'fixed_date', date: '2030-02-30')),
         isNotNull,
       );
-    }, skip: 'BUG-2: pool plan accepts a fixed expiry date in the past (court plans take a `today` parameter, pool plans do not)');
+      expect(
+        run(plan(expiryMode: 'fixed_date', date: '30-12-2030')),
+        isNotNull,
+      );
+      expect(run(plan(expiryMode: 'fixed_date', date: '')), isNotNull);
+      expect(
+        run(plan(expiryMode: 'fixed_date')),
+        isNotNull,
+        reason: 'complete needs a date',
+      );
+      expect(run(plan(expiryMode: 'fixed_date'), complete: false), isNull);
+    });
+    test(
+      'fixed date in the past is not rejected by the model',
+      () {
+        expect(
+          run(plan(expiryMode: 'fixed_date', date: '2001-01-01')),
+          isNotNull,
+        );
+      },
+      skip:
+          'BUG-2: pool plan accepts a fixed expiry date in the past (court plans take a `today` parameter, pool plans do not)',
+    );
     test('price rules', () {
       for (final v in ['-1', '1.234', 'x', '1000001']) {
         expect(run(plan(price: v), complete: false), isNotNull, reason: v);
@@ -603,15 +677,25 @@ void main() {
     });
     test('coaching seats and class duration', () {
       for (final s in ['', '0', '-1', '1.5', 'x', '10001']) {
-        expect(run(plan(kind: 'coaching', seats: s)), isNotNull, reason: s);
+        expect(
+          run(plan(kind: 'coaching', seats: s)),
+          isNotNull,
+          reason: s,
+        );
       }
       expect(run(plan(kind: 'coaching', seats: '20')), isNull);
-      expect(run(plan(kind: 'coaching', seats: '21')), isNotNull,
-          reason: 'cannot exceed pool capacity');
+      expect(
+        run(plan(kind: 'coaching', seats: '21')),
+        isNotNull,
+        reason: 'cannot exceed pool capacity',
+      );
       expect(run(plan(kind: 'coaching', classDuration: 29)), isNotNull);
       expect(run(plan(kind: 'coaching', classDuration: 1441)), isNotNull);
-      expect(run(plan(kind: 'swimming', seats: '')), isNull,
-          reason: 'swimming ignores seats');
+      expect(
+        run(plan(kind: 'swimming', seats: '')),
+        isNull,
+        reason: 'swimming ignores seats',
+      );
     });
     test('unknown plan kind rejected', () {
       expect(run(plan(kind: 'party')), isNotNull);
@@ -623,7 +707,9 @@ void main() {
       );
     });
     test('more than 50 plans rejected', () {
-      final plans = [for (var i = 0; i < 51; i++) plan(id: 'p$i', name: 'Plan $i')];
+      final plans = [
+        for (var i = 0; i < 51; i++) plan(id: 'p$i', name: 'Plan $i'),
+      ];
       expect(
         PoolConfiguration(pools: [pool()], plans: plans).validate(),
         isNotNull,
@@ -631,7 +717,13 @@ void main() {
     });
     test('duplicate plan names are allowed', () {
       expect(
-        check([pool()], plans: [plan(id: 'a'), plan(id: 'b')]),
+        check(
+          [pool()],
+          plans: [
+            plan(id: 'a'),
+            plan(id: 'b'),
+          ],
+        ),
         isNull,
       );
     });
@@ -639,22 +731,48 @@ void main() {
 
   group('Pool plan validity arithmetic', () {
     DateTime? exp(String mode, String count, DateTime from) {
-      final p = plan(expiryMode: mode, days: count, months: count, years: count);
+      final p = plan(
+        expiryMode: mode,
+        days: count,
+        months: count,
+        years: count,
+      );
       return p.expiryFrom(from);
     }
 
     test('months clamp to the last day of the target month', () {
-      expect(exp('after_months', '1', DateTime(2030, 1, 31)), DateTime(2030, 2, 28));
-      expect(exp('after_months', '1', DateTime(2028, 1, 31)), DateTime(2028, 2, 29));
-      expect(exp('after_months', '12', DateTime(2028, 2, 29)), DateTime(2029, 2, 28));
-      expect(exp('after_months', '1', DateTime(2030, 12, 31)), DateTime(2031, 1, 31));
+      expect(
+        exp('after_months', '1', DateTime(2030, 1, 31)),
+        DateTime(2030, 2, 28),
+      );
+      expect(
+        exp('after_months', '1', DateTime(2028, 1, 31)),
+        DateTime(2028, 2, 29),
+      );
+      expect(
+        exp('after_months', '12', DateTime(2028, 2, 29)),
+        DateTime(2029, 2, 28),
+      );
+      expect(
+        exp('after_months', '1', DateTime(2030, 12, 31)),
+        DateTime(2031, 1, 31),
+      );
     });
     test('years clamp leap day', () {
-      expect(exp('after_years', '1', DateTime(2028, 2, 29)), DateTime(2029, 2, 28));
-      expect(exp('after_years', '4', DateTime(2028, 2, 29)), DateTime(2032, 2, 29));
+      expect(
+        exp('after_years', '1', DateTime(2028, 2, 29)),
+        DateTime(2029, 2, 28),
+      );
+      expect(
+        exp('after_years', '4', DateTime(2028, 2, 29)),
+        DateTime(2032, 2, 29),
+      );
     });
     test('days cross month and year boundaries', () {
-      expect(exp('after_start', '1', DateTime(2030, 12, 31)), DateTime(2031, 1, 1));
+      expect(
+        exp('after_start', '1', DateTime(2030, 12, 31)),
+        DateTime(2031, 1, 1),
+      );
       expect(exp('after_start', '3650', DateTime(2030, 1, 1)), isNotNull);
     });
     test('invalid counts give no expiry', () {
@@ -663,12 +781,20 @@ void main() {
       expect(exp('after_years', 'x', DateTime(2030, 1, 1)), isNull);
       expect(exp('after_start', '-5', DateTime(2030, 1, 1)), isNull);
     });
-    test('validityCount follows the selected unit and drafts are preserved', () {
-      final p = plan(expiryMode: 'after_months', days: '9', months: '3', years: '2');
-      expect(p.validityCount, '3');
-      expect(p.withValidityCount('7').expiryMonths, '7');
-      expect(p.withValidityCount('7').expiryDays, '9');
-    });
+    test(
+      'validityCount follows the selected unit and drafts are preserved',
+      () {
+        final p = plan(
+          expiryMode: 'after_months',
+          days: '9',
+          months: '3',
+          years: '2',
+        );
+        expect(p.validityCount, '3');
+        expect(p.withValidityCount('7').expiryMonths, '7');
+        expect(p.withValidityCount('7').expiryDays, '9');
+      },
+    );
   });
 
   group('Pool configuration limits and serialisation', () {
@@ -699,9 +825,7 @@ void main() {
         pools: [pool(price: '12.5')],
         plans: [plan(allowance: 'abc', price: '1.234')],
       );
-      final restored = PoolConfiguration.fromJson(
-        cfg.toJson(localDraft: true),
-      );
+      final restored = PoolConfiguration.fromJson(cfg.toJson(localDraft: true));
       expect(restored.plans.first.allowance, 'abc');
       expect(restored.plans.first.price, '1.234');
       expect(restored.pools.first.tariffs.first.rates.first.price, '12.5');
@@ -717,14 +841,18 @@ void main() {
     test('round trip of rounding-sensitive prices is lossless', () {
       for (final v in ['0.29', '1.15', '4.35', '19.99', '1000000']) {
         final r = PoolRate.fromJson(PoolRate(60, v).toJson());
-        expect(double.parse(r.price), closeTo(double.parse(v), 0.0001), reason: v);
+        expect(
+          double.parse(r.price),
+          closeTo(double.parse(v), 0.0001),
+          reason: v,
+        );
       }
     });
     test('unicode name survives local draft round trip', () {
       final restored = PoolConfiguration.fromJson(
-        PoolConfiguration(pools: [pool(name: '🏊 Zoë 游泳')]).toJson(
-          localDraft: true,
-        ),
+        PoolConfiguration(
+          pools: [pool(name: '🏊 Zoë 游泳')],
+        ).toJson(localDraft: true),
       );
       expect(restored.pools.first.name, '🏊 Zoë 游泳');
     });

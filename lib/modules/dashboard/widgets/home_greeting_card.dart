@@ -197,7 +197,7 @@ class _HomeGreetingCardState extends State<HomeGreetingCard>
                       clipBehavior: Clip.none,
                       children: [
                         IconButton(
-                          tooltip: 'Review payments to collect',
+                          tooltip: 'Notifications',
                           onPressed: widget.onAlerts,
                           icon: const Icon(Icons.notifications_none_outlined),
                         ),

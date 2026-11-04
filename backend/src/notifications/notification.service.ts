@@ -7,6 +7,18 @@ import {
 import { z } from "zod";
 import { Database } from "../common/database";
 import type { Actor } from "../common/auth.guard";
+import { eligibleNotificationRecipientSql } from "./notification-dispatcher";
+import { notificationDetailsSql } from "./notification-events";
+import {
+  bookingNotificationBody,
+  callWalletNotificationBody,
+  staffCashNotificationBody,
+  subscriptionFeeNotificationBody,
+  type BookingNotificationDetails,
+  type CallWalletNotificationDetails,
+  type StaffCashNotificationDetails,
+  type SubscriptionFeeDetails,
+} from "./notification-content";
 
 const registration = z
   .object({
@@ -32,6 +44,98 @@ function matches(value: string, expected: string) {
 @Injectable()
 export class NotificationService {
   constructor(private readonly db: Database) {}
+
+  async list(actor: Actor, before?: string) {
+    if (actor.uid.startsWith("sarvam:"))
+      throw new ForbiddenException("User session required.");
+    const cursor = before ? z.uuid().parse(before) : null;
+    type Row = {
+      id: string;
+      created_at: Date | string;
+      kind: string;
+      reference: string;
+      booking_id: string | null;
+      admission_id: string | null;
+      for_staff: boolean;
+      cash_details: StaffCashNotificationDetails | null;
+      wallet_details: CallWalletNotificationDetails | null;
+      fee_details: SubscriptionFeeDetails | null;
+      details: BookingNotificationDetails | null;
+    };
+    const rows = (
+      await this.db.query<Row>(
+        `SELECT e.id,e.created_at,e.kind,e.reference,e.booking_id,e.admission_id,
+          (m.id=s.membership_id) AS for_staff,e.cash_details,e.wallet_details,e.fee_details,
+          COALESCE(h.details->'notification',CASE WHEN b.resource_id=e.resource_id
+            THEN ${notificationDetailsSql} END) AS details
+        FROM booking_notification_events e
+        JOIN LATERAL (SELECT $1::text AS user_id) d ON true
+        JOIN memberships m ON m.user_id=d.user_id AND m.organization_id=e.organization_id
+        LEFT JOIN staff_cash_settlements s ON s.id=e.settlement_id AND s.organization_id=e.organization_id
+        LEFT JOIN booking_history h ON h.id=e.history_id
+        LEFT JOIN bookings b ON b.id=e.booking_id AND b.organization_id=e.organization_id
+        LEFT JOIN admissions ad ON ad.id=e.admission_id AND ad.organization_id=e.organization_id
+          AND NOT ad.cancelled AND ad.deleted_at IS NULL
+        WHERE ${eligibleNotificationRecipientSql}
+          AND (e.kind IN ('staff_cash_collected','call_wallet_low','call_wallet_empty')
+            OR b.id IS NOT NULL OR ad.id IS NOT NULL)
+          AND ($2::uuid IS NULL OR (e.created_at,e.id)<(
+            SELECT created_at,id FROM booking_notification_events WHERE id=$2))
+        ORDER BY e.created_at DESC,e.id DESC LIMIT 51`,
+        [actor.uid, cursor],
+      )
+    ).rows;
+    const page = rows.slice(0, 50);
+    return {
+      items: page.map((row) => {
+        const title =
+          (
+            {
+              created: "Order placed",
+              cancelled: "Order cancelled",
+              rescheduled: "Order rescheduled",
+              staff_cash_collected: "Cash collection confirmed",
+              call_wallet_low: "Call balance is low",
+              call_wallet_empty: "Call balance is empty",
+              subscription_fee_due: "Subscription fee due",
+            } as Record<string, string>
+          )[row.kind] ?? "Notification";
+        let body: string;
+        try {
+          body =
+            row.kind === "staff_cash_collected"
+              ? staffCashNotificationBody(row.cash_details!, row.for_staff)
+              : row.kind === "subscription_fee_due"
+                ? subscriptionFeeNotificationBody(row.fee_details!)
+                : row.kind.startsWith("call_wallet_")
+                  ? callWalletNotificationBody(
+                      row.wallet_details!,
+                      row.kind === "call_wallet_empty",
+                    )
+                  : bookingNotificationBody(row.reference, row.details);
+        } catch {
+          body = row.reference;
+        }
+        const route =
+          row.kind === "staff_cash_collected"
+            ? "/payments"
+            : row.kind === "subscription_fee_due"
+              ? `/admissions/${row.admission_id}`
+              : row.kind.startsWith("call_wallet_")
+                ? "/profile/agent-calls/wallet"
+                : `/booking/${row.booking_id}`;
+        return {
+          id: row.id,
+          created_at: row.created_at,
+          kind: row.kind,
+          title,
+          body,
+          route,
+        };
+      }),
+      next_cursor: rows.length > 50 ? page.at(-1)!.id : null,
+    };
+  }
 
   async register(actor: Actor, input: unknown) {
     const v = registration.parse(input);

@@ -3,12 +3,32 @@ import 'package:eden_booking/modules/bookings/models/booking_models.dart';
 import 'package:eden_booking/modules/bookings/models/booking_payment_entry_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-BookingCustomer c({String name = 'Anjali', String phone = '9876543210', String email = ''}) =>
-    BookingCustomer(name: name, phone: phone, email: email);
+BookingCustomer c({
+  String name = 'Anjali',
+  String phone = '9876543210',
+  String email = '',
+}) => BookingCustomer(name: name, phone: phone, email: email);
 
-AdmissionPlan plan(String mode, {int? days, int? months, int? years, String? date}) => AdmissionPlan(
-  'p', 'Plan', 'swimming', const ['x'], 10, 1000, null, 'Unassigned',
-  expiryMode: mode, expiryDays: days, expiryMonths: months, expiryYears: years, expiryDate: date,
+AdmissionPlan plan(
+  String mode, {
+  int? days,
+  int? months,
+  int? years,
+  String? date,
+}) => AdmissionPlan(
+  'p',
+  'Plan',
+  'swimming',
+  const ['x'],
+  10,
+  1000,
+  null,
+  'Unassigned',
+  expiryMode: mode,
+  expiryDays: days,
+  expiryMonths: months,
+  expiryYears: years,
+  expiryDate: date,
 );
 
 void main() {
@@ -22,20 +42,42 @@ void main() {
       }
     });
     test('valid phones', () {
-      for (final p in ['9876543210', '+91 98765 43210', '(022) 1234-567', '1234567', '1' * 25]) {
+      for (final p in [
+        '9876543210',
+        '+91 98765 43210',
+        '(022) 1234-567',
+        '1234567',
+        '1' * 25,
+      ]) {
         expect(c(phone: p).validate(), isNull, reason: p);
       }
     });
     test('invalid phones', () {
-      for (final p in ['', ' ', '123456', '1' * 26, 'abcdefghij', '98765x3210', '١٢٣٤٥٦٧٨', '📞📞📞📞📞📞📞', '+', '12-34']) {
+      for (final p in [
+        '',
+        ' ',
+        '123456',
+        '1' * 26,
+        'abcdefghij',
+        '98765x3210',
+        '١٢٣٤٥٦٧٨',
+        '📞📞📞📞📞📞📞',
+        '+',
+        '12-34',
+      ]) {
         expect(c(phone: p).validate(), isNotNull, reason: p);
       }
     });
-    test('phone must contain digits', () {
-      for (final p in ['-------', '((((((((', '+-------', '()()()()']) {
-        expect(c(phone: p).validate(), isNotNull, reason: p);
-      }
-    }, skip: 'BUG-22: phone regex accepts strings with no digits such as "-------" or "(((((((("');
+    test(
+      'phone must contain digits',
+      () {
+        for (final p in ['-------', '((((((((', '+-------', '()()()()']) {
+          expect(c(phone: p).validate(), isNotNull, reason: p);
+        }
+      },
+      skip:
+          'BUG-22: phone regex accepts strings with no digits such as "-------" or "(((((((("',
+    );
     test('email optional, validated when present', () {
       expect(c(email: '').validate(), isNull);
       expect(c(email: 'a@b.co').validate(), isNull);
@@ -44,9 +86,14 @@ void main() {
         expect(c(email: e).validate(), isNotNull, reason: e);
       }
     });
-    test('whitespace-only email is treated as empty', () {
-      expect(c(email: '   ').validate(), isNull);
-    }, skip: 'BUG-23: whitespace-only email fails validation although toJson sends it as null');
+    test(
+      'whitespace-only email is treated as empty',
+      () {
+        expect(c(email: '   ').validate(), isNull);
+      },
+      skip:
+          'BUG-23: whitespace-only email fails validation although toJson sends it as null',
+    );
     test('toJson trims and nulls empty email', () {
       final j = c(name: ' Ann ', phone: ' 9876543210 ', email: '  ').toJson();
       expect(j['name'], 'Ann');
@@ -62,14 +109,27 @@ void main() {
       for (final ok in ['1', '0.01', '19.99', ' 5 ', '1000000']) {
         expect(p(ok).validate(), isNull, reason: ok);
       }
-      for (final bad in ['0', '0.00', '-1', '1.001', 'abc', '💰', '١', '1000000.01', '1e2']) {
+      for (final bad in [
+        '0',
+        '0.00',
+        '-1',
+        '1.001',
+        'abc',
+        '💰',
+        '١',
+        '1000000.01',
+        '1e2',
+      ]) {
         expect(p(bad).validate(), isNotNull, reason: bad);
       }
     });
     test('reference limit 200 and future time', () {
       expect(p('1', ref: 'a' * 200).validate(), isNull);
       expect(p('1', ref: 'a' * 201).validate(), isNotNull);
-      expect(p('1', at: DateTime.now().add(const Duration(hours: 1))).validate(), isNotNull);
+      expect(
+        p('1', at: DateTime.now().add(const Duration(hours: 1))).validate(),
+        isNotNull,
+      );
     });
     test('blank detection and balance maths', () {
       expect(p('').isBlank, isTrue);
@@ -83,7 +143,10 @@ void main() {
       expect(m.balanceFor(a.id), 5000);
     });
     test('invalid amounts count as zero received', () {
-      final m = BookingPaymentEntryModel(total: 100, payments: [p('x'), p('-5')]);
+      final m = BookingPaymentEntryModel(
+        total: 100,
+        payments: [p('x'), p('-5')],
+      );
       expect(m.received, 0);
     });
     test('no total means no balance limit', () {
@@ -94,25 +157,48 @@ void main() {
 
   group('AdmissionPlan expiry arithmetic', () {
     test('days', () {
-      expect(plan('after_start', days: 45).expiryFor('2026-12-31'), '2027-02-14');
-      expect(plan('after_start', days: 0).expiryFor('2026-12-31'), '2026-12-31');
+      expect(
+        plan('after_start', days: 45).expiryFor('2026-12-31'),
+        '2027-02-14',
+      );
+      expect(
+        plan('after_start', days: 0).expiryFor('2026-12-31'),
+        '2026-12-31',
+      );
     });
     test('months clamp to month end', () {
-      expect(plan('after_months', months: 1).expiryFor('2026-01-31'), '2026-02-28');
-      expect(plan('after_months', months: 1).expiryFor('2028-01-31'), '2028-02-29');
+      expect(
+        plan('after_months', months: 1).expiryFor('2026-01-31'),
+        '2026-02-28',
+      );
+      expect(
+        plan('after_months', months: 1).expiryFor('2028-01-31'),
+        '2028-02-29',
+      );
     });
     test('years clamp leap day', () {
-      expect(plan('after_years', years: 1).expiryFor('2028-02-29'), '2029-02-28');
+      expect(
+        plan('after_years', years: 1).expiryFor('2028-02-29'),
+        '2029-02-28',
+      );
     });
     test('fixed date and missing data', () {
-      expect(plan('fixed_date', date: '2030-01-01').expiryFor('2026-01-01'), '2030-01-01');
+      expect(
+        plan('fixed_date', date: '2030-01-01').expiryFor('2026-01-01'),
+        '2030-01-01',
+      );
       expect(plan('after_months').expiryFor('2026-01-01'), isNull);
       expect(plan('after_start', days: 5).expiryFor('garbage'), isNull);
       expect(plan('after_start', days: 5).expiryFor(''), isNull);
     });
-    test('impossible calendar start is rejected', () {
-      expect(plan('after_start', days: 1).expiryFor('2026-02-30'), isNull);
-    }, skip: 'BUG-24: expiryFor accepts impossible dates like 2026-02-30 (DateTime.tryParse rolls over to March)');
+    test(
+      'impossible calendar start is rejected',
+      () {
+        expect(plan('after_start', days: 1).expiryFor('2026-02-30'), isNull);
+      },
+      skip:
+          'BUG-24: expiryFor accepts impossible dates like 2026-02-30 (DateTime.tryParse rolls over to March)',
+    );
     test('validity label pluralisation', () {
       expect(plan('after_months', months: 1).validityLabel, '1 month');
       expect(plan('after_months', months: 3).validityLabel, '3 months');

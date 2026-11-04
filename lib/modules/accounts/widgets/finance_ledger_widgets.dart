@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:eden_booking/design_system/design_system.dart';
 import '../models/accounts_models.dart';
 import 'accounts_overview_widgets.dart';
@@ -14,6 +15,114 @@ const financeShareColors = [
   Color(0xFF4DB6AC),
   Color(0xFF9E9E9E),
 ];
+
+class FinanceReportAppBarTitle extends StatelessWidget {
+  const FinanceReportAppBarTitle({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+  final String title, subtitle;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: scheme.primary.withValues(alpha: .16),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: scheme.primary, size: 25),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class FinanceChoicePill extends StatelessWidget {
+  const FinanceChoicePill({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+  final String label;
+  final bool selected;
+  final IconData? icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final foreground = selected ? const Color(0xFF102008) : scheme.onSurface;
+    return Material(
+      color: selected ? AppColors.lime : scheme.surfaceContainerHigh,
+      shape: StadiumBorder(
+        side: BorderSide(
+          color: selected
+              ? AppColors.lime
+              : scheme.outline.withValues(alpha: .35),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                selected ? Icons.check_rounded : icon,
+                size: 17,
+                color: selected ? foreground : scheme.primary,
+              ),
+              const SizedBox(width: 7),
+              Text(
+                label,
+                style: TextStyle(
+                  color: foreground,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Pill-shaped filter button. Highlighted while [active]; shows a clear
 /// button instead of the dropdown arrow when [onClear] is given.
@@ -154,88 +263,155 @@ class FinanceTotalCard extends StatelessWidget {
     required this.currency,
     this.stats = const [],
     this.inverse = false,
+    this.artwork,
   });
   final String label, subtitle, currency;
   final int amount;
   final List<(String, int?)> stats;
+  final String? artwork;
 
   /// Uses the inverse surface instead of the brand color (Expenses).
   final bool inverse;
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final bg = inverse ? scheme.inverseSurface : scheme.primary,
-        on = inverse ? scheme.onInverseSurface : scheme.onPrimary;
+    const on = Colors.white;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: bg,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: inverse
+              ? const [Color(0xFF0A3314), Color(0xFF10451C), Color(0xFF176D18)]
+              : const [Color(0xFF092D12), Color(0xFF0C431A), Color(0xFF12661A)],
+        ),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.lime.withValues(alpha: .2)),
       ),
       child: DefaultTextStyle.merge(
         style: TextStyle(color: on),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: on.withValues(alpha: .85),
-              ),
-            ),
-            const SizedBox(height: 6),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                financeMoney(amount, currency),
-                style: const TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w700,
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: on.withValues(alpha: .94),
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          financeMoney(amount, currency),
+                          style: const TextStyle(
+                            fontSize: 31,
+                            fontWeight: FontWeight.w800,
+                            color: on,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: on.withValues(alpha: .78),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
-            Text(
-              subtitle,
-              style: TextStyle(fontSize: 12, color: on.withValues(alpha: .8)),
+                if (artwork != null) ...[
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 88,
+                    height: 90,
+                    child: SvgPicture.asset(
+                      artwork!,
+                      excludeFromSemantics: true,
+                    ),
+                  ),
+                ],
+              ],
             ),
             if (stats.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final (name, value) in stats)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: on.withValues(alpha: .12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: on.withValues(alpha: .8),
+              const SizedBox(height: 16),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns = stats.length >= 3
+                      ? (constraints.maxWidth < 270 ? 2 : 3)
+                      : stats.length;
+                  final width =
+                      (constraints.maxWidth - (columns - 1) * 8) / columns;
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final (name, value) in stats)
+                        Container(
+                          width: width,
+                          constraints: const BoxConstraints(minHeight: 72),
+                          padding: const EdgeInsets.all(9),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: .14),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: .22),
                             ),
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                          Text(
-                            value == null ? '—' : financeMoney(value, currency),
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                name.toLowerCase().contains('cash')
+                                    ? Icons.account_balance_wallet_outlined
+                                    : name.toLowerCase().contains('bank')
+                                    ? Icons.credit_card_outlined
+                                    : Icons.bar_chart_rounded,
+                                size: 19,
+                                color: AppColors.lime,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: on.withValues(alpha: .8),
+                                ),
+                              ),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  value == null
+                                      ? '—'
+                                      : financeMoney(value, currency),
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: on,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                ],
+                        ),
+                    ],
+                  );
+                },
               ),
             ],
           ],

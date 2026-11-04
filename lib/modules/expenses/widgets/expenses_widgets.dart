@@ -41,6 +41,7 @@ class ExpenseChart extends StatelessWidget {
     this.onDay,
     this.selectedDay,
     this.onClearDay,
+    this.enhanced = false,
   });
   final List<int> values;
   final ExpenseFilter filter;
@@ -49,20 +50,33 @@ class ExpenseChart extends StatelessWidget {
   final ValueChanged<int>? onDay;
   final int? selectedDay;
   final VoidCallback? onClearDay;
+  final bool enhanced;
   @override
-  Widget build(BuildContext context) => FinancePeriodChart(
-    values: values,
-    yearly: filter.yearly,
-    currency: currency,
-    onMonth: onMonth,
-    onDay: onDay,
-    selectedDay: selectedDay,
-    anchor: filter.anchor,
-    onClearDay: onClearDay,
-    yearlyTitle: 'Monthly expenses · tap a month to explore',
-    monthlyTitle: 'Daily expenses',
-    note: 'Reversals reduce the total on the date they were recorded.',
-  );
+  Widget build(BuildContext context) => enhanced
+      ? FinanceTrendChart(
+          values: values,
+          yearly: filter.yearly,
+          currency: currency,
+          onMonth: onMonth,
+          onDay: onDay,
+          selectedDay: selectedDay,
+          anchor: filter.anchor,
+          title: filter.yearly ? 'Monthly expenses' : 'Daily expenses',
+          note: 'Reversals reduce the total on the date they were recorded.',
+        )
+      : FinancePeriodChart(
+          values: values,
+          yearly: filter.yearly,
+          currency: currency,
+          onMonth: onMonth,
+          onDay: onDay,
+          selectedDay: selectedDay,
+          anchor: filter.anchor,
+          onClearDay: onClearDay,
+          yearlyTitle: 'Monthly expenses · tap a month to explore',
+          monthlyTitle: 'Daily expenses',
+          note: 'Reversals reduce the total on the date they were recorded.',
+        );
 }
 
 class ExpenseTile extends StatelessWidget {

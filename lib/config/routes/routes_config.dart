@@ -55,6 +55,7 @@ import '../../modules/organization/screens/organization_screen.dart';
 import '../../modules/businesses/screens/businesses_screen.dart';
 import '../../modules/businesses/screens/resource_setup_screen.dart';
 import '../../modules/dashboard/screens/home_screen.dart';
+import '../../modules/notifications/screens/notifications_screen.dart';
 import '../../modules/dashboard/screens/startup_screen.dart';
 import '../../modules/profile/screens/profile_screen.dart';
 import '../../modules/team/screens/team_screen.dart';
@@ -133,6 +134,10 @@ GoRouter createRouter(
       ],
     ),
     routes: [
+      GoRoute(
+        path: Routes.notifications,
+        builder: (c, s) => const NotificationsScreen(),
+      ),
       GoRoute(
         path: Routes.bookingWebsite,
         builder: (c, s) => const WebsiteSettingsScreen(),

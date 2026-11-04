@@ -134,12 +134,17 @@ void main() {
         expect(f(' 20 '), isNull);
       }
     });
-    test('integer validators reject hex and plus-sign forms', () {
-      for (final f in [poolInteger, court.courtInteger]) {
-        expect(f('0x10'), isNotNull, reason: 'hex literal accepted as 16');
-        expect(f('+5'), isNotNull, reason: 'plus sign accepted');
-      }
-    }, skip: 'BUG-1: int.tryParse accepts "0x10" and "+5" in capacity/seat/allowance fields');
+    test(
+      'integer validators reject hex and plus-sign forms',
+      () {
+        for (final f in [poolInteger, court.courtInteger]) {
+          expect(f('0x10'), isNotNull, reason: 'hex literal accepted as 16');
+          expect(f('+5'), isNotNull, reason: 'plus sign accepted');
+        }
+      },
+      skip:
+          'BUG-1: int.tryParse accepts "0x10" and "+5" in capacity/seat/allowance fields',
+    );
     test('name validators', () {
       for (final f in [poolName, court.courtName]) {
         expect(f(null), isNotNull);

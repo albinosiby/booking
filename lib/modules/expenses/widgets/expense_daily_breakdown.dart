@@ -40,9 +40,23 @@ class ExpenseDailyBreakdown extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          selectedDay == null ? 'Expenses by day' : 'Selected day’s expenses',
-          style: theme.textTheme.titleSmall,
+        Row(
+          children: [
+            Icon(Icons.format_list_bulleted_rounded, color: scheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                selectedDay == null
+                    ? 'Expenses by day'
+                    : 'Selected day’s expenses',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
         ),
         if (selectedDay != null) ...[
           TextButton(onPressed: onClearDay, child: const Text('Show all days')),
@@ -97,23 +111,62 @@ class ExpenseDailyBreakdown extends StatelessWidget {
           const SizedBox(height: 8),
           Material(
             color: selectedDay == DateTime.parse(entry.key).day
-                ? scheme.primary.withValues(alpha: .12)
-                : scheme.surfaceContainerHighest.withValues(alpha: .45),
-            borderRadius: BorderRadius.circular(12),
+                ? scheme.primary.withValues(alpha: .10)
+                : scheme.surfaceContainerHigh,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: BorderSide(color: scheme.outline.withValues(alpha: .18)),
+            ),
             child: InkWell(
               key: ValueKey('expense-day-${entry.key}'),
               onTap: selectedDay == null
                   ? () => onDay(DateTime.parse(entry.key).day)
                   : null,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(18),
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${DateTime.parse(entry.key).day} ${financeMonths[anchor.month - 1]} ${anchor.year}',
-                      style: theme.textTheme.labelLarge,
+                    Row(
+                      children: [
+                        Container(
+                          width: 47,
+                          padding: const EdgeInsets.symmetric(vertical: 7),
+                          decoration: BoxDecoration(
+                            color: scheme.primary.withValues(alpha: .16),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                '${DateTime.parse(entry.key).day}',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                financeMonths[anchor.month - 1],
+                                style: theme.textTheme.labelSmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '${anchor.year}',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (selectedDay == null)
+                          Icon(
+                            Icons.chevron_right,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 6),
                     Wrap(
@@ -128,7 +181,10 @@ class ExpenseDailyBreakdown extends StatelessWidget {
                         ),
                         Text(
                           '${selectedDay == null ? 'Net' : 'Net spent'} ${financeMoney(entry.value.net, currency)}',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: scheme.primary,
+                          ),
                         ),
                         if (selectedDay != null) ...[
                           Text(
@@ -164,6 +220,12 @@ class ExpenseDailyBreakdown extends StatelessWidget {
                                   )
                                 : Row(
                                     children: [
+                                      Icon(
+                                        Icons.category_outlined,
+                                        size: 16,
+                                        color: scheme.primary,
+                                      ),
+                                      const SizedBox(width: 7),
                                       Expanded(
                                         child: Text(
                                           '${purpose.category} · ${purpose.reason} · ${purpose.space}',
@@ -187,19 +249,33 @@ class ExpenseDailyBreakdown extends StatelessWidget {
                         ),
                     ],
                     if (entry.value.methods.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 4,
+                      const Divider(height: 18),
+                      Row(
                         children: [
-                          for (final method in entry.value.methods.entries)
-                            if (method.value != 0)
-                              Text(
-                                '${financeLabel(method.key)} ${financeMoney(method.value, currency)}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                          Icon(
+                            Icons.account_balance_wallet_outlined,
+                            size: 16,
+                            color: scheme.primary,
+                          ),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Wrap(
+                              spacing: 12,
+                              runSpacing: 4,
+                              children: [
+                                for (final method
+                                    in entry.value.methods.entries)
+                                  if (method.value != 0)
+                                    Text(
+                                      '${financeLabel(method.key)} ${financeMoney(method.value, currency)}',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ],

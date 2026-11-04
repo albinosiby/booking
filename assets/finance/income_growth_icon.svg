@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" fill="none">
+  <defs>
+    <linearGradient id="bars" x1="25" y1="135" x2="130" y2="45" gradientUnits="userSpaceOnUse"><stop stop-color="#58D629"/><stop offset="1" stop-color="#B3FF58"/></linearGradient>
+    <linearGradient id="coins" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#FBE36A"/><stop offset="1" stop-color="#D7A624"/></linearGradient>
+  </defs>
+  <ellipse cx="87" cy="140" rx="65" ry="6" fill="#07250C" opacity=".5"/>
+  <rect x="65" y="103" width="17" height="32" rx="4" fill="url(#bars)"/>
+  <rect x="90" y="81" width="17" height="54" rx="4" fill="url(#bars)"/>
+  <rect x="115" y="59" width="17" height="76" rx="4" fill="url(#bars)"/>
+  <path d="M24 83C52 77 73 64 91 47C102 37 115 26 136 17" stroke="#91FA35" stroke-width="7" stroke-linecap="round"/>
+  <path d="M116 16L140 14L136 39" stroke="#91FA35" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="35" cy="120" rx="20" ry="7" fill="#F5D956"/>
+  <path d="M15 120V131C15 141 55 141 55 131V120" fill="url(#coins)"/>
+  <ellipse cx="35" cy="120" rx="20" ry="7" fill="#FFE781"/>
+  <path d="M15 126C24 132 46 132 55 126M15 132C24 138 46 138 55 132" stroke="#FFF0A2" stroke-width="2"/>
+  <ellipse cx="56" cy="135" rx="18" ry="6" fill="#F4BE39"/>
+  <path d="M38 135V142C38 150 74 150 74 142V135" fill="#D7A82B"/>
+  <ellipse cx="56" cy="135" rx="18" ry="6" fill="#FFE17B"/>
+</svg>

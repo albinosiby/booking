@@ -79,10 +79,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   widget.websiteLinks!(),
                 )
               : null,
-          onAlerts: workspace.hasPermission('view_finance')
-              ? showCollections
-              : null,
-          hasAlerts: (s.dueTotal ?? s.dashboard?.outstanding ?? 0) > 0,
+          onAlerts: () => context.push('/notifications'),
+          hasAlerts: false,
           onProfile: () => context.go('/profile'),
         ),
         maxWidth: 1200,

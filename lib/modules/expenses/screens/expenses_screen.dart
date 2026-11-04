@@ -210,11 +210,14 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               category.active ? category.name : '${category.name} · archived',
             ),
         ]) ...[
-          ChoiceChip(
+          FinanceChoicePill(
             key: ValueKey('expense-category-${id ?? 'all'}'),
-            label: Text(label),
+            label: label,
+            icon: id == null
+                ? Icons.category_outlined
+                : expenseCategoryIcon(label),
             selected: s.filter.categoryId == id,
-            onSelected: (_) => cubit.setFilter(
+            onTap: () => cubit.setFilter(
               s.filter.copy(categoryId: id, clearCategory: id == null),
             ),
           ),
@@ -224,7 +227,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     ),
   );
 
-  Widget searchAndFilters(ExpensesState s) {
+  Widget searchAndFilters(ExpensesState s, {bool showSearch = true}) {
     final f = s.filter, catalog = s.catalog;
     final business = catalog?.businesses
         .where((item) => item.id == f.businessId)
@@ -245,26 +248,28 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 12),
-        TextField(
-          key: const ValueKey('expense-search'),
-          controller: search,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.search),
-            hintText: 'Search reason or reference',
-            suffixIcon: f.query.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: 'Clear search',
-                    onPressed: () {
-                      search.clear();
-                      cubit.setFilter(f.copy(query: ''));
-                    },
-                    icon: const Icon(Icons.close),
-                  ),
+        if (showSearch)
+          TextField(
+            key: const ValueKey('expense-search'),
+            controller: search,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: 'Search reason or reference',
+              suffixIcon: f.query.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        search.clear();
+                        cubit.setFilter(f.copy(query: ''));
+                      },
+                      icon: const Icon(Icons.close),
+                    ),
+            ),
+            onSubmitted: (value) =>
+                cubit.setFilter(f.copy(query: value.trim())),
           ),
-          onSubmitted: (value) => cubit.setFilter(f.copy(query: value.trim())),
-        ),
         if (hasFilters) ...[
           const SizedBox(height: 8),
           Wrap(
@@ -339,6 +344,12 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         title: 'Expenses',
         back: true,
         showAppBar: true,
+        appBarHeight: 70,
+        appBarTitle: const FinanceReportAppBarTitle(
+          title: 'Expenses',
+          subtitle: 'Track and manage your expenses',
+          icon: Icons.account_balance_wallet_outlined,
+        ),
         compactHeader: true,
         scrollId: 'expenses',
         actions: [
@@ -392,21 +403,47 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                   cubit.setFilter(f.copy(anchor: anchor, yearly: yearly)),
             ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            Row(
               children: [
                 FinanceFilterChip(
-                  icon: Icons.tune,
+                  icon: Icons.filter_alt_outlined,
                   label: filtered == 0 ? 'Filters' : 'Filters · $filtered',
                   tooltip: 'Filter expenses',
                   active: filtered > 0,
                   onTap: filters,
                 ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('expense-search'),
+                    controller: search,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: 'Search reason or reference',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      suffixIcon: f.query.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Clear search',
+                              onPressed: () {
+                                search.clear();
+                                cubit.setFilter(f.copy(query: ''));
+                              },
+                              icon: const Icon(Icons.close),
+                            ),
+                    ),
+                    onSubmitted: (value) =>
+                        cubit.setFilter(f.copy(query: value.trim())),
+                  ),
+                ),
               ],
             ),
             categoryChips(s),
-            searchAndFilters(s),
+            searchAndFilters(s, showSearch: false),
             // Fixed height so the page does not jump while loading.
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -432,6 +469,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         amount: summary.gross,
                         currency: catalog!.currency,
                         inverse: true,
+                        artwork: 'assets/finance/expense_receipt_icon.svg',
                         subtitle:
                             '${summary.count} ${summary.count == 1 ? 'entry' : 'entries'} · ${financeRangeLabel(FinanceFilter(from: f.from, until: f.until))}',
                         stats: [
@@ -468,9 +506,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                           values: summary.bars(f),
                           selectedDay: s.selectedDay,
                           onDay: cubit.selectDay,
-                          // The daily breakdown below has the one Show all days.
                           filter: f,
                           currency: catalog.currency,
+                          enhanced: true,
                           onMonth: (m) => cubit.setFilter(
                             f.copy(
                               anchor: DateTime(f.anchor.year, m),

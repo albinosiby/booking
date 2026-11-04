@@ -112,6 +112,27 @@ async function staff(
   await devices.register(user, device());
   return user;
 }
+test("inbox shows events only while the signed-in user can access their resource", async () => {
+  const f = await fixture();
+  const allowed = await staff(f, ["manage_bookings"], f.resource);
+  const wrongResource = await staff(f, ["manage_bookings"], f.otherResource);
+  const first = await event(f);
+  await db.query("UPDATE booking_notification_events SET created_at=now()-interval '1 day' WHERE id=$1", [first]);
+  const second = await event(f, "rescheduled");
+  assert.equal((await devices.list(f.owner)).items[0].id, second);
+  assert.deepEqual((await devices.list(f.owner, second)).items.map((item) => item.id), [first]);
+  assert.equal(
+    (await devices.list(allowed)).items[0].route,
+    `/booking/${f.booking}`,
+  );
+  assert.equal((await devices.list(wrongResource)).items.length, 0);
+  assert.equal((await devices.list(actor())).items.length, 0);
+  await db.query("UPDATE memberships SET active=false WHERE user_id=$1", [
+    allowed.uid,
+  ]);
+  assert.equal((await devices.list(allowed)).items.length, 0);
+  await assert.rejects(() => devices.list(f.owner, "invalid-cursor"));
+});
 test("device proof, rotation, rebinding and logged-out cleanup protect account ownership", async () => {
   const a = actor(),
     b = actor(),

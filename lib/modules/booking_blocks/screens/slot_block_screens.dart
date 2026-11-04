@@ -647,9 +647,26 @@ class _NewSlotBlockScreenState extends State<NewSlotBlockScreen> {
             ],
           ),
           Text(
-            'Each tile covers the next 30 minutes. To finish at 18:00, make 17:30 the last tile. Tap the start again to clear.',
+            'Tap the start time, then the end time. For example, 09:00 then 10:00 blocks 9 to 10. Add more ranges the same way; tap a range\'s start to remove it.',
             style: theme.textTheme.bodySmall,
           ),
+          if (s.anchor != null) ...[
+            const SizedBox(height: 10),
+            _Hint(
+              icon: Icons.ads_click_rounded,
+              color: c.primary,
+              text: 'Starts at ${s.anchor}. Now tap the end time.',
+            ),
+          ],
+          if (s.ranges.isNotEmpty || s.anchor != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: s.locked ? null : cubit.clearPicked,
+                icon: const Icon(Icons.clear_all_rounded, size: 18),
+                label: const Text('Clear selection'),
+              ),
+            ),
           if (s.slots.any((slot) => slot.status == 'blocked'))
             Align(
               alignment: Alignment.centerRight,
@@ -835,8 +852,12 @@ class _BlockTimeGrid extends StatelessWidget {
           ? 3
           : 2;
       final width = (box.maxWidth - (columns - 1) * 8) / columns;
-      final visible = s.slots.where((x) => x.status != 'past').toList();
-      if (visible.isEmpty) {
+      final visible = [
+        ...s.slots.where((x) => x.status != 'past'),
+        // Midnight can only end a range.
+        const BlockSlot('24:00', 'end'),
+      ];
+      if (visible.length == 1) {
         return const _Hint(
           icon: Icons.history_toggle_off,
           text: 'This day has no remaining slots.',
@@ -850,29 +871,38 @@ class _BlockTimeGrid extends StatelessWidget {
             Builder(
               builder: (context) {
                 final t = slot.time;
-                final start = s.hasRange && t == s.from,
-                    end = s.hasRange && t == s.until,
-                    active = start || end,
-                    inRange =
-                        s.hasRange &&
-                        t.compareTo(s.from!) > 0 &&
-                        t.compareTo(s.until!) < 0;
-                final selectable = enabled && slot.open;
+                final starts =
+                        t == s.anchor || s.ranges.any((r) => r.start == t),
+                    ends = s.ranges.any((r) => r.end == t),
+                    inside = !starts && s.rangeAt(t) != null,
+                    endHere = s.canEnd(t),
+                    active = starts || ends;
+                final selectable =
+                    enabled &&
+                    (s.anchor != null
+                        ? t == s.anchor ||
+                              endHere ||
+                              (slot.open && s.rangeAt(t) == null)
+                        : s.rangeAt(t) != null || slot.open);
                 final blocked = slot.status == 'blocked';
-                final status = start && end
-                    ? 'Until ${blockSlotEnd(t, s.slotStep)}'
-                    : start
+                final status = t == s.anchor
+                    ? 'Start'
+                    : ends && starts
+                    ? 'To · From'
+                    : ends
+                    ? 'To'
+                    : starts
                     ? 'From'
-                    : end
-                    ? 'Until ${blockSlotEnd(t, s.slotStep)}'
-                    : inRange
+                    : inside
                     ? 'Blocking'
+                    : endHere
+                    ? 'End here'
                     : switch (slot.status) {
                         'booked' => 'Booked',
                         'blocked' => 'Blocked',
+                        'end' => 'End of day',
                         _ => 'Available',
                       };
-                final finish = blockSlotEnd(t, s.slotStep);
                 final text = active
                     ? c.onPrimary
                     : blocked
@@ -884,13 +914,13 @@ class _BlockTimeGrid extends StatelessWidget {
                   width: width,
                   child: Semantics(
                     button: true,
-                    selected: active || inRange,
+                    selected: active || inside,
                     enabled: selectable,
-                    label: '$t to $finish, $status',
+                    label: '$t, $status',
                     child: Material(
                       color: active
                           ? c.primary
-                          : inRange
+                          : inside
                           ? c.primary.withValues(alpha: .12)
                           : blocked
                           ? c.errorContainer
@@ -900,7 +930,7 @@ class _BlockTimeGrid extends StatelessWidget {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(
-                          color: active || inRange
+                          color: active || inside || endHere
                               ? c.primary
                               : blocked
                               ? c.error.withValues(alpha: .5)
@@ -912,7 +942,7 @@ class _BlockTimeGrid extends StatelessWidget {
                         key: ValueKey('block-time-$t'),
                         onTap: selectable ? () => onSelected(slot) : null,
                         child: Container(
-                          constraints: const BoxConstraints(minHeight: 86),
+                          constraints: const BoxConstraints(minHeight: 72),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
                             vertical: 12,
@@ -932,13 +962,7 @@ class _BlockTimeGrid extends StatelessWidget {
                                       : null,
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'to $finish',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(fontSize: 11, color: text),
-                              ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 6),
                               Text(
                                 status,
                                 textAlign: TextAlign.center,
@@ -959,11 +983,15 @@ class _BlockTimeGrid extends StatelessWidget {
   );
 }
 
-String _range(BlockFormModel s) => s.allDay
-    ? 'Entire day'
-    : !s.timeChosen
-    ? 'Choose hours'
-    : '${s.start} – ${TimeFormat.display(s.end)}${s.endDate != s.date ? ' +1 day' : ''}';
+String _range(BlockFormModel s) {
+  if (s.allDay) return 'Entire day';
+  final periods = s.periods;
+  return periods.isEmpty
+      ? 'Choose hours'
+      : periods.length == 1
+      ? periods.single.label
+      : '${periods.length} time ranges';
+}
 
 class _BlockBar extends StatelessWidget {
   const _BlockBar({required this.model, required this.onSubmit});
@@ -999,7 +1027,7 @@ class _BlockBar extends StatelessWidget {
       ],
     );
     final action = AppButton(
-      label: s.pending != null
+      label: s.pending.isNotEmpty
           ? 'Retry block'
           : s.review
           ? 'Confirm block'
@@ -1166,22 +1194,43 @@ class _ReviewCard extends StatelessWidget {
                   ],
                 ),
               ),
-              row(
-                Icons.schedule_rounded,
-                'From',
-                Text(
-                  '${_shortDay(context, s.date)} · ${s.startTime}',
-                  style: theme.textTheme.bodyLarge,
+              if (s.allDay) ...[
+                row(
+                  Icons.schedule_rounded,
+                  'From',
+                  Text(
+                    '${_shortDay(context, s.date)} · 00:00',
+                    style: theme.textTheme.bodyLarge,
+                  ),
                 ),
-              ),
-              row(
-                Icons.flag_outlined,
-                'Until',
-                Text(
-                  '${_shortDay(context, s.endDate)} · ${s.endTime}',
-                  style: theme.textTheme.bodyLarge,
+                row(
+                  Icons.flag_outlined,
+                  'Until',
+                  Text(
+                    '${_shortDay(context, s.endDate)} · 00:00',
+                    style: theme.textTheme.bodyLarge,
+                  ),
                 ),
-              ),
+              ] else
+                row(
+                  Icons.schedule_rounded,
+                  s.periods.length == 1
+                      ? 'Hours'
+                      : 'Hours (${s.periods.length})',
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final p in s.periods)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            p.label,
+                            style: theme.textTheme.bodyLarge,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               row(
                 Icons.public,
                 'Time zone',

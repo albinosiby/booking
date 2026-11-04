@@ -221,11 +221,14 @@ class _IncomeScreenState extends State<IncomeScreen> {
       child: Row(
         children: [
           for (final (id, label) in options) ...[
-            ChoiceChip(
+            FinanceChoicePill(
               key: ValueKey('income-source-${id ?? 'all'}'),
-              label: Text(label),
+              label: label,
+              icon: id == null
+                  ? Icons.category_outlined
+                  : incomeSourceIcon(id, label),
               selected: s.filter.source == id,
-              onSelected: (_) => cubit.setFilter(
+              onTap: () => cubit.setFilter(
                 s.filter.copy(source: id, clearSource: id == null),
               ),
             ),
@@ -280,6 +283,12 @@ class _IncomeScreenState extends State<IncomeScreen> {
         title: 'Income',
         back: true,
         showAppBar: true,
+        appBarHeight: 70,
+        appBarTitle: const FinanceReportAppBarTitle(
+          title: 'Income',
+          subtitle: 'Track and analyze your earnings',
+          icon: Icons.trending_up_rounded,
+        ),
         compactHeader: true,
         scrollId: 'income',
         actions: [
@@ -301,7 +310,7 @@ class _IncomeScreenState extends State<IncomeScreen> {
             ? FloatingActionButton.extended(
                 onPressed: () => addIncome(),
                 icon: const Icon(Icons.add),
-                label: const Text('Add income'),
+                label: const Text('Add extra income'),
               )
             : null,
         children: [
@@ -332,7 +341,7 @@ class _IncomeScreenState extends State<IncomeScreen> {
               runSpacing: 8,
               children: [
                 FinanceFilterChip(
-                  icon: Icons.tune,
+                  icon: Icons.filter_alt_outlined,
                   label: filtered == 0 ? 'Filters' : 'Filters · $filtered',
                   tooltip: 'Filter income',
                   active: filtered > 0,
@@ -365,6 +374,7 @@ class _IncomeScreenState extends State<IncomeScreen> {
                         label: s.sourceName ?? 'Total income',
                         amount: summary.total,
                         currency: catalog!.currency,
+                        artwork: 'assets/finance/income_growth_icon.svg',
                         subtitle:
                             '${summary.count} ${summary.count == 1 ? 'entry' : 'entries'} · ${financeRangeLabel(FinanceFilter(from: f.from, until: f.until))}',
                         stats: [
@@ -397,52 +407,50 @@ class _IncomeScreenState extends State<IncomeScreen> {
                       ),
                       const SizedBox(height: 12),
                       AppCard(
-                        child: Column(
-                          children: [
-                            FinancePeriodChart(
-                              values: summary.bars(f),
-                              selectedDay: s.selectedDay,
-                              onDay: cubit.selectDay,
-                              anchor: f.anchor,
-                              yearly: f.yearly,
-                              currency: catalog.currency,
-                              yearlyTitle:
-                                  'Monthly income · tap a month to explore',
-                              monthlyTitle: 'Daily income',
-                              onMonth: (m) => cubit.setFilter(
-                                f.copy(
-                                  anchor: DateTime(f.anchor.year, m),
-                                  yearly: false,
-                                ),
-                              ),
+                        child: FinanceTrendChart(
+                          values: summary.bars(f),
+                          selectedDay: s.selectedDay,
+                          onDay: cubit.selectDay,
+                          anchor: f.anchor,
+                          yearly: f.yearly,
+                          currency: catalog.currency,
+                          title: f.yearly ? 'Monthly income' : 'Daily income',
+                          onMonth: (m) => cubit.setFilter(
+                            f.copy(
+                              anchor: DateTime(f.anchor.year, m),
+                              yearly: false,
                             ),
-                            if (!f.yearly)
-                              IncomeDailyBreakdown(
-                                summary: summary,
-                                anchor: f.anchor,
-                                currency: catalog.currency,
-                                selectedDay: s.selectedDay,
-                                onDay: cubit.selectDay,
-                                onClearDay: () => cubit.selectDay(null),
-                                onAddIncome:
-                                    catalog.canIncome && s.selectedDay != null
-                                    ? () => addIncome(
-                                        date: DateTime(
-                                          f.anchor.year,
-                                          f.anchor.month,
-                                          s.selectedDay!,
-                                          12,
-                                        ),
-                                      )
-                                    : null,
-                                onDownloadDay: s.selectedDay == null
-                                    ? null
-                                    : exportDay,
-                                exporting: s.exporting,
-                              ),
-                          ],
+                          ),
                         ),
                       ),
+                      if (!f.yearly) ...[
+                        const SizedBox(height: 12),
+                        AppCard(
+                          child: IncomeDailyBreakdown(
+                            summary: summary,
+                            anchor: f.anchor,
+                            currency: catalog.currency,
+                            selectedDay: s.selectedDay,
+                            onDay: cubit.selectDay,
+                            onClearDay: () => cubit.selectDay(null),
+                            onAddIncome:
+                                catalog.canIncome && s.selectedDay != null
+                                ? () => addIncome(
+                                    date: DateTime(
+                                      f.anchor.year,
+                                      f.anchor.month,
+                                      s.selectedDay!,
+                                      12,
+                                    ),
+                                  )
+                                : null,
+                            onDownloadDay: s.selectedDay == null
+                                ? null
+                                : exportDay,
+                            exporting: s.exporting,
+                          ),
+                        ),
+                      ],
                       FinanceSection(
                         s.selectedDay == null
                             ? 'All income'

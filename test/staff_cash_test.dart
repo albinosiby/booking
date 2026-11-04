@@ -76,7 +76,10 @@ void main() {
         find.textContaining('Collected ₹ 80.00 from Asha successfully.'),
         findsOneWidget,
       );
-      expect(find.textContaining('Still to hand over ₹ 100.00'), findsOneWidget);
+      expect(
+        find.textContaining('Still to hand over ₹ 100.00'),
+        findsOneWidget,
+      );
       await tester.pumpWidget(const SizedBox());
     },
   );

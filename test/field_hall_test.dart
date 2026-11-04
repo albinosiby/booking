@@ -58,7 +58,12 @@ HallResource hall({
           rates: durations.map((d) => HallRate(d, price)),
         ),
       ],
-  sessions: sessions ?? [pkg('s1-$id', 'Morning'), pkg('s2-$id', 'Evening', opens: '17:00', closes: '22:00')],
+  sessions:
+      sessions ??
+      [
+        pkg('s1-$id', 'Morning'),
+        pkg('s2-$id', 'Evening', opens: '17:00', closes: '22:00'),
+      ],
   fullDay: fullDay ?? pkg('f-$id', 'Full day', opens: '09:00', closes: '23:00'),
 );
 
@@ -85,19 +90,45 @@ void main() {
       );
     });
     test('duplicate ids rejected', () {
-      expect(check([hall(id: 'a', name: 'One'), hall(id: 'a', name: 'Two')]), isNotNull);
+      expect(
+        check([hall(id: 'a', name: 'One'), hall(id: 'a', name: 'Two')]),
+        isNotNull,
+      );
     });
     test('51 halls rejected', () {
-      final halls = [for (var i = 0; i < 51; i++) hall(id: 'h$i', name: 'Hall ${i + 10}')];
-      expect(check(halls, complete: false), 'Use at most 50 halls per business.');
+      final halls = [
+        for (var i = 0; i < 51; i++) hall(id: 'h$i', name: 'Hall ${i + 10}'),
+      ];
+      expect(
+        check(halls, complete: false),
+        'Use at most 50 halls per business.',
+      );
     });
-    test('toJson trims', () => expect(hall(name: '  X1  ').toJson()['name'], 'X1'));
+    test(
+      'toJson trims',
+      () => expect(hall(name: '  X1  ').toJson()['name'], 'X1'),
+    );
   });
 
   group('Hall capacity and seated capacity', () {
     test('capacity invalid values', () {
-      for (final c in ['', ' ', '0', '-1', '10001', '1.5', 'x', '٣', '💺', '9' * 30]) {
-        expect(check([hall(capacity: c, seated: '0')]), isNotNull, reason: '"$c"');
+      for (final c in [
+        '',
+        ' ',
+        '0',
+        '-1',
+        '10001',
+        '1.5',
+        'x',
+        '٣',
+        '💺',
+        '9' * 30,
+      ]) {
+        expect(
+          check([hall(capacity: c, seated: '0')]),
+          isNotNull,
+          reason: '"$c"',
+        );
       }
     });
     test('capacity boundaries', () {
@@ -106,7 +137,11 @@ void main() {
     });
     test('seated invalid values', () {
       for (final s in ['', '-1', '101', '1.5', 'x', '٣']) {
-        expect(check([hall(capacity: '100', seated: s)]), isNotNull, reason: '"$s"');
+        expect(
+          check([hall(capacity: '100', seated: s)]),
+          isNotNull,
+          reason: '"$s"',
+        );
       }
     });
     test('seated zero and equal to capacity accepted', () {
@@ -120,11 +155,16 @@ void main() {
       // capacity edited from 100 to 40 while seated stays 80.
       expect(check([hall(capacity: '40', seated: '80')]), isNotNull);
     });
-    test('hex and plus signs rejected', () {
-      expect(check([hall(capacity: '0x64', seated: '0')]), isNotNull);
-      expect(check([hall(capacity: '+100', seated: '0')]), isNotNull);
-      expect(check([hall(capacity: '100', seated: '+5')]), isNotNull);
-    }, skip: 'BUG-1: int.tryParse accepts hex ("0x64") and "+" prefixes in capacity fields');
+    test(
+      'hex and plus signs rejected',
+      () {
+        expect(check([hall(capacity: '0x64', seated: '0')]), isNotNull);
+        expect(check([hall(capacity: '+100', seated: '0')]), isNotNull);
+        expect(check([hall(capacity: '100', seated: '+5')]), isNotNull);
+      },
+      skip:
+          'BUG-1: int.tryParse accepts hex ("0x64") and "+" prefixes in capacity fields',
+    );
     test('json carries ints', () {
       final j = hall(capacity: '120', seated: '60').toJson();
       expect(j['capacity'], 120);
@@ -172,24 +212,66 @@ void main() {
     });
     test('date ranges', () {
       expect(HallHours(dateFrom: '2030-01-01').validate(), isNotNull);
-      expect(HallHours(dateFrom: '2030-02-01', dateUntil: '2030-01-01').validate(), isNotNull);
-      expect(HallHours(dateFrom: '2030-02-30', dateUntil: '2030-03-01').validate(), isNotNull);
-      expect(HallHours(dateFrom: '2030-01-01', dateUntil: '2030-01-01').validate(), isNull);
+      expect(
+        HallHours(dateFrom: '2030-02-01', dateUntil: '2030-01-01').validate(),
+        isNotNull,
+      );
+      expect(
+        HallHours(dateFrom: '2030-02-30', dateUntil: '2030-03-01').validate(),
+        isNotNull,
+      );
+      expect(
+        HallHours(dateFrom: '2030-01-01', dateUntil: '2030-01-01').validate(),
+        isNull,
+      );
     });
     test('hall operating hours cannot be dated', () {
       expect(
-        check([hall(hours: HallHours(dateFrom: '2030-01-01', dateUntil: '2030-02-01'))]),
+        check([
+          hall(
+            hours: HallHours(dateFrom: '2030-01-01', dateUntil: '2030-02-01'),
+          ),
+        ]),
         isNotNull,
       );
     });
     test('durations 30..1440, max 10, unique, default listed', () {
-      expect(check([hall(durations: [29], defaultDuration: 29, tariffs: [])], complete: false), isNotNull);
-      expect(check([hall(durations: [1441], defaultDuration: 1441, tariffs: [])], complete: false), isNotNull);
-      expect(check([hall(durations: [60, 60], tariffs: [])], complete: false), isNotNull);
-      expect(check([hall(durations: [60], defaultDuration: 30, tariffs: [])], complete: false), isNotNull);
-      expect(check([hall(durations: [], tariffs: [])], complete: false), isNotNull);
       expect(
-        check([hall(durations: [for (var i = 1; i <= 11; i++) 30 * i], defaultDuration: 30, tariffs: [])], complete: false),
+        check([
+          hall(durations: [29], defaultDuration: 29, tariffs: []),
+        ], complete: false),
+        isNotNull,
+      );
+      expect(
+        check([
+          hall(durations: [1441], defaultDuration: 1441, tariffs: []),
+        ], complete: false),
+        isNotNull,
+      );
+      expect(
+        check([
+          hall(durations: [60, 60], tariffs: []),
+        ], complete: false),
+        isNotNull,
+      );
+      expect(
+        check([
+          hall(durations: [60], defaultDuration: 30, tariffs: []),
+        ], complete: false),
+        isNotNull,
+      );
+      expect(
+        check([hall(durations: [], tariffs: [])], complete: false),
+        isNotNull,
+      );
+      expect(
+        check([
+          hall(
+            durations: [for (var i = 1; i <= 11; i++) 30 * i],
+            defaultDuration: 30,
+            tariffs: [],
+          ),
+        ], complete: false),
         isNotNull,
       );
     });
@@ -210,7 +292,21 @@ void main() {
       }
     });
     test('hourly disabled does not require hourly prices', () {
-      expect(check([hall(hourly: false, price: '', fullDay: pkg('f', 'Full day', enabled: true, prices: [HallPackagePrice(id: 'p', price: '5000')]))]), isNull);
+      expect(
+        check([
+          hall(
+            hourly: false,
+            price: '',
+            fullDay: pkg(
+              'f',
+              'Full day',
+              enabled: true,
+              prices: [HallPackagePrice(id: 'p', price: '5000')],
+            ),
+          ),
+        ]),
+        isNull,
+      );
     });
     test('blank price accepted while drafting', () {
       expect(check([hall(price: '')], complete: false), isNull);
@@ -242,14 +338,34 @@ void main() {
         sessions: const [],
         fullDay: pkg('f', 'Full day', opens: '06:00', closes: '22:00'),
       );
-      expect(check([base([t('a', '06:00', '12:00'), t('b', '11:00', '14:00')])]), 'Price rules overlap for Grand Hall.');
-      expect(check([base([t('a', '06:00', '12:00'), t('b', '12:00', '14:00')])]), isNull);
-      expect(check([base([t('x', '06:00', '12:00'), t('x', '12:00', '14:00')])]), isNotNull, reason: 'duplicate ids');
+      expect(
+        check([
+          base([t('a', '06:00', '12:00'), t('b', '11:00', '14:00')]),
+        ]),
+        'Price rules overlap for Grand Hall.',
+      );
+      expect(
+        check([
+          base([t('a', '06:00', '12:00'), t('b', '12:00', '14:00')]),
+        ]),
+        isNull,
+      );
+      expect(
+        check([
+          base([t('x', '06:00', '12:00'), t('x', '12:00', '14:00')]),
+        ]),
+        isNotNull,
+        reason: 'duplicate ids',
+      );
     });
     test('41 tariffs rejected', () {
       final ts = [
         for (var i = 0; i < 41; i++)
-          HallTariff(id: 't$i', hours: HallHours(days: [1 + i % 7]), rates: const [HallRate(60, '1')]),
+          HallTariff(
+            id: 't$i',
+            hours: HallHours(days: [1 + i % 7]),
+            rates: const [HallRate(60, '1')],
+          ),
       ];
       expect(check([hall(tariffs: ts)], complete: false), isNotNull);
     });
@@ -259,32 +375,60 @@ void main() {
     test('session name bounds and duplicates', () {
       for (final n in ['', ' ', 'a', 'a' * 101]) {
         expect(
-          check([hall(sessions: [pkg('s', n)])], complete: false),
+          check([
+            hall(sessions: [pkg('s', n)]),
+          ], complete: false),
           isNotNull,
           reason: '"$n"',
         );
       }
       expect(
-        check([hall(sessions: [pkg('a', 'Morning'), pkg('b', ' morning ')])]),
+        check([
+          hall(sessions: [pkg('a', 'Morning'), pkg('b', ' morning ')]),
+        ]),
         'Use distinct session names and IDs, up to 12 sessions.',
       );
     });
     test('session ids must not collide with the full-day id', () {
-      expect(check([hall(sessions: [pkg('f-h1', 'Morning')])]), isNotNull);
+      expect(
+        check([
+          hall(sessions: [pkg('f-h1', 'Morning')]),
+        ]),
+        isNotNull,
+      );
     });
     test('13 sessions rejected', () {
       final s = [for (var i = 0; i < 13; i++) pkg('s$i', 'Session ${i + 10}')];
       expect(check([hall(sessions: s)], complete: false), isNotNull);
     });
-    test('session named like the full-day package is rejected', () {
-      expect(check([hall(sessions: [pkg('s', 'Full day')])]), isNotNull);
-    }, skip: 'BUG-4: a session may share its name with the Full day package (uniqueness only checked among sessions), producing two indistinguishable options for customers');
+    test(
+      'session named like the full-day package is rejected',
+      () {
+        expect(
+          check([
+            hall(sessions: [pkg('s', 'Full day')]),
+          ]),
+          isNotNull,
+        );
+      },
+      skip:
+          'BUG-4: a session may share its name with the Full day package (uniqueness only checked among sessions), producing two indistinguishable options for customers',
+    );
     test('enabled session must fit inside hall hours', () {
       final h = hall(
         hours: HallHours(opens: '09:00', closes: '12:00'),
         tariffs: const [],
         hourly: false,
-        sessions: [pkg('s', 'Late', opens: '11:00', closes: '14:00', enabled: true, prices: [HallPackagePrice(id: 'p', price: '100')])],
+        sessions: [
+          pkg(
+            's',
+            'Late',
+            opens: '11:00',
+            closes: '14:00',
+            enabled: true,
+            prices: [HallPackagePrice(id: 'p', price: '100')],
+          ),
+        ],
         fullDay: pkg('f', 'Full day', opens: '09:00', closes: '12:00'),
       );
       expect(check([h], complete: false), isNotNull);
@@ -302,7 +446,12 @@ void main() {
       HallResource with_(String p) => hall(
         hourly: false,
         sessions: [
-          pkg('s', 'Morning', enabled: true, prices: [HallPackagePrice(id: 'p', price: p)]),
+          pkg(
+            's',
+            'Morning',
+            enabled: true,
+            prices: [HallPackagePrice(id: 'p', price: p)],
+          ),
         ],
       );
       for (final ok in ['0', '5000', '5000.5']) {
@@ -316,10 +465,15 @@ void main() {
       final h = hall(
         hourly: false,
         sessions: [
-          pkg('s', 'Morning', enabled: true, prices: [
-            HallPackagePrice(id: 'a', days: [1, 2], price: '1'),
-            HallPackagePrice(id: 'b', days: [2, 3], price: '2'),
-          ]),
+          pkg(
+            's',
+            'Morning',
+            enabled: true,
+            prices: [
+              HallPackagePrice(id: 'a', days: [1, 2], price: '1'),
+              HallPackagePrice(id: 'b', days: [2, 3], price: '2'),
+            ],
+          ),
         ],
       );
       expect(check([h]), 'Price rules overlap for Morning.');
@@ -333,7 +487,9 @@ void main() {
             name: 'Morning',
             hours: HallHours(days: [1, 2], opens: '09:00', closes: '13:00'),
             enabled: true,
-            prices: [HallPackagePrice(id: 'a', days: [5], price: '1')],
+            prices: [
+              HallPackagePrice(id: 'a', days: [5], price: '1'),
+            ],
           ),
         ],
       );
@@ -347,10 +503,19 @@ void main() {
     });
     test('package price rules capped at 40', () {
       final prices = [
-        for (var i = 0; i < 41; i++) HallPackagePrice(id: 'p$i', days: [1 + i % 7], dateFrom: '2030-01-${(i % 28 + 1).toString().padLeft(2, '0')}', dateUntil: '2030-01-${(i % 28 + 1).toString().padLeft(2, '0')}', price: '1'),
+        for (var i = 0; i < 41; i++)
+          HallPackagePrice(
+            id: 'p$i',
+            days: [1 + i % 7],
+            dateFrom: '2030-01-${(i % 28 + 1).toString().padLeft(2, '0')}',
+            dateUntil: '2030-01-${(i % 28 + 1).toString().padLeft(2, '0')}',
+            price: '1',
+          ),
       ];
       expect(
-        check([hall(sessions: [pkg('s', 'Morning', prices: prices)])], complete: false),
+        check([
+          hall(sessions: [pkg('s', 'Morning', prices: prices)]),
+        ], complete: false),
         isNotNull,
       );
     });
@@ -359,7 +524,9 @@ void main() {
   group('Hall draft json', () {
     test('local draft preserves raw text', () {
       final cfg = HallConfiguration(
-        halls: [hall(name: ' ', capacity: 'abc', seated: '', amenities: ' 🎉 ')],
+        halls: [
+          hall(name: ' ', capacity: 'abc', seated: '', amenities: ' 🎉 '),
+        ],
       );
       final back = HallConfiguration.fromJson(cfg.toJson(localDraft: true));
       expect(back.halls.first.name, ' ');

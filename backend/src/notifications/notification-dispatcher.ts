@@ -10,7 +10,7 @@ import type {
 import { notificationDetailsSql } from "./notification-events";
 
 // Booking scope, cash-handover participants and wallet ownership are checked again on every retry.
-const eligible = `m.active AND m.user_id=d.user_id AND m.organization_id=e.organization_id
+export const eligibleNotificationRecipientSql = `m.active AND m.user_id=d.user_id AND m.organization_id=e.organization_id
  AND m.user_id NOT LIKE 'sarvam:%'
  AND (
   (e.kind IN ('call_wallet_low','call_wallet_empty') AND m.role='owner')
@@ -128,7 +128,7 @@ export class NotificationDispatcher {
           LEFT JOIN staff_cash_settlements s ON s.id=e.settlement_id AND s.organization_id=e.organization_id
           JOIN notification_devices d ON d.enabled AND d.bound_at<=e.created_at AND d.last_seen_at>now()-interval '60 days'
           JOIN memberships m ON m.user_id=d.user_id
-          WHERE e.id=$1 AND e.created_at>now()-interval '24 hours' AND ${eligible}
+          WHERE e.id=$1 AND e.created_at>now()-interval '24 hours' AND ${eligibleNotificationRecipientSql}
           ON CONFLICT(event_id,device_id) DO NOTHING`,
           [event.id],
         );
@@ -159,7 +159,7 @@ export class NotificationDispatcher {
       WHERE n.event_id=$1 AND n.device_id=$2 AND n.lease_id=$3 AND n.state='processing'
       AND d.enabled AND n.recipient_user_id=d.user_id AND d.bound_at<=e.created_at
       AND d.last_seen_at>now()-interval '60 days' AND e.created_at>now()-interval '24 hours'
-      AND (e.kind IN ('staff_cash_collected','call_wallet_low','call_wallet_empty') OR b.id IS NOT NULL OR ad.id IS NOT NULL) AND ${eligible}`,
+      AND (e.kind IN ('staff_cash_collected','call_wallet_low','call_wallet_empty') OR b.id IS NOT NULL OR ad.id IS NOT NULL) AND ${eligibleNotificationRecipientSql}`,
         [item.event_id, item.device_id, lease],
       )
     ).rows[0];

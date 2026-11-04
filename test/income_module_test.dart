@@ -309,7 +309,7 @@ void main() {
       expect(find.text('Net cash received'), findsOneWidget);
       expect(find.text('Net bank received'), findsOneWidget);
       expect(find.text('Daily average (net)'), findsOneWidget);
-      expect(find.text('Add income'), findsOneWidget);
+      expect(find.text('Add extra income'), findsOneWidget);
       final scroll = find.byType(Scrollable).first;
       final sponsor = find.textContaining('Sponsorship · Shared');
       await tester.scrollUntilVisible(sponsor, 300, scrollable: scroll);

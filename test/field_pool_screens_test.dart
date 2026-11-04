@@ -41,7 +41,13 @@ class _Source extends Fake implements WorkspaceRepository {
         locationId: 'location',
         version: version,
         resources: (configuration?['pools'] as List? ?? [])
-            .map((p) => Resource(id: p['id'], name: p['name'], capacity: p['capacity']))
+            .map(
+              (p) => Resource(
+                id: p['id'],
+                name: p['name'],
+                capacity: p['capacity'],
+              ),
+            )
             .toList(),
         configuration: configuration,
       ),
@@ -105,7 +111,9 @@ Future<void> pumpPool(
         builder: (context, child) => MaterialApp(
           theme: darkTheme(),
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(scale)),
             child: child!,
           ),
           home: const PoolSetupScreen(businessId: 'swimming'),
@@ -117,7 +125,9 @@ Future<void> pumpPool(
 }
 
 Finder fieldFor(String label) => find.descendant(
-  of: find.byWidgetPredicate((w) => w is ConfigurationField && w.label == label),
+  of: find.byWidgetPredicate(
+    (w) => w is ConfigurationField && w.label == label,
+  ),
   matching: find.byType(TextFormField),
 );
 
@@ -159,7 +169,9 @@ void main() {
       await tapText(tester, 'Add pool');
     }
 
-    testWidgets('empty capacity shows inline message and blocks Continue', (tester) async {
+    testWidgets('empty capacity shows inline message and blocks Continue', (
+      tester,
+    ) async {
       await openAdd(tester);
       await enter(tester, 'Maximum people at the same time', '');
       await tapText(tester, 'Continue to timing & pricing');
@@ -185,7 +197,11 @@ void main() {
         await enter(tester, 'Minimum depth · feet', '3');
         await enter(tester, 'Maximum depth · feet', '5');
         await tapText(tester, 'Continue to timing & pricing');
-        expect(find.text('Use 2–100 characters'), findsOneWidget, reason: '"$bad"');
+        expect(
+          find.text('Use 2–100 characters'),
+          findsOneWidget,
+          reason: '"$bad"',
+        );
       }
     });
 
@@ -229,12 +245,17 @@ void main() {
       expect(find.text('Enter a positive maximum depth'), findsOneWidget);
     });
 
-    testWidgets('minimum depth above maximum surfaces a form error and stays', (tester) async {
+    testWidgets('minimum depth above maximum surfaces a form error and stays', (
+      tester,
+    ) async {
       await openAdd(tester);
       await enter(tester, 'Minimum depth · feet', '9');
       await enter(tester, 'Maximum depth · feet', '5');
       await tapText(tester, 'Continue to timing & pricing');
-      expect(find.textContaining('Check minimum and maximum depth'), findsOneWidget);
+      expect(
+        find.textContaining('Check minimum and maximum depth'),
+        findsOneWidget,
+      );
       expect(find.text('STEP 1 OF 2 · DETAILS'), findsOneWidget);
     });
 
@@ -243,10 +264,15 @@ void main() {
       await enter(tester, 'Minimum depth · feet', '3');
       await enter(tester, 'Maximum depth · feet', '5000');
       await tapText(tester, 'Continue to timing & pricing');
-      expect(find.textContaining('Check minimum and maximum depth'), findsOneWidget);
+      expect(
+        find.textContaining('Check minimum and maximum depth'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('duplicate pool name is rejected case-insensitively', (tester) async {
+    testWidgets('duplicate pool name is rejected case-insensitively', (
+      tester,
+    ) async {
       await openAdd(tester);
       await enter(tester, 'Minimum depth · feet', '3');
       await enter(tester, 'Maximum depth · feet', '5');
@@ -285,14 +311,20 @@ void main() {
       for (final bad in ['', '-1', '1.999', 'abc', '💰', '1000001', '1e3']) {
         await enter(tester, '60-minute price per person · INR', bad);
         await tapText(tester, 'Continue');
-        expect(find.text('Enter a valid amount'), findsOneWidget, reason: '"$bad"');
+        expect(
+          find.text('Enter a valid amount'),
+          findsOneWidget,
+          reason: '"$bad"',
+        );
       }
       await enter(tester, '60-minute price per person · INR', '199.50');
       await tapText(tester, 'Continue');
       expect(find.text('Enter a valid amount'), findsNothing);
     });
 
-    testWidgets('BUG-3: disabled pool with an empty price can be continued', (tester) async {
+    testWidgets('BUG-3: disabled pool with an empty price can be continued', (
+      tester,
+    ) async {
       await openAdd(tester);
       await enter(tester, 'Minimum depth · feet', '3');
       await enter(tester, 'Maximum depth · feet', '5');
@@ -303,17 +335,20 @@ void main() {
       expect(find.text('Enter a valid amount'), findsNothing);
     }, skip: true); // BUG-3: pricing validator ignores disabled-pool relaxation
 
-    testWidgets('large text 2.0 at 320x568 does not overflow in details and pricing', (tester) async {
-      await openAdd(tester, scale: 2.0);
-      expect(tester.takeException(), isNull);
-      await enter(tester, 'Minimum depth · feet', '3');
-      await enter(tester, 'Maximum depth · feet', '5');
-      await tapText(tester, 'Continue to timing & pricing');
-      expect(tester.takeException(), isNull);
-      await tapText(tester, 'Add time-based price');
-      await tapText(tester, 'Add time-based price');
-      expect(tester.takeException(), isNull);
-    });
+    testWidgets(
+      'large text 2.0 at 320x568 does not overflow in details and pricing',
+      (tester) async {
+        await openAdd(tester, scale: 2.0);
+        expect(tester.takeException(), isNull);
+        await enter(tester, 'Minimum depth · feet', '3');
+        await enter(tester, 'Maximum depth · feet', '5');
+        await tapText(tester, 'Continue to timing & pricing');
+        expect(tester.takeException(), isNull);
+        await tapText(tester, 'Add time-based price');
+        await tapText(tester, 'Add time-based price');
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   group('Pool sections render at 320x568 with 2.0 text scale', () {
@@ -362,7 +397,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('swimming plan allowance/validity/price validation', (tester) async {
+    testWidgets('swimming plan allowance/validity/price validation', (
+      tester,
+    ) async {
       await withPool(tester);
       await section(tester, PoolSection.plans);
       await tapText(tester, 'Add swimming plan');

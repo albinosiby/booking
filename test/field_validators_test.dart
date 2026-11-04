@@ -25,7 +25,13 @@ void main() {
       }
     });
     test('two characters, padded and unicode names pass', () {
-      for (final v in ['Al', '  Al  ', 'José Müller', 'ഏബിൻ', "O'Brien-Smith"]) {
+      for (final v in [
+        'Al',
+        '  Al  ',
+        'José Müller',
+        'ഏബിൻ',
+        "O'Brien-Smith",
+      ]) {
         expect(Validation.name(v), isNull, reason: 'value=$v');
       }
     });
@@ -102,8 +108,10 @@ void main() {
     test('internal whitespace from a paste is rejected', () {
       expect(Validation.email('own er@example.com'), isNotNull);
       expect(Validation.email('owner@exam ple.com'), isNotNull);
-      expect(Validation.email('owner@example.com owner2@example.com'),
-          isNotNull);
+      expect(
+        Validation.email('owner@example.com owner2@example.com'),
+        isNotNull,
+      );
     });
     test(
       'consecutive dots in the domain are invalid',
@@ -229,8 +237,10 @@ void main() {
   group('safeReturnPath', () {
     test('keeps in-app paths and queries', () {
       expect(safeReturnPath('/home'), '/home');
-      expect(safeReturnPath('/bookings?day=2026-10-27'),
-          '/bookings?day=2026-10-27');
+      expect(
+        safeReturnPath('/bookings?day=2026-10-27'),
+        '/bookings?day=2026-10-27',
+      );
       expect(safeReturnPath('/businesses/b/setup'), '/businesses/b/setup');
     });
     test('rejects null, empty and relative values', () {
@@ -238,22 +248,24 @@ void main() {
         expect(safeReturnPath(v), isNull, reason: 'value=$v');
       }
     });
-    test('rejects absolute urls, schemes, protocol-relative and backslashes',
-        () {
-      for (final v in [
-        'https://evil.example',
-        'http://evil.example/home',
-        'javascript:alert(1)',
-        'com.bookingos.app://invite',
-        '//evil.example',
-        '//evil.example/home',
-        r'/\evil.example',
-        r'/home\..\x',
-        '/\\evil.example',
-      ]) {
-        expect(safeReturnPath(v), isNull, reason: 'value=$v');
-      }
-    });
+    test(
+      'rejects absolute urls, schemes, protocol-relative and backslashes',
+      () {
+        for (final v in [
+          'https://evil.example',
+          'http://evil.example/home',
+          'javascript:alert(1)',
+          'com.bookingos.app://invite',
+          '//evil.example',
+          '//evil.example/home',
+          r'/\evil.example',
+          r'/home\..\x',
+          '/\\evil.example',
+        ]) {
+          expect(safeReturnPath(v), isNull, reason: 'value=$v');
+        }
+      },
+    );
     test('never returns an auth route, even with a query', () {
       for (final v in [
         '/register',
@@ -272,11 +284,18 @@ void main() {
       }
     });
     test('control characters are not echoed raw', () {
-      for (final v in ['/home\n/x', '/\t/evil.example', '/home\r\nLocation: x']) {
+      for (final v in [
+        '/home\n/x',
+        '/\t/evil.example',
+        '/home\r\nLocation: x',
+      ]) {
         final result = safeReturnPath(v);
         if (result != null) {
-          expect(result.contains(RegExp(r'[\r\n\t]')), isFalse,
-              reason: 'value=$v result=$result');
+          expect(
+            result.contains(RegExp(r'[\r\n\t]')),
+            isFalse,
+            reason: 'value=$v result=$result',
+          );
           expect(result.startsWith('//'), isFalse);
         }
       }
@@ -302,28 +321,53 @@ void main() {
     final token = 'a' * 64;
     final now = DateTime.utc(2026, 10, 27, 12);
     test('valid within 30 minutes', () {
-      expect(AuthContinuation(createdAt: now, invitationToken: token)
-          .isValidAt(now.add(const Duration(minutes: 29))), isTrue);
+      expect(
+        AuthContinuation(
+          createdAt: now,
+          invitationToken: token,
+        ).isValidAt(now.add(const Duration(minutes: 29))),
+        isTrue,
+      );
     });
     test('expires after 30 minutes and rejects a future clock', () {
-      expect(AuthContinuation(createdAt: now)
-          .isValidAt(now.add(const Duration(minutes: 30))), isFalse);
-      expect(AuthContinuation(createdAt: now)
-          .isValidAt(now.subtract(const Duration(seconds: 1))), isFalse);
+      expect(
+        AuthContinuation(
+          createdAt: now,
+        ).isValidAt(now.add(const Duration(minutes: 30))),
+        isFalse,
+      );
+      expect(
+        AuthContinuation(
+          createdAt: now,
+        ).isValidAt(now.subtract(const Duration(seconds: 1))),
+        isFalse,
+      );
     });
     test('invalid, uppercase, short and padded tokens are rejected', () {
       for (final t in ['abc', 'A' * 64, '${'a' * 63}g', ' ${'a' * 63}', '']) {
-        expect(AuthContinuation(createdAt: now, invitationToken: t)
-            .isValidAt(now), isFalse, reason: 'token=$t');
+        expect(
+          AuthContinuation(createdAt: now, invitationToken: t).isValidAt(now),
+          isFalse,
+          reason: 'token=$t',
+        );
       }
     });
     test('unsafe return path is rejected', () {
-      expect(AuthContinuation(createdAt: now, returnTo: 'https://x.test')
-          .isValidAt(now), isFalse);
-      expect(AuthContinuation(createdAt: now, returnTo: '/sign-in')
-          .isValidAt(now), isFalse);
-      expect(AuthContinuation(createdAt: now, returnTo: '/home')
-          .isValidAt(now), isTrue);
+      expect(
+        AuthContinuation(
+          createdAt: now,
+          returnTo: 'https://x.test',
+        ).isValidAt(now),
+        isFalse,
+      );
+      expect(
+        AuthContinuation(createdAt: now, returnTo: '/sign-in').isValidAt(now),
+        isFalse,
+      );
+      expect(
+        AuthContinuation(createdAt: now, returnTo: '/home').isValidAt(now),
+        isTrue,
+      );
     });
     test('json round trip and corrupt json', () {
       final c = AuthContinuation(
@@ -335,8 +379,10 @@ void main() {
       expect(back.invitationToken, token);
       expect(back.returnTo, '/home');
       expect(back.createdAt, now);
-      expect(() => AuthContinuation.fromJson({'created_at': 'nope'}),
-          throwsFormatException);
+      expect(
+        () => AuthContinuation.fromJson({'created_at': 'nope'}),
+        throwsFormatException,
+      );
     });
   });
 
@@ -345,8 +391,10 @@ void main() {
       const e = AppException('Nope', code: 'FORBIDDEN');
       expect(e.toString(), 'Nope');
       expect(accessFailure(e), isTrue);
-      expect(accessFailure(const AppException('x', code: 'UNAUTHENTICATED')),
-          isTrue);
+      expect(
+        accessFailure(const AppException('x', code: 'UNAUTHENTICATED')),
+        isTrue,
+      );
       expect(accessFailure(const AppException('x')), isFalse);
       expect(accessFailure(StateError('x')), isFalse);
     });

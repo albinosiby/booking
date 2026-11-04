@@ -1,6 +1,7 @@
 import { NotificationService } from "./notifications/notification.service";
 import {
   NotificationController,
+  NotificationInboxController,
   NotificationInstallationController,
 } from "./notifications/notification.controller";
 import { SupportService } from "./support/support.service";
@@ -76,6 +77,7 @@ import {
   imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }])],
   controllers: [
     NotificationController,
+    NotificationInboxController,
     NotificationInstallationController,
     AdminController,
     AdminCallBillingController,

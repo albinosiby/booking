@@ -1,4 +1,13 @@
-import { Body, Controller, Param, Post, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { Actor, AuthGuard } from "../common/auth.guard";
 import { NotificationService } from "./notification.service";
 
@@ -15,6 +24,18 @@ export class NotificationController {
     @Body() input: unknown,
   ) {
     return this.notifications.unregister(req.actor, id, input);
+  }
+}
+
+@Controller("v1/notifications")
+@UseGuards(AuthGuard)
+export class NotificationInboxController {
+  constructor(private readonly notifications: NotificationService) {}
+  @Get("inbox") list(
+    @Req() req: { actor: Actor },
+    @Query("before") before?: string,
+  ) {
+    return this.notifications.list(req.actor, before);
   }
 }
 
