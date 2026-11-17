@@ -143,12 +143,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Delete booking permanently?'), findsOneWidget);
     final confirm = find.byKey(const ValueKey('booking-confirm-delete'));
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
-    await tester.enterText(
-      find.byKey(const ValueKey('booking-delete-reference')),
-      'BK-TEST',
-    );
-    await tester.pump();
+    expect(find.text('Booking BK-TEST'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
     expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
     await tester.tap(confirm);
     await tester.pumpAndSettle();

@@ -295,7 +295,6 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        var typed = '';
         var busy = false;
         String? error;
         return StatefulBuilder(
@@ -312,20 +311,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     'account balances will change. This cannot be undone.',
                   ),
                   const SizedBox(height: 16),
-                  Text('Type ${booking.reference} to confirm.'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    key: const ValueKey('booking-delete-reference'),
-                    enabled: !busy,
-                    decoration: InputDecoration(
-                      labelText: 'Booking reference',
-                      errorText: error,
+                  Text('Booking ${booking.reference}'),
+                  if (error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      error!,
+                      style: TextStyle(
+                        color: Theme.of(dialogContext).colorScheme.error,
+                      ),
                     ),
-                    onChanged: (value) => update(() {
-                      typed = value;
-                      error = null;
-                    }),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -336,7 +331,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               ),
               FilledButton(
                 key: const ValueKey('booking-confirm-delete'),
-                onPressed: busy || typed != booking.reference
+                onPressed: busy
                     ? null
                     : () async {
                         update(() {
@@ -344,7 +339,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                           error = null;
                         });
                         try {
-                          final success = await cubit.deleteBooking(typed);
+                          final success = await cubit.deleteBooking(
+                            booking.reference,
+                          );
                           if (!dialogContext.mounted) return;
                           if (success) {
                             Navigator.pop(dialogContext, true);
