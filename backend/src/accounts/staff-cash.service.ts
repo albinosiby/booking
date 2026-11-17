@@ -41,7 +41,7 @@ const HOLDING_SQL = `SELECT m.id AS membership_id,
    AND COALESCE(o.occurred_at,e.occurred_at)>=COALESCE((SELECT started_at FROM staff_cash_tracking WHERE organization_id=m.organization_id),'2000-01-01')),0)
  - COALESCE((SELECT sum(amount_minor) FROM staff_cash_settlements s WHERE s.membership_id=m.id AND s.direction='collect'),0)
  + COALESCE((SELECT sum(amount_minor) FROM staff_cash_settlements s WHERE s.membership_id=m.id AND s.direction='give'),0) AS holding_minor
- FROM memberships m WHERE m.organization_id=$1`;
+ FROM memberships m WHERE m.organization_id=$1 AND m.user_id NOT LIKE 'sarvam:%'`;
 @Injectable()
 export class StaffCashService {
   constructor(
@@ -197,7 +197,8 @@ export class StaffCashService {
          (SELECT max(settled_at) FROM staff_cash_settlements s WHERE s.membership_id=m.id) AS last_settled_at,
          COALESCE((SELECT jsonb_agg(DISTINCT r.name) FROM staff_assignments a JOIN resources r ON r.business_id=a.business_id
            AND (jsonb_array_length(a.resource_ids)=0 OR a.resource_ids ? r.id::text) WHERE a.membership_id=m.id),'[]'::jsonb) AS spaces
-         FROM memberships m WHERE m.organization_id=$1 AND m.role<>'owner' AND m.active=true ORDER BY m.display_name,m.id`,
+         FROM memberships m WHERE m.organization_id=$1 AND m.role<>'owner' AND m.active=true
+           AND m.user_id NOT LIKE 'sarvam:%' ORDER BY m.display_name,m.id`,
         [m.organization_id],
       )
     ).rows;
@@ -239,7 +240,7 @@ export class StaffCashService {
       }
       const staff = (
         await db.query<Row>(
-          "SELECT id FROM memberships WHERE id=$1 AND organization_id=$2 AND role<>'owner'",
+          "SELECT id FROM memberships WHERE id=$1 AND organization_id=$2 AND role<>'owner' AND user_id NOT LIKE 'sarvam:%'",
           [membershipId, owner.organization_id],
         )
       ).rows[0];

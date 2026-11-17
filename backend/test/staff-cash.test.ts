@@ -28,6 +28,7 @@ const actor = (): Actor => ({
   email: `${randomUUID()}@example.com`,
   name: "Finance owner",
 });
+
 const now = new Date().toISOString(),
   day = now.slice(0, 10),
   filter = { from: "2020-01-01", until: day };
@@ -544,5 +545,36 @@ test("confirmed cash handovers atomically notify only the collecting owner and i
       )
     ).rows.length,
     0,
+  );
+});
+
+test("voice agent membership is not staff cash and cannot be settled", async () => {
+  const org = (
+    await db.query<{ organization_id: string }>(
+      "SELECT organization_id FROM memberships WHERE user_id=$1",
+      [owner.uid],
+    )
+  ).rows[0].organization_id;
+  const voiceId = randomUUID();
+  await db.query(
+    `INSERT INTO memberships(id,organization_id,user_id,email,display_name,role,permissions,active)
+     VALUES($1,$2,$3,'voice-agent@sarvam.invalid','Sarvam voice agent','staff','[]',true)`,
+    [voiceId, org, `sarvam:${org}`],
+  );
+  assert.equal(
+    (await cashSvc.overview(owner)).staff.some(
+      (member) => member.membership_id === voiceId,
+    ),
+    false,
+  );
+  await assert.rejects(
+    cashSvc.settle(owner, voiceId, {
+      command_key: randomUUID(),
+      direction: "collect",
+      amount_minor: 100,
+      expected_balance_minor: 0,
+      note: "",
+    }),
+    /Staff member not found/,
   );
 });
