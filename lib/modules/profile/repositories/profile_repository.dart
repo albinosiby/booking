@@ -1,3 +1,4 @@
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../../utils/services/logo_picker_service.dart';
 import '../../workspace/models/workspace.dart';
 import '../models/organization_details_model.dart';
@@ -8,6 +9,7 @@ import '../../businesses/repositories/business_repository.dart';
 
 abstract interface class ProfileRepository {
   OrganizationDetailsModel details(Workspace snapshot);
+  Future<String> appVersion();
   Future<OrganizationLogoSelection?> selectLogo();
   Future<void> uploadLogo(Uint8List bytes, String contentType);
   Future<void> renameBusiness(String id, String name);
@@ -20,6 +22,16 @@ class OrganizationProfileRepository implements ProfileRepository {
     LogoPickerService? logoPicker,
   }) : logoPicker = logoPicker ?? LogoPickerService();
   final LogoPickerService logoPicker;
+  @override
+  Future<String> appVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    final version = info.version.trim(), build = info.buildNumber.trim();
+    if (version.isEmpty) {
+      throw StateError('App version metadata is unavailable.');
+    }
+    return build.isEmpty ? version : '$version (build $build)';
+  }
+
   @override
   Future<OrganizationLogoSelection?> selectLogo() async {
     final selected = await logoPicker.pick();

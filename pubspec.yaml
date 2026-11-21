@@ -1,7 +1,7 @@
 name: eden_booking
 description: Organization and facility management for Booking OS.
 publish_to: none
-version: 0.1.0+3
+version: 0.1.0+4
 environment:
   sdk: ^3.12.1
 dependencies:
@@ -33,6 +33,7 @@ dependencies:
   share_plus: ^13.3.1
   flutter_cashfree_pg_sdk: ^2.6.0+54
   flutter_svg: ^2.3.2
+  package_info_plus: 10.2.1
 dev_dependencies:
   http: 1.6.0
   flutter_test:

@@ -240,13 +240,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         onChanged: (_) => context.read<SettingsCubit>().toggle(),
       ),
     ),
-    if (AppConfig.useAuthEmulator)
-      const ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: Icon(Icons.science_outlined),
-        title: Text('Local development'),
-        subtitle: Text('Authentication emulator · no production customers'),
-      ),
+
     if (s.error != null) AppErrorWidget(message: s.error!),
   ];
 

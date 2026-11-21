@@ -30,9 +30,18 @@ class _AccountsScreenState extends State<AccountsScreen> {
     super.dispose();
   }
 
+  bool _openingPage = false;
+
   Future<void> _open(String route, {Object? extra}) async {
-    await context.push(route, extra: extra);
-    if (mounted) cubit.refresh();
+    // Repeated taps during a route transition must not stack the same page.
+    if (_openingPage || !mounted) return;
+    _openingPage = true;
+    try {
+      await context.push(route, extra: extra);
+      if (mounted) cubit.refresh();
+    } finally {
+      _openingPage = false;
+    }
   }
 
   @override

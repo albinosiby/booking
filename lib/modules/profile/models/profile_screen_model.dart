@@ -6,6 +6,8 @@ class ProfileScreenModel extends WorkspaceState {
   ProfileScreenModel.fromSnapshot(
     WorkspaceState snapshot, {
     required this.organizationDetails,
+    this.appVersion,
+    this.appVersionLoading = false,
   }) : super(
          status: snapshot.status,
          data: snapshot.data,
@@ -22,4 +24,8 @@ class ProfileScreenModel extends WorkspaceState {
   String get ownerEmail =>
       data.isOwner ? (data.membership?['email'] as String? ?? '') : '';
   final OrganizationDetailsModel organizationDetails;
+  final String? appVersion;
+  final bool appVersionLoading;
+  @override
+  List<Object?> get props => [...super.props, appVersion, appVersionLoading];
 }
